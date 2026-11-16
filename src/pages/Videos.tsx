@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { setVideoTopic } from "../lib/growth.ts";
+import { setVideoTopic, useReach } from "../lib/growth.ts";
 import { Tabs, VIDEO_TABS } from "./Growth.tsx";
 import { useMemo, useState } from "react";
 import { BarList } from "../components/Timeline.tsx";
@@ -12,7 +12,7 @@ import { auditAll, type Check, CHECK_LABEL, type CheckKey } from "../lib/seo.ts"
 import { libraryComplete } from "../lib/stats.ts";
 import type { Format, Traffic, Video } from "../lib/types.ts";
 
-type SortKey = "newest" | "views" | "per_day" | "vs_usual" | "watched" | "avg_view" | "watch_hours" | "earned";
+type SortKey = "newest" | "views" | "per_day" | "vs_usual" | "watched" | "ctr" | "avg_view" | "watch_hours" | "earned";
 
 const TRAFFIC_GROUP: Record<string, string> = {
   search: "YouTube search",
@@ -46,6 +46,10 @@ export function Videos() {
   const audit = useMemo(() => auditAll(all), [all]);
   const complete = libraryComplete(all, channel.data?.videos);
   const earning = all.some((v) => v.estimated_revenue !== null);
+  const reach = useReach();
+  const reachById = useMemo(() => new Map((reach.data ?? []).map((r) => [r.video_id, r])), [reach.data]);
+  const clicks = reachById.size > 0;
+  const ctrOf = (id: string) => { const r = reachById.get(id); return r?.ctr_28d == null ? "–" : `${r.ctr_28d}%`; };
 
   const issues = useMemo(() => {
     const counts = new Map<CheckKey, { n: number; fix: boolean }>();
@@ -71,12 +75,13 @@ export function Videos() {
       per_day: (v) => v.views_per_day ?? -1,
       vs_usual: (v) => v.vs_typical ?? -1,
       watched: (v) => v.avg_view_pct ?? -1,
+      ctr: (v) => reachById.get(v.id)?.ctr_28d ?? -1,
       avg_view: (v) => v.avg_view_duration_s ?? -1,
       watch_hours: (v) => v.watch_hours ?? -1,
       earned: (v) => v.estimated_revenue ?? -1,
     };
     return [...list].sort((a, b) => by[sort](b) - by[sort](a));
-  }, [all, format, search, issue, sort, audit]);
+  }, [all, format, search, issue, sort, audit, reachById]);
 
   if (videos.isLoading) return <Loading label="Loading your videos" />;
   if (videos.error) return <ErrorNote error={videos.error} retry={() => void videos.refetch()} />;
@@ -131,6 +136,7 @@ export function Videos() {
           <option value="per_day">Most views per day</option>
           {complete ? <option value="vs_usual">Furthest above your usual</option> : null}
           <option value="watched">Highest retention</option>
+          {clicks ? <option value="ctr">Highest click-through rate</option> : null}
           <option value="avg_view">Longest average view</option>
           <option value="watch_hours">Most watch hours</option>
           {earning ? <option value="earned">Most earned</option> : null}
@@ -157,6 +163,7 @@ export function Videos() {
                   <th className="num wide">Watch hours</th>
                   <th className="num wide">Retention</th>
                   <th className="num wide">Average view</th>
+                  {clicks ? <th className="num wide">Click-through</th> : null}
                   {earning ? <th className="num wide">Earned</th> : null}
                 </tr>
               </thead>
@@ -184,6 +191,7 @@ export function Videos() {
                           <span><span className="muted">Retention</span> {percent(v.avg_view_pct)}</span>
                           <span><span className="muted">Avg view</span> {duration(v.avg_view_duration_s)}</span>
                           <span><span className="muted">Watch hrs</span> {v.watch_hours === null ? "–" : compact(v.watch_hours)}</span>
+                          {clicks ? <span><span className="muted">Click-through</span> {ctrOf(v.id)}</span> : null}
                           {earning ? <span><span className="muted">Earned</span> {money(v.estimated_revenue)}</span> : null}
                         </div>
                       </td>
@@ -193,6 +201,7 @@ export function Videos() {
                       <td className="num wide">{v.watch_hours === null ? "–" : compact(v.watch_hours)}</td>
                       <td className="num wide">{percent(v.avg_view_pct)}</td>
                       <td className="num wide">{duration(v.avg_view_duration_s)}</td>
+                      {clicks ? <td className="num wide">{ctrOf(v.id)}</td> : null}
                       {earning ? <td className="num wide">{money(v.estimated_revenue)}</td> : null}
                     </tr>
                   );

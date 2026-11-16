@@ -5,7 +5,7 @@ import {
   analytics, type Api, chunk, closeApi, type Deps, EARNINGS_SCOPE, fetchChannels, fetchPlaylistIds, fetchVideos, getConfig,
   HttpError, mapLimit, openApi, playlistFor, type Report, reportObjects,
 } from "./google.ts";
-import { logChanges, syncComments, syncFeeders, syncTestDays, syncTopics, tickGoals } from "./growth.ts";
+import { logChanges, syncComments, syncFeeders, syncReach, syncTestDays, syncTopics, tickGoals } from "./growth.ts";
 import { refreshWatched } from "./research.ts";
 import { classifyFormat } from "./scoring.ts";
 
@@ -432,6 +432,7 @@ export async function runSync(deps: Deps, source: string): Promise<{ status: str
     await step("tests", () => syncTestDays(session, today));
     await step("topics", soft(() => syncTopics(deps)));
     await step("comments", soft(() => syncComments(session, channel.id, cfg.google_scopes ?? "")));
+    await step("reach", soft(() => syncReach(session)));
     await step("goals", async () => { await tickGoals(sql); });
 
     // 9. Channels on the watch list

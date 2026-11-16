@@ -9,7 +9,7 @@ import { ago, compact, count, day, duration, money, percent, whole } from "../li
 import {
   byTopic, type Comment, emptyWeeks, type Goal, type GoalDraft, goalProgress, growthKeys, kindWords, markComment, monthsWithData,
   patchGoal, planMonth, recap, saveGoal, saveTest, shortsFunnel, type Test, type TestDraft, testResult, themes, trashTest,
-  useChanges, useComments, useGoals, useTests, useVideoDays,
+  testCtr, useChanges, useComments, useGoals, useReachDays, useTests, useVideoDays,
 } from "../lib/growth.ts";
 import { keys, useChannel, useConnection, useDaily, useIdeas, useVideos } from "../lib/hooks.ts";
 import { navigate } from "../lib/router.ts";
@@ -220,6 +220,7 @@ export function Tests() {
   const list = tests.data ?? [];
   const ids = useMemo(() => [...new Set(list.map((t) => t.video_id))].sort(), [list]);
   const days = useVideoDays(ids);
+  const reachDays = useReachDays(ids);
   const byId = useMemo(() => new Map((videos.data ?? []).map((v) => [v.id, v])), [videos.data]);
   const today = todayIso();
 
@@ -241,6 +242,9 @@ export function Tests() {
         ) : list.map((t) => {
           const video = byId.get(t.video_id);
           const r = testResult(t, days.data ?? [], today);
+          const measured = testCtr(t, reachDays.data ?? [], today);
+          // YouTube's own figure when it has reported one, otherwise what was typed in from Studio.
+          const ctr = { before: measured.before ?? t.ctr_before, after: measured.after ?? t.ctr_after };
           return (
             <div className="item" key={t.id} style={{ flexDirection: "column", gap: 10 }}>
               <div className="row between" style={{ width: "100%", gap: 12, alignItems: "flex-start" }}>
@@ -267,8 +271,8 @@ export function Tests() {
                     <tr><td>Views a day</td><td className="v">{compact(r.before.viewsPerDay)}</td><td className="v">{compact(r.after.viewsPerDay)}</td>
                       <td className="v">{r.viewsChange === null ? "–" : `${r.viewsChange >= 0 ? "+" : ""}${Math.round(r.viewsChange * 100)}%`}</td></tr>
                     <tr><td>Watch minutes a day</td><td className="v">{compact(r.before.watchMinPerDay)}</td><td className="v">{compact(r.after.watchMinPerDay)}</td><td className="v" /></tr>
-                    <tr><td>Click-through rate</td><td className="v">{t.ctr_before === null ? "–" : `${t.ctr_before}%`}</td><td className="v">{t.ctr_after === null ? "–" : `${t.ctr_after}%`}</td>
-                      <td className="v">{t.ctr_before !== null && t.ctr_after !== null ? `${t.ctr_after - t.ctr_before >= 0 ? "+" : ""}${(t.ctr_after - t.ctr_before).toFixed(1)} pts` : ""}</td></tr>
+                    <tr><td>Click-through rate</td><td className="v">{ctr.before === null ? "–" : `${ctr.before}%`}</td><td className="v">{ctr.after === null ? "–" : `${ctr.after}%`}</td>
+                      <td className="v">{ctr.before !== null && ctr.after !== null ? `${ctr.after - ctr.before >= 0 ? "+" : ""}${(ctr.after - ctr.before).toFixed(1)} pts` : ""}</td></tr>
                   </tbody>
                 </table>
               )}
@@ -386,7 +390,7 @@ function TestEditor(props: { draft: TestDraft; videos: Video[]; onClose: () => v
         <label className="field"><span>Click-through rate before (%)</span><input className="input" inputMode="decimal" value={form.ctr_before ?? ""} onChange={(e) => set("ctr_before", num(e.target.value))} /></label>
         <label className="field"><span>Click-through rate after (%)</span><input className="input" inputMode="decimal" value={form.ctr_after ?? ""} onChange={(e) => set("ctr_after", num(e.target.value))} /></label>
       </div>
-      <p className="small muted" style={{ margin: 0 }}>YouTube does not share click-through rate with apps, so copy it from the video's Reach tab in YouTube Studio if you want it tracked. Views and watch time fill in on their own.</p>
+      <p className="small muted" style={{ margin: 0 }}>Click-through rate fills in on its own once YouTube's daily reach report is arriving (it runs a day or two behind). Until then you can copy it from the video's Reach tab in YouTube Studio. Views and watch time always fill in on their own.</p>
       <div className="field">
         <span>How did it go?</span>
         <Segmented

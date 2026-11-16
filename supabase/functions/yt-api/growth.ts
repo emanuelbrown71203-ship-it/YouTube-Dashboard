@@ -50,6 +50,8 @@ const GENERIC = new Set([
   "shorts", "short", "gaming", "games", "game", "gamer", "funny", "fyp", "foryou", "viral", "trending", "youtube",
   "youtubeshorts", "gameplay", "clips", "clip", "memes", "meme", "scary", "horror", "horrorgaming", "jumpscare",
   "challenge", "gamingchallenge", "live", "stream", "livestream", "walkthrough", "letsplay", "reaction",
+  "fromsoftware", "jumpscares", "soulsborne", "soulslike", "souls", "dnd", "horrorgame", "horrorgames", "fangame", "fangames",
+  "indiegame", "indiegames", "funnymoments", "gamingshorts", "gamingvideos", "ps5", "xbox", "pc", "twitch", "streamer",
 ]);
 
 const squash = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
@@ -81,6 +83,30 @@ export async function syncTopics(deps: Deps): Promise<Record<string, unknown>> {
       from jsonb_to_recordset(${sql.json(guesses)}) as x(id text, topic text)
       where v.id = x.id and v.topic is null`;
   }
+  // Tidy the guesses: drop ones that turned out to be generic words, and file "Eldenring" with "Elden Ring".
+  const current = await sql`
+    select topic, count(*)::int as n from public.yt_videos where removed_at is null and topic is not null group by topic`;
+  const best = new Map<string, { topic: string; n: number }>();
+  // deno-lint-ignore no-explicit-any
+  for (const row of current as any[]) {
+    const key = squash(row.topic);
+    const held = best.get(key);
+    const spaced = (t: string) => (t.includes(" ") ? 1 : 0);
+    if (!held || spaced(row.topic) > spaced(held.topic) || (spaced(row.topic) === spaced(held.topic) && row.n > held.n)) {
+      best.set(key, { topic: row.topic, n: row.n });
+    }
+  }
+  // deno-lint-ignore no-explicit-any
+  const renames = (current as any[])
+    .map((row) => ({ from: row.topic as string, to: GENERIC.has(squash(row.topic)) ? null : best.get(squash(row.topic))!.topic }))
+    .filter((r) => r.to !== r.from);
+  if (renames.length) {
+    await sql`
+      update public.yt_videos v set topic = x.to, topic_source = case when x.to is null then null else 'guess' end
+      from jsonb_to_recordset(${sql.json(renames)}) as x("from" text, "to" text)
+      where v.topic = x."from" and coalesce(v.topic_source, 'guess') = 'guess'`;
+  }
+
   let named = 0;
   if (await aiReady(sql)) {
     const rows = await sql`
@@ -138,6 +164,19 @@ function chunks<T>(items: T[], size: number): T[][] {
 // Title and thumbnail changes
 // ---------------------------------------------------------------------------
 
+/**
+ * What identifies a thumbnail image. Private and unlisted videos get signed links whose
+ * signature and host rotate on every request; only the path and the version say whether the picture changed.
+ */
+export function thumbKey(url: string): string {
+  try {
+    const u = new URL(url);
+    return `${u.pathname}?v=${u.searchParams.get("v") ?? ""}`;
+  } catch {
+    return url;
+  }
+}
+
 /** Compare what YouTube says now with what is stored, and note every change. Call before saving the videos. */
 export async function logChanges(sql: Sql, videos: PublicVideo[]): Promise<number> {
   if (videos.length === 0) return 0;
@@ -153,7 +192,7 @@ export async function logChanges(sql: Sql, videos: PublicVideo[]): Promise<numbe
     if (old.title && v.title && old.title !== v.title) {
       changes.push({ video_id: v.id, field: "title", old_value: old.title, new_value: v.title });
     }
-    if (old.thumbnail_url && v.thumbnail_url && old.thumbnail_url !== v.thumbnail_url) {
+    if (old.thumbnail_url && v.thumbnail_url && thumbKey(old.thumbnail_url) !== thumbKey(v.thumbnail_url)) {
       changes.push({ video_id: v.id, field: "thumbnail", old_value: old.thumbnail_url, new_value: v.thumbnail_url });
     }
   }
@@ -381,4 +420,99 @@ export async function explainVideo(api: Api, videoId: string, scopes: string) {
            language = ${s.defaultAudioLanguage ?? s.defaultLanguage ?? null}, description = ${String(s.description ?? "").slice(0, 3000)}
      where id = ${videoId}`;
   return { video_id: videoId, explanation };
+}
+
+// ---------------------------------------------------------------------------
+// Impressions and click-through rate
+// ---------------------------------------------------------------------------
+
+const REPORTING = "https://youtubereporting.googleapis.com/v1";
+const REACH_REPORT = "channel_reach_basic_a1";
+
+/** One line of a simple CSV (the reach report has no quoted fields, but be safe). */
+function csvCells(line: string): string[] {
+  return line.split(",").map((cell) => cell.replace(/^"|"$/g, "").trim());
+}
+
+/** Turn the reach report into one row per video and day, adding up the report's finer breakdowns. */
+export function parseReach(csv: string): { video_id: string; date: string; impressions: number; ctr: number | null }[] {
+  const lines = csv.split(/\r?\n/).filter((l) => l.trim() !== "");
+  if (lines.length < 2) return [];
+  const head = csvCells(lines[0]);
+  const at = (name: string) => head.indexOf(name);
+  const [iDate, iVideo, iImp, iCtr] = [at("date"), at("video_id"), at("video_thumbnail_impressions"), at("video_thumbnail_impressions_ctr")];
+  if (iDate < 0 || iVideo < 0 || iImp < 0) return [];
+  const sums = new Map<string, { video_id: string; date: string; impressions: number; clicks: number; hasCtr: boolean }>();
+  for (const line of lines.slice(1)) {
+    const c = csvCells(line);
+    const raw = c[iDate] ?? "";
+    const date = /^\d{8}$/.test(raw) ? `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6)}` : raw;
+    const impressions = Number(c[iImp]);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !c[iVideo] || !Number.isFinite(impressions)) continue;
+    const key = `${c[iVideo]}|${date}`;
+    const row = sums.get(key) ?? { video_id: c[iVideo], date, impressions: 0, clicks: 0, hasCtr: false };
+    row.impressions += impressions;
+    const ctr = iCtr >= 0 ? Number(c[iCtr]) : NaN;
+    if (Number.isFinite(ctr)) {
+      // The report gives the rate as a fraction; keep clicks so finer rows add up correctly.
+      row.clicks += impressions * (ctr > 1 ? ctr / 100 : ctr);
+      row.hasCtr = true;
+    }
+    sums.set(key, row);
+  }
+  return [...sums.values()].map((r) => ({
+    video_id: r.video_id, date: r.date, impressions: r.impressions,
+    ctr: r.hasCtr && r.impressions > 0 ? Math.round((10000 * r.clicks) / r.impressions) / 100 : null,
+  }));
+}
+
+export async function syncReach(api: Api): Promise<Record<string, unknown>> {
+  const { deps } = api;
+  const { sql } = deps;
+  const call = async (url: string, init: RequestInit = {}) => {
+    const res = await deps.fetch(url, { ...init, headers: { authorization: `Bearer ${api.token}`, accept: "application/json", ...(init.headers ?? {}) } });
+    if (!res.ok) {
+      // deno-lint-ignore no-explicit-any
+      const body: any = await res.json().catch(() => ({}));
+      const text = String(body?.error?.message ?? res.status);
+      if (/has not been used|is disabled|SERVICE_DISABLED/i.test(text)) {
+        throw new HttpError(409, "reporting_off", "Click-through rate needs the YouTube Reporting API switched on in Google Cloud.", text);
+      }
+      throw new HttpError(502, "reporting_error", `YouTube's reports returned an error (${text}).`, text);
+    }
+    return res;
+  };
+  // deno-lint-ignore no-explicit-any
+  const jobs: any[] = (await (await call(`${REPORTING}/jobs`)).json()).jobs ?? [];
+  let job = jobs.find((j) => j.reportTypeId === REACH_REPORT);
+  let created = false;
+  if (!job) {
+    job = await (await call(`${REPORTING}/jobs`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ reportTypeId: REACH_REPORT, name: "Dashboard reach" }),
+    })).json();
+    created = true;
+  }
+  const { reach_seen: seen } = await getConfig(sql, ["reach_seen"]);
+  const query = new URLSearchParams({ pageSize: "100", ...(seen ? { createdAfter: seen } : {}) });
+  // deno-lint-ignore no-explicit-any
+  const reports: any[] = (await (await call(`${REPORTING}/jobs/${job.id}/reports?${query}`)).json()).reports ?? [];
+  reports.sort((a, b) => String(a.createTime).localeCompare(String(b.createTime)));
+  let days = 0, rows = 0, newest = seen ?? "";
+  for (const report of reports.slice(0, 45)) {
+    const csv = await (await call(report.downloadUrl, { headers: { accept: "text/csv" } })).text();
+    const parsed = parseReach(csv);
+    for (let i = 0; i < parsed.length; i += 500) {
+      await sql`
+        insert into public.yt_video_reach_daily (video_id, date, impressions, ctr)
+        select x.video_id, x.date, x.impressions, x.ctr
+        from jsonb_to_recordset(${sql.json(parsed.slice(i, i + 500))}) as x(video_id text, date date, impressions bigint, ctr numeric)
+        on conflict (video_id, date) do update set impressions = excluded.impressions, ctr = excluded.ctr`;
+    }
+    days++;
+    rows += parsed.length;
+    if (String(report.createTime) > newest) newest = String(report.createTime);
+    await setConfig(sql, { reach_seen: newest });
+  }
+  return created ? { started: "Asked YouTube for the daily reach report. The first one arrives in a day or two." } : { reports: days, rows, waiting: reports.length - days };
 }

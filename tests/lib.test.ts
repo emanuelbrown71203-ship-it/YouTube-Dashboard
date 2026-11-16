@@ -224,3 +224,25 @@ describe("growth", () => {
     expect(emptyWeeks([idea], "2026-11-16", 3)).toEqual(["2026-11-15", "2026-11-22"]);
   });
 });
+
+describe("thumbnail links", () => {
+  it("ignores the rotating signature on private videos but sees a new picture", async () => {
+    const { thumbKey } = await import("../supabase/functions/yt-api/growth.ts");
+    const a = "https://i9.ytimg.com/vi/_8C_h-U_ZUA/mqdefault.jpg?sqp=COSf7NcG&rs=AOn4CLDw";
+    const b = "https://i.ytimg.com/vi/_8C_h-U_ZUA/mqdefault.jpg?sqp=CMCr7NcG&rs=AOn4CLB0";
+    expect(thumbKey(a)).toBe(thumbKey(b));
+    expect(thumbKey("https://i.ytimg.com/vi/x/mqdefault.jpg?v=6a738609")).not.toBe(thumbKey("https://i.ytimg.com/vi/x/mqdefault.jpg?v=7b000000"));
+  });
+});
+
+describe("reach report", () => {
+  it("adds finer rows up to one row per video and day, with the rate in percent", async () => {
+    const { parseReach } = await import("../supabase/functions/yt-api/growth.ts");
+    const csv = "date,channel_id,video_id,video_thumbnail_impressions,video_thumbnail_impressions_ctr\n20261110,UC1,vidA,1000,0.05\n20261110,UC1,vidA,3000,0.03\n20261111,UC1,vidB,0,0\n";
+    expect(parseReach(csv)).toEqual([
+      { video_id: "vidA", date: "2026-11-10", impressions: 4000, ctr: 3.5 },
+      { video_id: "vidB", date: "2026-11-11", impressions: 0, ctr: null },
+    ]);
+    expect(parseReach("nothing useful")).toEqual([]);
+  });
+});

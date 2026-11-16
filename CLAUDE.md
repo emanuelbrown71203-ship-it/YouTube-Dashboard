@@ -38,6 +38,7 @@ research and the last sync. Every table and view has a comment explaining it;
 | `yt_research_videos`, `yt_keywords`, `yt_research_channels`, `yt_research_runs` | Outliers found, phrases scored, channels watched, and every research run with what it returned. |
 | `yt_sync_runs` | Sync history. Check the newest row before trusting freshness. |
 | `yt_goals`, `yt_tests`, `yt_video_changes` | The owner's goals, their title and thumbnail tests (what they changed, what they expected, how it went), and every title or thumbnail change the sync noticed. |
+| `yt_video_reach_daily`, `yt_v_video_reach` | Impressions and click-through rate per video, per day and over the newest 28 days. From YouTube's bulk reach report, a day or two behind; empty until the YouTube Reporting API is on in Google Cloud. |
 | `yt_comments` | Recent comments with the AI's reading: `sentiment`, `theme`, `is_question`. `pinned` ones sit on the front page. |
 
 `yt_v_videos` also carries `topic` (the game), `estimated_revenue` and `feeders`
@@ -86,7 +87,7 @@ tools here exist so that is not needed.
 
 - `src/`: Vite + React + TypeScript. Reads go straight to Supabase with the
   publishable key; row level security lets only owners in.
-- `supabase/migrations/`: eight files, all `yt_` objects. No statement in them
+- `supabase/migrations/`: nine files, all `yt_` objects. No statement in them
   removes anything.
 - `supabase/functions/yt-api/`: one edge function, deployed with JWT
   verification off because it checks callers itself. Routes: `/auth/setup`,

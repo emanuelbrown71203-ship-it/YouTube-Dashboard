@@ -72,6 +72,8 @@ export interface VideoDay {
   subs_gained: number | null;
 }
 
+const addDays = (date: string, n: number) => new Date(Date.parse(`${date}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+
 // ---------------------------------------------------------------------------
 // Reads and writes
 // ---------------------------------------------------------------------------
@@ -125,7 +127,16 @@ export async function getChanges(): Promise<Change[]> {
   const { data, error } = await supabase.from("yt_video_changes").select("id, video_id, field, old_value, new_value, changed_at")
     .order("changed_at", { ascending: false }).limit(200);
   fail(error);
-  return (data ?? []) as unknown as Change[];
+  // Signed thumbnail links rotate without the picture changing; those are not changes.
+  const key = (url: string | null) => {
+    try {
+      const u = new URL(url ?? "");
+      return `${u.pathname}?v=${u.searchParams.get("v") ?? ""}`;
+    } catch {
+      return url;
+    }
+  };
+  return ((data ?? []) as unknown as Change[]).filter((c) => c.field !== "thumbnail" || key(c.old_value) !== key(c.new_value));
 }
 
 export async function getVideoDays(videoIds: string[]): Promise<VideoDay[]> {
@@ -156,15 +167,53 @@ export async function setVideoTopic(id: string, topic: string): Promise<void> {
   fail(error);
 }
 
+export interface Reach { video_id: string; impressions_28d: number; ctr_28d: number | null }
+export interface ReachDay { video_id: string; date: string; impressions: number; ctr: number | null }
+
+/** Impressions and click-through rate per video over the newest 28 days YouTube has reported. */
+export async function getReach(): Promise<Reach[]> {
+  const { data, error } = await supabase.from("yt_v_video_reach").select("video_id, impressions_28d, ctr_28d").limit(5000);
+  fail(error);
+  return (data ?? []) as unknown as Reach[];
+}
+
+export async function getReachDays(videoIds: string[]): Promise<ReachDay[]> {
+  if (videoIds.length === 0) return [];
+  const { data, error } = await supabase.from("yt_video_reach_daily").select("video_id, date, impressions, ctr")
+    .in("video_id", videoIds).order("date").limit(5000);
+  fail(error);
+  return (data ?? []) as unknown as ReachDay[];
+}
+
+/** Click-through rate over a stretch of days, weighted by how often the thumbnail was shown. Null when YouTube reported nothing. */
+export function ctrBetween(days: ReachDay[], videoId: string, from: string, to: string): number | null {
+  const rows = days.filter((d) => d.video_id === videoId && d.date >= from && d.date <= to && d.ctr !== null);
+  const shown = rows.reduce((t, d) => t + d.impressions, 0);
+  return shown > 0 ? Math.round((100 * rows.reduce((t, d) => t + d.impressions * (d.ctr ?? 0), 0)) / shown) / 100 : null;
+}
+
+/** The measured click-through rate before and after a test started, over the same windows as the views. */
+export function testCtr(test: Test, days: ReachDay[], today: string): { before: number | null; after: number | null } {
+  const end = test.ended_on && test.ended_on < today ? test.ended_on : today;
+  const last = addDays(test.started_on, 27) < end ? addDays(test.started_on, 27) : end;
+  return {
+    before: ctrBetween(days, test.video_id, addDays(test.started_on, -28), addDays(test.started_on, -1)),
+    after: ctrBetween(days, test.video_id, test.started_on, last),
+  };
+}
+
 export const growthKeys = {
   goals: ["goals"], tests: ["tests"], changes: ["changes"], comments: ["comments"],
   videoDays: (ids: string[]) => ["video-days", ids.join(",")],
+  reach: ["reach"], reachDays: (ids: string[]) => ["reach-days", ids.join(",")],
 } as const;
 
 export const useGoals = () => useQuery({ queryKey: growthKeys.goals, queryFn: getGoals });
 export const useTests = () => useQuery({ queryKey: growthKeys.tests, queryFn: getTests });
 export const useChanges = () => useQuery({ queryKey: growthKeys.changes, queryFn: getChanges });
 export const useComments = () => useQuery({ queryKey: growthKeys.comments, queryFn: getComments });
+export const useReach = () => useQuery({ queryKey: growthKeys.reach, queryFn: getReach });
+export const useReachDays = (ids: string[]) => useQuery({ queryKey: growthKeys.reachDays(ids), queryFn: () => getReachDays(ids) });
 export const useVideoDays = (ids: string[]) => useQuery({ queryKey: growthKeys.videoDays(ids), queryFn: () => getVideoDays(ids) });
 
 // ---------------------------------------------------------------------------
@@ -262,7 +311,6 @@ export interface TestResult {
   running: boolean;
 }
 
-const addDays = (date: string, n: number) => new Date(Date.parse(`${date}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 
 /** Compare up to four weeks before the change with the days since (up to four weeks, or until the test ended). */
 export function testResult(test: Test, days: VideoDay[], today: string): TestResult {

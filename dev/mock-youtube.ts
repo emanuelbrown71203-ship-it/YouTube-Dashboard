@@ -367,6 +367,25 @@ export function createMockGoogle(options: MockOptions): { fetch: typeof fetch; u
       return dataApi(url.pathname.slice("/youtube/v3/".length), url.searchParams);
     }
     if (url.host === "youtubeanalytics.googleapis.com") return analyticsApi(url.searchParams);
+    if (url.host === "youtubereporting.googleapis.com") {
+      // The bulk reach report: one job, one report a day, each a small CSV.
+      const me = channelById.get(signedIn());
+      if (url.pathname === "/v1/jobs") return json({ jobs: [{ id: "mockjob", reportTypeId: "channel_reach_basic_a1" }] });
+      if (url.pathname === "/v1/jobs/mockjob/reports") {
+        if (url.searchParams.get("createdAfter")) return json({ reports: [] });
+        return json({
+          reports: Array.from({ length: 30 }, (_, i) => {
+            const d = new Date(options.now().getTime() - (i + 2) * 86_400_000).toISOString();
+            return { id: `r${i}`, jobId: "mockjob", createTime: d, downloadUrl: `https://youtubereporting.googleapis.com/v1/media/${d.slice(0, 10)}` };
+          }),
+        });
+      }
+      if (url.pathname.startsWith("/v1/media/")) {
+        const date = url.pathname.split("/").pop()!.replace(/-/g, "");
+        const lines = (me?.videos ?? []).slice(0, 40).map((v, i) => `${date},${me!.id},${v.id},${400 + ((i * 37 + Number(date)) % 900)},${(0.02 + ((i * 13 + Number(date)) % 60) / 1000).toFixed(3)}`);
+        return new Response(["date,channel_id,video_id,video_thumbnail_impressions,video_thumbnail_impressions_ctr", ...lines].join("\n"), { headers: { "content-type": "text/csv" } });
+      }
+    }
     if (url.host === "suggestqueries.google.com") {
       if (options.suggestDown) return new Response("unavailable", { status: 503 });
       const q = url.searchParams.get("q") ?? "";

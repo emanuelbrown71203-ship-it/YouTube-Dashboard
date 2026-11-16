@@ -902,6 +902,27 @@ export type Database = {
         };
         Relationships: [];
       };
+      yt_video_reach_daily: {
+        Row: {
+          video_id: string;
+          date: string;
+          impressions: number;
+          ctr: number | null;
+        };
+        Insert: {
+          video_id: string;
+          date: string;
+          impressions?: number;
+          ctr?: number | null;
+        };
+        Update: {
+          video_id?: string;
+          date?: string;
+          impressions?: number;
+          ctr?: number | null;
+        };
+        Relationships: [];
+      };
       yt_videos: {
         Row: {
           id: string;
@@ -1046,6 +1067,15 @@ export type Database = {
           uploads_90d: number | null;
           last_upload_at: string | null;
           typical_views: number | null;
+        };
+        Relationships: [];
+      };
+      yt_v_video_reach: {
+        Row: {
+          video_id: string | null;
+          impressions_28d: number | null;
+          ctr_28d: number | null;
+          last_day: string | null;
         };
         Relationships: [];
       };
