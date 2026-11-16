@@ -503,7 +503,9 @@ function GoalRow({ goal, onEdit }: { goal: Goal; onEdit?: () => void }) {
       </div>
       {p.share !== null && goal.target !== null ? (
         <>
-          <div className="meter" role="img" aria-label={`${Math.round(p.share * 100)}% of the way`}><i style={{ width: `${Math.round(p.share * 100)}%` }} /></div>
+          <div className="run-track small" role="img" aria-label={`${Math.round(p.share * 100)}% of the way`}>
+            {Array.from({ length: 20 }, (_, i) => <i key={i} className={i < Math.round(p.share! * 20) ? "on" : ""} />)}
+          </div>
           <div className="row between small" style={{ width: "100%" }}>
             <span><strong className="fig" style={{ fontSize: 15 }}>{whole(p.current)}</strong> <span className="muted">of {whole(goal.target)}</span></span>
             <span className="muted">
@@ -890,5 +892,115 @@ export function Planner() {
         </Drawer>
       ) : null}
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Front page: the run so far, and where to go next
+// ---------------------------------------------------------------------------
+
+const LADDER = [100, 250, 500, 1000, 2000, 3000, 4000, 5000, 7500, 10_000, 15_000, 20_000, 25_000, 50_000, 75_000, 100_000, 150_000, 250_000, 500_000, 1_000_000];
+
+/** The stretch of road the channel is on: from the last round number passed to the next one, or to the owner's own subscriber goal. */
+export function RunBand() {
+  const channel = useChannel();
+  const goals = useGoals();
+  const daily = useDaily();
+  const subs = channel.data?.subscribers;
+  if (subs === null || subs === undefined) return null;
+  const own = (goals.data ?? []).filter((g) => g.kind === "subscribers" && g.target !== null && !g.done_at && g.target > subs).sort((a, b) => (a.target ?? 0) - (b.target ?? 0))[0];
+  const next = own?.target ?? LADDER.find((n) => n > subs) ?? Math.ceil((subs + 1) / 1_000_000) * 1_000_000;
+  const from = own ? Math.min(own.start_value ?? 0, subs) : [...LADDER].reverse().find((n) => n <= subs) ?? 0;
+  const share = next > from ? Math.max(0, Math.min(1, (subs - from) / (next - from))) : 1;
+  const recent = (daily.data ?? []).slice(-28);
+  const perDay = recent.length ? recent.reduce((t, d) => t + d.subs_gained - d.subs_lost, 0) / recent.length : 0;
+  const left = next - subs;
+  const eta = perDay > 0 && left / perDay < 3650 ? new Date(Date.now() + Math.ceil(left / perDay) * 86_400_000).toISOString().slice(0, 10) : null;
+  const cells = 20;
+  const lit = Math.round(share * cells);
+  return (
+    <div className="run-band">
+      <div className="row between" style={{ alignItems: "flex-end", gap: 12 }}>
+        <div>
+          <div className="run-count fig">{whole(subs)}</div>
+          <div className="run-sub">subscribers</div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div className="run-next fig">{compact(next)}</div>
+          <div className="run-sub">{own ? "your goal" : "next milestone"}</div>
+        </div>
+      </div>
+      <div className="run-track" role="img" aria-label={`${Math.round(share * 100)}% of the way from ${whole(from)} to ${whole(next)} subscribers`}>
+        {Array.from({ length: cells }, (_, i) => <i key={i} className={i < lit ? "on" : ""} style={{ animationDelay: `${i * 35}ms` }} />)}
+      </div>
+      <div className="run-sub" style={{ marginTop: 8 }}>
+        {whole(left)} to go{eta ? `. Around ${day(eta)} at the pace of the last four weeks` : perDay <= 0 && recent.length ? ". Subscribers have been flat or falling these four weeks" : ""}.
+      </div>
+    </div>
+  );
+}
+
+function Tile(props: { href: string; label: string; figure: string; line: string; hue: string; children?: ReactNode }) {
+  return (
+    <a className="tile" href={props.href} style={{ ["--hue" as string]: props.hue }}>
+      <span className="tile-label">{props.label}</span>
+      <span className="tile-figure fig">{props.figure}</span>
+      <span className="tile-line">{props.line}</span>
+      {props.children ? <span className="tile-art" aria-hidden="true">{props.children}</span> : null}
+    </a>
+  );
+}
+
+const Bars = ({ values }: { values: number[] }) => {
+  const max = Math.max(...values, 1);
+  return <svg viewBox="0 0 60 28" width="60" height="28">{values.slice(0, 6).map((v, i) => <rect key={i} x={i * 10} y={28 - Math.max(2, (26 * v) / max)} width="7" height={Math.max(2, (26 * v) / max)} rx="1.5" fill="currentColor" />)}</svg>;
+};
+const Ring = ({ share }: { share: number }) => (
+  <svg viewBox="0 0 32 32" width="32" height="32">
+    <circle cx="16" cy="16" r="12" fill="none" stroke="currentColor" strokeOpacity="0.22" strokeWidth="5" />
+    <circle cx="16" cy="16" r="12" fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeDasharray={`${Math.max(0.5, share * 75.4)} 75.4`} transform="rotate(-90 16 16)" />
+  </svg>
+);
+
+/** Every part of the dashboard as a tile that already shows its headline. */
+export function Hub() {
+  const videos = useVideos();
+  const daily = useDaily();
+  const goals = useGoals();
+  const tests = useTests();
+  const comments = useComments();
+  const ideas = useIdeas();
+  const channel = useChannel();
+  const today = todayIso();
+  const all = videos.data ?? [];
+  const months = monthsWithData(daily.data ?? []);
+  const lastDone = months.find((m) => m < today.slice(0, 7)) ?? months[0];
+  const rec = lastDone ? recap(lastDone, daily.data ?? [], all, today) : null;
+  const ctx = { subscribers: channel.data?.subscribers ?? null, videos: all, daily: daily.data ?? [], today };
+  const open = (goals.data ?? []).map((g) => ({ g, p: goalProgress(g, ctx) })).filter((x) => !x.p.done);
+  const nearest = open.filter((x) => x.p.share !== null).sort((a, b) => (b.p.share ?? 0) - (a.p.share ?? 0))[0];
+  const games = byTopic(all, "all").filter((r) => r.videos >= 2 && r.retention !== null).sort((a, b) => (b.retention ?? 0) - (a.retention ?? 0));
+  const funnel = shortsFunnel(all);
+  const running = (tests.data ?? []).filter((t) => !t.ended_on || t.ended_on >= today).length;
+  const kind = (comments.data ?? []).filter((c) => c.sentiment === "positive").length;
+  const planned = (ideas.data ?? []).filter((i) => i.target_date && i.target_date >= today && i.status !== "published").sort((a, b) => (a.target_date ?? "").localeCompare(b.target_date ?? ""))[0];
+  const ideaCount = (ideas.data ?? []).filter((i) => i.status !== "published").length;
+  return (
+    <nav className="hub" aria-label="Jump to">
+      <Tile href="#/recap" hue="var(--s-short)" label="Monthly recap" figure={rec ? compact(rec.views) : "–"} line={rec ? `views in ${rec.label.split(" ")[0]}` : "No full month yet"}>
+        <Bars values={months.slice(0, 6).reverse().map((m) => (daily.data ?? []).filter((d) => d.date.startsWith(m)).reduce((t, d) => t + d.views, 0))} />
+      </Tile>
+      <Tile href="#/goals" hue="#c79a00" label="Goals" figure={nearest ? `${Math.round((nearest.p.share ?? 0) * 100)}%` : String(open.length)} line={nearest ? nearest.g.title : open.length ? count(open.length, "open goal") : "Set your first goal"}>
+        {nearest ? <Ring share={nearest.p.share ?? 0} /> : null}
+      </Tile>
+      <Tile href="#/videos/games" hue="var(--s-long)" label="By game" figure={games[0] ? percent(games[0].retention) : "–"} line={games[0] ? `${games[0].topic} holds viewers best` : "Sorted after the next sync"}>
+        <Bars values={games.slice(0, 6).map((g) => g.retention ?? 0)} />
+      </Tile>
+      <Tile href="#/videos/funnel" hue="var(--s-live)" label="Shorts to long" figure={funnel.measured ? compact(funnel.fromShorts) : "–"} line={funnel.measured ? "views sent on by your Shorts" : "Measured after the next sync"} />
+      <Tile href="#/videos/tests" hue="#8b5cf6" label="Tests" figure={String(running)} line={running === 1 ? "test running" : running ? "tests running" : "Log your next thumbnail change"} />
+      <Tile href="#/comments" hue="#e0528a" label="Comments" figure={kind ? whole(kind) : "–"} line={kind ? "kind comments lately" : "Switch comments on in Settings"} />
+      <Tile href="#/ideas/planner" hue="var(--s-short)" label="Planner" figure={planned?.target_date ? day(planned.target_date) : "–"} line={planned ? planned.title : "Nothing planned yet"} />
+      <Tile href="#/research" hue="var(--s-long)" label="Research" figure={String(ideaCount)} line={ideaCount === 1 ? "idea on your board. Find the next one" : "ideas on your board. Find the next one"} />
+    </nav>
   );
 }
