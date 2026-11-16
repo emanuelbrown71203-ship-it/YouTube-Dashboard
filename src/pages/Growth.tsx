@@ -796,14 +796,22 @@ export function KindWords() {
   const act = useCommentActions();
   const byId = useMemo(() => new Map((videos.data ?? []).map((v) => [v.id, v])), [videos.data]);
   const best = useMemo(() => kindWords(comments.data ?? []), [comments.data]);
-  if (comments.isLoading || comments.error || best.length === 0) return null;
+  if (comments.isLoading || comments.error) return null;
+  if (best.length === 0) {
+    // Nothing is shown here until the owner picks it.
+    return (comments.data ?? []).length === 0 ? null : (
+      <Section title="Kind words" aside={<a className="small" href="#/comments">All comments</a>}>
+        <div className="panel"><p className="small muted" style={{ padding: "14px 18px", margin: 0 }}>Only comments you pin show here. Open All comments and tap Pin to front page on the ones you want to keep.</p></div>
+      </Section>
+    );
+  }
   return (
     <Section title="Kind words" aside={<a className="small" href="#/comments">All comments</a>}>
       <div className="panel">
         {best.map((c) => (
           <CommentCard
             key={c.id} comment={c} video={c.video_id ? byId.get(c.video_id) : undefined}
-            actions={<button type="button" className="btn btn-quiet btn-small" onClick={() => void act(c.id, { hidden: true, pinned: false }, "Taken off your front page.")}>Hide</button>}
+            actions={<button type="button" className="btn btn-quiet btn-small" onClick={() => void act(c.id, { pinned: false }, "Taken off your front page.")}>Unpin</button>}
           />
         ))}
       </div>

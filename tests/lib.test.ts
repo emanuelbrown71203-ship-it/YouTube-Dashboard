@@ -206,11 +206,11 @@ describe("growth", () => {
     expect(goalProgress({ ...goal, target: 4000 }, { subscribers: 4000, videos: [], daily, today: "2026-11-16" }).done).toBe(true);
   });
 
-  it("keeps negative and hidden comments off the front page, pinned ones first", async () => {
+  it("shows only the comments the owner pinned on the front page", async () => {
     const { kindWords } = await import("../src/lib/growth.ts");
     const c = (id: string, over: object) => ({ id, video_id: null, author: null, text: "This video was great fun", likes: 1, published_at: "2026-11-01", sentiment: "positive" as const, theme: null, is_question: false, pinned: false, hidden: false, ...over });
     const picked = kindWords([c("a", { likes: 9 }), c("b", { sentiment: "negative", likes: 99 }), c("c", { hidden: true, likes: 50 }), c("d", { pinned: true, sentiment: null }), c("e", { sentiment: null })]);
-    expect(picked.map((x) => x.id)).toEqual(["d", "a"]);
+    expect(picked.map((x) => x.id)).toEqual(["d"]);
   });
 
   it("lays a month out as whole weeks with plans and uploads on their days", async () => {

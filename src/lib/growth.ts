@@ -464,11 +464,9 @@ export function themes(comments: Comment[]): { theme: string; count: number; pos
 }
 
 /** What goes on the front page: the ones the owner pinned, then the best-liked recent positive ones. Never a hidden or negative one. */
-export function kindWords(comments: Comment[], limit = 6): Comment[] {
-  const ok = comments.filter((c) => !c.hidden && (c.pinned || c.sentiment === "positive"));
-  const pinned = ok.filter((c) => c.pinned);
-  const rest = ok.filter((c) => !c.pinned && c.text.length >= 12).sort((a, b) => b.likes - a.likes || (b.published_at ?? "").localeCompare(a.published_at ?? ""));
-  return [...pinned, ...rest].slice(0, Math.max(limit, pinned.length));
+/** The comments the owner pinned to the front page, newest first. Nothing else is shown there. */
+export function kindWords(comments: Comment[]): Comment[] {
+  return comments.filter((c) => c.pinned && !c.hidden).sort((a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? ""));
 }
 
 // ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 // Small shared pieces: icons, buttons that pick one of a few options, the
 // "times the usual" pill, thumbnails, the side drawer and toasts.
 
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { Component, createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { duration, FORMAT_LABEL, multiple, percentChange } from "../lib/format.ts";
 
 const PATHS: Record<string, string> = {
@@ -99,6 +99,17 @@ const shapes = new Map<string, number>();
 export function Thumb(props: { src: string | null | undefined; seconds?: number | null; tall?: boolean; small?: boolean; short?: boolean }) {
   const [failed, setFailed] = useState(0);
   const [, redraw] = useState(0);
+  // Only pictures on or near the screen are kept loaded. An upright picture comes from YouTube at
+  // full size, and a long list of those is more than a phone will hold: they turn black.
+  const frame = useRef<HTMLSpanElement>(null);
+  const [near, setNear] = useState(typeof IntersectionObserver === "undefined");
+  useEffect(() => {
+    const el = frame.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const watch = new IntersectionObserver(([entry]) => setNear(entry.isIntersecting), { rootMargin: "500px 0px" });
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, []);
   const upright = props.short && props.src ? uprightThumb(props.src) : null;
   const sources = [upright, props.src].filter((s): s is string => Boolean(s));
   const src = sources[Math.min(failed, sources.length - 1)];
@@ -108,12 +119,13 @@ export function Thumb(props: { src: string | null | undefined; seconds?: number 
   const shape = ratio === undefined ? (props.tall || isUpright ? "tall" : "wide") : ratio < 0.8 ? "tall" : ratio < 1.25 ? "square" : "wide";
   return (
     <span
+      ref={frame}
       className={`thumb${shape === "wide" ? "" : ` ${shape}`}${props.small ? " small" : ""}`}
       style={ratio === undefined ? undefined : { aspectRatio: String(Math.min(2, Math.max(0.5, ratio))) }}
     >
-      {src ? (
+      {src && near ? (
         <img
-          key={src} src={src} alt="" loading="lazy"
+          key={src} src={src} alt="" decoding="async"
           onError={() => setFailed((n) => n + 1)}
           onLoad={(e) => {
             const { naturalWidth: w, naturalHeight: h } = e.currentTarget;
@@ -264,4 +276,22 @@ export function useTheme(): [Theme, (theme: Theme) => void] {
     localStorage.setItem("yt-theme", theme);
   }, [theme]);
   return [theme, setTheme];
+}
+
+/** If a screen breaks, say so and offer a way back, in place of a blank page. */
+export class Safety extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className="notice error" role="alert" style={{ margin: 24, flexDirection: "column", alignItems: "flex-start", gap: 10 }}>
+        <strong>This screen hit a problem and could not be shown.</strong>
+        <span className="small">{this.state.error.message || String(this.state.error)}</span>
+        <button type="button" className="btn btn-small" onClick={() => { window.location.hash = "#/"; window.location.reload(); }}>Back to the front page</button>
+      </div>
+    );
+  }
 }
