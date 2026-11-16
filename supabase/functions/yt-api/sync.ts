@@ -252,12 +252,9 @@ export async function runSync(deps: Deps, source: string): Promise<{ status: str
     // 5. Lifetime Studio numbers per video
     await step("video_analytics", async () => {
       let updated = 0;
-      for (let page = 0; page < 5; page++) {
-        const rows = reportObjects(await report(session, {
-          startDate: EARLIEST, endDate: today, metrics: VIDEO_METRICS, dimensions: "video", sort: "-views",
-          maxResults: 200, startIndex: page * 200 + 1,
-        }));
-        if (rows.length === 0) break;
+      // deno-lint-ignore no-explicit-any
+      const save = async (rows: any[]) => {
+        if (rows.length === 0) return;
         updated += rows.length;
         await sql`
           update public.yt_videos v set
@@ -268,8 +265,22 @@ export async function runSync(deps: Deps, source: string): Promise<{ status: str
             video text, "engagedViews" bigint, "estimatedMinutesWatched" bigint, "averageViewDuration" numeric,
             "averageViewPercentage" numeric, "subscribersGained" integer, shares integer)
           where v.id = x.video`;
-        if (rows.length < 200) break;
-      }
+      };
+      // YouTube lists only the 200 most viewed videos and will not page past them...
+      const top = reportObjects(await report(session, {
+        startDate: EARLIEST, endDate: today, metrics: VIDEO_METRICS, dimensions: "video", sort: "-views", maxResults: 200,
+      }));
+      await save(top);
+      // ...so the rest are asked for by id, a batch at a time.
+      const seen = new Set(top.map((r) => String(r.video)));
+      const all = await sql`select id from public.yt_videos where removed_at is null`;
+      // deno-lint-ignore no-explicit-any
+      const rest = (all as any[]).map((r) => r.id as string).filter((id) => !seen.has(id));
+      await mapLimit(chunk(rest, 100), 3, async (ids) => {
+        await save(reportObjects(await report(session, {
+          startDate: EARLIEST, endDate: today, metrics: VIDEO_METRICS, dimensions: "video", filters: `video==${ids.join(",")}`,
+        })));
+      });
       return { videos: updated };
     });
 

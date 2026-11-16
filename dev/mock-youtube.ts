@@ -280,9 +280,17 @@ export function createMockGoogle(options: MockOptions): { fetch: typeof fetch; u
         ...(value(d, "y", 1) > 4 ? [[d, "liveStream", ...metrics.map((m) => value(d + "l", m, 4))]] : []),
       ]);
     } else if (key === "video") {
+      // Like the real API: the "top videos" list stops at 200 and cannot be paged;
+      // anything past it has to be asked for by id.
+      const wanted = /video==([\w,-]+)/.exec(q.get("filters") ?? "")?.[1]?.split(",");
+      if (!wanted && Number(q.get("startIndex") ?? 1) > 1) {
+        return apiError(400, "badRequest", "The query is not supported.");
+      }
       const sorted = [...me.videos].sort((a, b) => b.views - a.views);
-      const offset = Number(q.get("startIndex") ?? 1) - 1;
-      rows = sorted.slice(offset, offset + Number(q.get("maxResults") ?? 10)).map((v) => [
+      const picked = wanted
+        ? sorted.filter((v) => wanted.includes(v.id))
+        : sorted.slice(0, Math.min(200, Number(q.get("maxResults") ?? 10)));
+      rows = picked.map((v) => [
         v.id, ...metrics.map((m) => (m === "views" ? v.views : value(v.id, m, v.views))),
       ]);
     } else if (key === "insightTrafficSourceType") {
