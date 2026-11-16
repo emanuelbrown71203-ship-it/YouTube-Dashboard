@@ -57,7 +57,8 @@ const deps: Deps = {
   // The AI that reads text for the owner (video descriptions, comments). The key is
   // the owner's own and comes from yt_private on every call.
   claude: async (apiKey, req) => {
-    const client = new Anthropic({ apiKey });
+    // One try with a firm time limit: the caller works to a deadline and comes back for the rest.
+    const client = new Anthropic({ apiKey, timeout: 80_000, maxRetries: 0 });
     try {
       const res = await client.beta.messages.create({
         model: "claude-opus-5-5",

@@ -75,7 +75,7 @@ tools here exist so that is not needed.
 - **Never write the stats tables by hand.** They belong to the sync.
 - **Add a goal or a test**: insert into `public.yt_goals` (`kind`:
   `subscribers` | `video_views` | `personal`, with `target`, `start_value`,
-  `video_id`) or `public.yt_tests` (`video_id`, `kind`, `what`, `why`,
+  `video_id`; a `video_views` goal with no `video_id` is met by any video) or `public.yt_tests` (`video_id`, `kind`, `what`, `why`,
   `started_on`). Bin either with `trashed_at`.
 - **Let a new device in**: `select public.yt_create_access_code('note');`
   returns a one-time code that works for 24 hours (up to 7 days with a second
@@ -92,7 +92,12 @@ tools here exist so that is not needed.
 - `supabase/functions/yt-api/`: one edge function, deployed with JWT
   verification off because it checks callers itself. Routes: `/auth/setup`,
   `/auth/start`, `/auth/callback`, `/auth/finish`, `/auth/disconnect`, `/sync`,
-  `/research`, `/ai/setup`, `/health`. Google sign-in only lets a browser in when the same
+  `/sync/extras`, `/research`, `/ai/setup`, `/health`. A sync does the quick
+  work, then has the database call `/sync/extras` (scheduler secret only) for
+  the slow work: the AI naming games and reading comments, and what feeds the
+  long videos. Extras work for under a minute and ask for another turn while
+  anything is left, so no request runs out of time; their results are added
+  to the same `yt_sync_runs` row under `games`, `comments_read`, `feeders`. Google sign-in only lets a browser in when the same
   browser that started it comes back with the secret it kept (`/auth/finish`);
   do not weaken that. `index.ts` is the only Deno-specific file; the rest take their
   database client, `fetch` and clock as arguments so tests can replace them.
@@ -118,6 +123,9 @@ tools here exist so that is not needed.
   Settings screen has a form for it.
 - Write copy the way the app already does: plain words, sentence case, no
   jargon, errors that say what happened and what to do.
+- Live streams are many and small. "Latest uploads", the default Videos list,
+  By game, the planner and the upload markers leave them out; they have their
+  own Streams tab. Keep new lists that way.
 - Charts follow the palette in `src/styles/app.css`: blue for Shorts, orange
   for long-form, green for live, one blue ramp for "how many times the
   usual". Text never takes a series colour.

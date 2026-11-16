@@ -174,7 +174,7 @@ export function headline(period: Period, formats: FormatDailyRow[], videos: Vide
     facts.push(share >= 99 ? `Nearly all of them came from ${FORMAT_PLURAL[top[0]]}.` : `${FORMAT_PLURAL[top[0]]} brought ${share}% of them.`);
   }
 
-  const uploads = videos.filter((v) => v.privacy === "public" && v.published_at);
+  const uploads = videos.filter((v) => v.privacy === "public" && v.published_at && v.content_type !== "live");
   const latest = uploads.map((v) => Date.parse(v.published_at!)).sort((a, b) => b - a)[0];
   if (latest) {
     // Calendar days, the way a person counts: posted on the 4th, today is the 6th, that is 2 days ago.

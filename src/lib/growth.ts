@@ -238,7 +238,8 @@ export function byTopic(videos: Video[], format: "all" | "short" | "long" | "liv
   const groups = new Map<string, Video[]>();
   for (const v of videos) {
     if (v.privacy !== "public" || !v.topic) continue;
-    if (format !== "all" && v.content_type !== format) continue;
+    // "All" means the videos you made; streams have a tab of their own so they cannot drown the rest.
+    if (format === "all" ? v.content_type === "live" : v.content_type !== format) continue;
     groups.set(v.topic, [...(groups.get(v.topic) ?? []), v]);
   }
   const nums = (list: Video[], pick: (v: Video) => number | null) => list.map(pick).filter((n): n is number => n !== null);
@@ -378,7 +379,8 @@ export function recap(month: string, daily: (DailyRow & { estimated_revenue?: nu
   const complete = month < today.slice(0, 7);
   const uploads = videos.filter((v) => v.published_at?.startsWith(month) && v.privacy === "public")
     .sort((a, b) => (b.views ?? 0) - (a.views ?? 0));
-  const best = uploads[0] ?? null;
+  // The month's best is a video you made, unless streams are all there was.
+  const best = uploads.find((v) => v.content_type !== "live") ?? uploads[0] ?? null;
   const topics = new Map<string, number>();
   for (const v of uploads) if (v.topic) topics.set(v.topic, (topics.get(v.topic) ?? 0) + (v.views ?? 0));
   const top = [...topics.entries()].sort((a, b) => b[1] - a[1])[0];
@@ -417,11 +419,17 @@ export interface GoalProgress {
   done: boolean;
 }
 
+/** The public video with the most views. */
+export function bestVideo(videos: Video[]): Video | undefined {
+  return videos.filter((v) => v.privacy === "public" && v.views !== null).sort((a, b) => (b.views ?? 0) - (a.views ?? 0))[0];
+}
+
 export function goalProgress(goal: Goal, ctx: { subscribers: number | null; videos: Video[]; daily: DailyRow[]; today: string }): GoalProgress {
   if (goal.kind === "personal" || goal.target === null) {
     return { current: null, share: null, left: null, eta: null, done: Boolean(goal.done_at) };
   }
-  const video = goal.kind === "video_views" ? ctx.videos.find((v) => v.id === goal.video_id) : undefined;
+  // A views goal with no video picked is for any video: it follows whichever one is furthest along.
+  const video = goal.kind === "video_views" ? (goal.video_id ? ctx.videos.find((v) => v.id === goal.video_id) : bestVideo(ctx.videos)) : undefined;
   const current = goal.kind === "subscribers" ? ctx.subscribers : video?.views ?? null;
   if (current === null) return { current: null, share: null, left: null, eta: null, done: Boolean(goal.done_at) };
   const start = Math.min(goal.start_value ?? 0, current);
@@ -431,7 +439,8 @@ export function goalProgress(goal: Goal, ctx: { subscribers: number | null; vide
   if (goal.kind === "subscribers") {
     const recent = ctx.daily.slice(-28);
     perDay = recent.length ? recent.reduce((t, d) => t + d.subs_gained - d.subs_lost, 0) / recent.length : null;
-  } else if (video) {
+  } else if (video && goal.video_id) {
+    // Only a picked video has a pace to project; "any video" could be met by one not posted yet.
     perDay = video.views_per_day;
   }
   const eta = left > 0 && perDay && perDay > 0 && left / perDay < 3650 ? addDays(ctx.today, Math.ceil(left / perDay)) : null;
@@ -471,6 +480,8 @@ export interface PlanDay {
   inMonth: boolean;
   ideas: Idea[];
   uploads: Video[];
+  /** How many streams went out that day; they are counted, not listed. */
+  streams: number;
 }
 
 /** A month as whole weeks, Sunday first, with what is planned and what went up on each day. */
@@ -486,7 +497,8 @@ export function planMonth(month: string, ideas: Idea[], videos: Video[]): PlanDa
       week.push({
         date, inMonth: date.startsWith(month),
         ideas: ideas.filter((i) => i.target_date === date && i.status !== "published"),
-        uploads: videos.filter((v) => v.privacy === "public" && v.published_at?.slice(0, 10) === date),
+        uploads: videos.filter((v) => v.privacy === "public" && v.content_type !== "live" && v.published_at?.slice(0, 10) === date),
+        streams: videos.filter((v) => v.privacy === "public" && v.content_type === "live" && v.published_at?.slice(0, 10) === date).length,
       });
     }
     if (w > 3 && week.every((day) => !day.inMonth)) break;

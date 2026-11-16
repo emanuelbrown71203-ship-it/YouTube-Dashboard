@@ -273,6 +273,51 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     expect(mock.calls.filter((c) => c.includes("oauth2.googleapis.com/token"))).toHaveLength(0);
   });
 
+  it("does the slow extras in a follow-up call that only the scheduler can make", async () => {
+    const [{ value: secret }] = await sql`select value from public.yt_private where key = 'cron_secret'`;
+    const [{ id: runId }] = await sql`select id from public.yt_sync_runs order by id desc limit 1`;
+    const { call, deps } = setup();
+    expect((await call("POST", "/sync/extras", { user: "user:nobody", body: { run_id: runId, hop: 0 } })).status).toBe(403);
+
+    // Without an AI key the AI steps are skipped and only the feeders are fetched.
+    const plain = await call("POST", "/sync/extras", { headers: { "x-cron-secret": secret }, body: { run_id: runId, hop: 0 } });
+    expect(plain.data.status).toBe("ok");
+    expect(plain.data.steps.games.skipped).toBeTruthy();
+    expect(plain.data.steps.feeders.ok).toBe(true);
+
+    // With a key, every video is put to the AI once: named ones change, the rest keep their guess.
+    await sql`insert into public.yt_private (key, value) values ('anthropic_api_key', 'sk-ant-test') on conflict (key) do update set value = excluded.value`;
+    deps.claude = async (_key, req) => {
+      const list = JSON.parse(req.prompt.slice(req.prompt.indexOf("Videos:") + 7)) as { id: string }[];
+      return { videos: list.map((v, i) => ({ id: v.id, topic: i % 2 ? "Elden Ring" : null })) };
+    };
+    const [{ n: before }] = await sql`select count(*)::int as n from public.yt_videos where coalesce(topic_source, 'guess') = 'guess'`;
+    expect(before).toBeGreaterThan(0);
+    const named = await call("POST", "/sync/extras", { headers: { "x-cron-secret": secret }, body: { run_id: runId, hop: 0 } });
+    expect(named.data.steps.games.named).toBeGreaterThan(0);
+    expect(named.data.steps.games.left).toBe(0);
+    const [{ n: after }] = await sql`select count(*)::int as n from public.yt_videos where coalesce(topic_source, 'guess') = 'guess'`;
+    expect(after).toBe(0);
+    const [{ summary }] = await sql`select summary from public.yt_sync_runs where id = ${runId}`;
+    expect(summary.steps.games.named).toBe(named.data.steps.games.named);
+    expect(summary.steps.daily.ok).toBe(true);
+    await sql`update public.yt_private set value = '' where key = 'anthropic_api_key'`;
+  });
+
+  it("ticks off a best-video goal when any video gets there", async () => {
+    const [{ top }] = await sql`select max(views)::int as top from public.yt_videos where removed_at is null and privacy = 'public'`;
+    const [reach] = await sql`insert into public.yt_goals (kind, title, target) values ('video_views', 'reachable', ${top}) returning id`;
+    const [far] = await sql`insert into public.yt_goals (kind, title, target) values ('video_views', 'far', ${top * 10}) returning id`;
+    const [{ value: secret }] = await sql`select value from public.yt_private where key = 'cron_secret'`;
+    const { call } = setup();
+    await sql`update public.yt_sync_runs set started_at = started_at - interval '10 minutes'`;
+    expect((await call("POST", "/sync", { headers: { "x-cron-secret": secret } })).data.status).toBe("ok");
+    const rows = await sql`select id, done_at from public.yt_goals where id in (${reach.id}, ${far.id}) order by target`;
+    expect(rows[0].done_at).not.toBeNull();
+    expect(rows[1].done_at).toBeNull();
+    await sql`update public.yt_goals set trashed_at = now() where id in (${reach.id}, ${far.id})`;
+  });
+
   it("marks uploads that vanished from the channel instead of losing them", async () => {
     await sql`insert into public.yt_videos (id, title, privacy, content_type, views) values ('goneVideo01', 'Old upload', 'public', 'long', 5)`;
     const { call } = setup();

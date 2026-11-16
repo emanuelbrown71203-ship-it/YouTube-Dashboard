@@ -59,7 +59,7 @@ export function Overview() {
 
   const pins: UploadPin[] = useMemo(
     () => (videos.data ?? [])
-      .filter((v) => v.privacy === "public" && v.published_at && period.from && v.published_at.slice(0, 10) >= period.from)
+      .filter((v) => v.privacy === "public" && v.content_type !== "live" && v.published_at && period.from && v.published_at.slice(0, 10) >= period.from)
       .map((v) => ({ date: v.published_at!.slice(0, 10), title: v.title, format: v.content_type })),
     [videos.data, period.from],
   );
@@ -68,7 +68,8 @@ export function Overview() {
   if (daily.error) return <ErrorNote error={daily.error} retry={() => void daily.refetch()} />;
 
   const complete = libraryComplete(videos.data ?? [], channel.data?.videos);
-  const latest = (videos.data ?? []).filter((v) => v.privacy === "public").slice(0, 6);
+  // Streams are left out here: there are many of them and they would push the videos off the list.
+  const latest = (videos.data ?? []).filter((v) => v.privacy === "public" && v.content_type !== "live").slice(0, 6);
   const lastOk = runs.data?.find((r) => r.status === "ok" || r.status === "partial");
   const traffic = reports.data?.traffic_sources_28d;
   const trafficRows = (traffic?.data ?? [])

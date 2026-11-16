@@ -7,7 +7,7 @@ import { Drawer, ErrorNote, FormatTag, Loading, Segmented, Thumb, useToast } fro
 import { saveIdea } from "../lib/api.ts";
 import { ago, compact, count, day, duration, money, percent, whole } from "../lib/format.ts";
 import {
-  byTopic, type Comment, emptyWeeks, type Goal, type GoalDraft, goalProgress, growthKeys, kindWords, markComment, monthsWithData,
+  bestVideo, byTopic, type Comment, emptyWeeks, type Goal, type GoalDraft, goalProgress, growthKeys, kindWords, markComment, monthsWithData,
   patchGoal, planMonth, recap, saveGoal, saveTest, shortsFunnel, type Test, type TestDraft, testResult, themes, trashTest,
   testCtr, useChanges, useComments, useGoals, useReachDays, useTests, useVideoDays,
 } from "../lib/growth.ts";
@@ -86,13 +86,13 @@ export function Games() {
   return (
     <>
       <p className="soft" style={{ maxWidth: "70ch", marginBottom: 14 }}>
-        Your videos grouped by game. Retention is the middle video's, so one freak upload cannot carry a game. Games with a single video are left out.
+        Your videos grouped by game. Retention is the middle video's, so one freak upload cannot carry a game. Games with a single video are left out, and streams have their own tab.
       </p>
       <div className="row-wrap" style={{ marginBottom: 12 }}>
         <div className="grow">
           <Segmented
             label="Format" value={format} onChange={setFormat}
-            options={[{ value: "all", label: "All" }, { value: "long", label: "Long-form" }, { value: "short", label: "Shorts" }, { value: "live", label: "Live" }]}
+            options={[{ value: "all", label: "Videos" }, { value: "long", label: "Long-form" }, { value: "short", label: "Shorts" }, { value: "live", label: "Streams" }]}
           />
         </div>
         <select className="select input" value={sort} onChange={(e) => setSort(e.target.value as TopicSort)} aria-label="Sort games by">
@@ -124,7 +124,7 @@ export function Games() {
                       <div className="small muted">{count(r.videos, "video")}{r.lastUpload ? `, last ${ago(r.lastUpload)}` : ""}</div>
                       {open === r.topic ? (
                         <div className="stack" style={{ marginTop: 10 }} onClick={(e) => e.stopPropagation()}>
-                          {all.filter((v) => v.topic === r.topic && v.privacy === "public" && (format === "all" || v.content_type === format))
+                          {all.filter((v) => v.topic === r.topic && v.privacy === "public" && (format === "all" ? v.content_type !== "live" : v.content_type === format))
                             .sort((a, b) => (b.avg_view_pct ?? -1) - (a.avg_view_pct ?? -1)).slice(0, 8).map((v) => (
                               <VideoLine key={v.id} video={v}>
                                 <FormatTag format={v.content_type} /><span>Retention {percent(v.avg_view_pct)}</span><span>{compact(v.views)} views</span>
@@ -482,6 +482,7 @@ function GoalRow({ goal, onEdit }: { goal: Goal; onEdit?: () => void }) {
   const toast = useToast();
   const p = goalProgress(goal, ctx);
   const video = goal.video_id ? ctx.videos.find((v) => v.id === goal.video_id) : undefined;
+  const best = goal.kind === "video_views" && !goal.video_id ? bestVideo(ctx.videos) : undefined;
   const tick = async () => {
     try {
       await patchGoal(goal.id, { done_at: goal.done_at ? null : new Date().toISOString() });
@@ -496,7 +497,7 @@ function GoalRow({ goal, onEdit }: { goal: Goal; onEdit?: () => void }) {
         <div className="grow" style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 600, lineHeight: 1.3 }}>{p.done ? "Reached: " : ""}{goal.title}</div>
           <div className="small muted clip">
-            {goal.kind === "video_views" ? (video ? video.title : "A video") : goal.kind === "subscribers" ? "Channel subscribers" : goal.notes ?? "A goal of your own"}
+            {goal.kind === "video_views" ? (video ? video.title : best ? `Any video. Closest so far: ${best.title}` : "Any video") : goal.kind === "subscribers" ? "Channel subscribers" : goal.notes ?? "A goal of your own"}
             {goal.due_on ? `. By ${day(goal.due_on)}` : ""}
           </div>
         </div>
@@ -561,20 +562,23 @@ function GoalEditor(props: { draft: GoalDraft; videos: Video[]; subscribers: num
   const [saving, setSaving] = useState(false);
   const set = <K extends keyof GoalDraft>(key: K, value: GoalDraft[K]) => setForm((f) => ({ ...f, [key]: value }));
   const picked = props.videos.find((v) => v.id === form.video_id);
+  const best = bestVideo(props.videos);
+  // A views goal counts any video unless the owner ties it to one.
+  const [oneVideo, setOneVideo] = useState(Boolean(props.draft.video_id));
   const matches = find.trim().length >= 2
     ? props.videos.filter((v) => v.title.toLowerCase().includes(find.trim().toLowerCase())).slice(0, 6)
     : [...props.videos].sort((a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? "")).slice(0, 5);
   const target = form.target ?? null;
   const auto = form.kind === "subscribers" && target ? `Reach ${whole(target)} subscribers`
-    : form.kind === "video_views" && target ? `${whole(target)} views on one video` : "";
-  const ready = form.kind === "personal" ? form.title.trim() !== "" : Boolean(target && target > 0 && (form.kind !== "video_views" || form.video_id));
+    : form.kind === "video_views" && target ? (form.video_id ? `${whole(target)} views on one video` : `A video with ${whole(target)} views`) : "";
+  const ready = form.kind === "personal" ? form.title.trim() !== "" : Boolean(target && target > 0 && (form.kind !== "video_views" || !oneVideo || form.video_id));
   const save = async () => {
     setSaving(true);
     try {
-      const start = form.id ? form.start_value ?? null : form.kind === "subscribers" ? props.subscribers : form.kind === "video_views" ? picked?.views ?? null : null;
+      const start = form.id ? form.start_value ?? null : form.kind === "subscribers" ? props.subscribers : form.kind === "video_views" ? (oneVideo ? picked?.views : best?.views) ?? null : null;
       await saveGoal({
         ...form, title: form.title.trim() || auto, start_value: start,
-        target: form.kind === "personal" ? null : target, video_id: form.kind === "video_views" ? form.video_id ?? null : null,
+        target: form.kind === "personal" ? null : target, video_id: form.kind === "video_views" && oneVideo ? form.video_id ?? null : null,
       });
       props.onSaved();
     } catch (err) {
@@ -597,13 +601,19 @@ function GoalEditor(props: { draft: GoalDraft; videos: Video[]; subscribers: num
         <span>Kind of goal</span>
         <Segmented
           label="Kind of goal" value={form.kind} onChange={(v) => set("kind", v)}
-          options={[{ value: "subscribers", label: "Subscribers" }, { value: "video_views", label: "Views on a video" }, { value: "personal", label: "My own" }]}
+          options={[{ value: "subscribers", label: "Subscribers" }, { value: "video_views", label: "Video views" }, { value: "personal", label: "My own" }]}
         />
       </div>
       {form.kind === "video_views" ? (
         <div className="field">
-          <span>Video</span>
-          {picked ? (
+          <span>Which video</span>
+          <Segmented
+            label="Which video" value={oneVideo ? "one" : "any"} onChange={(v) => { setOneVideo(v === "one"); if (v === "any") set("video_id", null); }}
+            options={[{ value: "any", label: "Any video" }, { value: "one", label: "One video" }]}
+          />
+          {!oneVideo ? (
+            <small>Reached as soon as any of your videos gets there, including ones you have not posted yet.</small>
+          ) : picked ? (
             <div className="row between" style={{ gap: 10 }}>
               <span className="clip grow" style={{ fontWeight: 600 }}>{picked.title}</span>
               <button type="button" className="btn btn-small" onClick={() => set("video_id", null)}>Change</button>
@@ -624,7 +634,8 @@ function GoalEditor(props: { draft: GoalDraft; videos: Video[]; subscribers: num
           <input className="input" inputMode="numeric" value={target ?? ""} onChange={(e) => set("target", e.target.value.replace(/[^\d]/g, "") === "" ? null : Number(e.target.value.replace(/[^\d]/g, "")))} placeholder={form.kind === "subscribers" ? "5000" : "10000"} />
           <small>
             {form.kind === "subscribers" && props.subscribers !== null ? `You have ${whole(props.subscribers)} now.` : ""}
-            {form.kind === "video_views" && picked ? `It has ${whole(picked.views)} now.` : ""}
+            {form.kind === "video_views" && oneVideo && picked ? `It has ${whole(picked.views)} now.` : ""}
+            {form.kind === "video_views" && !oneVideo && best ? `Your best so far has ${whole(best.views)}.` : ""}
           </small>
         </label>
       ) : null}
@@ -865,6 +876,7 @@ export function Planner() {
               >
                 <div className="planner-date">{Number(d.date.slice(8))}</div>
                 {d.uploads.map((v) => <a key={v.id} className={`planner-chip up ${v.content_type ?? ""}`} href={`#/videos?v=${v.id}`} onClick={(e) => e.stopPropagation()} title={v.title}>{v.title}</a>)}
+                {d.streams ? <span className="planner-chip up live">{count(d.streams, "stream")}</span> : null}
                 {d.ideas.map((i) => <button key={i.id} type="button" className={`planner-chip ${i.format}`} title={i.title} onClick={(e) => { e.stopPropagation(); navigate(`/ideas?edit=${i.id}`); }}>{i.title}</button>)}
               </div>
             ))}

@@ -88,15 +88,44 @@ function uprightThumb(src: string): string | null {
   return id ? `https://i.ytimg.com/vi/${id}/oardefault.jpg` : null;
 }
 
+/** The shape each picture turned out to have, so a list does not jump when it is drawn again. */
+const shapes = new Map<string, number>();
+
+/**
+ * A video's thumbnail, never cropped: the frame takes the shape of the picture once it has loaded.
+ * A Short's upright picture is not always upright (a wide or square clip posted as a Short keeps
+ * its own shape), so the shape is read from the picture and not assumed from the format.
+ */
 export function Thumb(props: { src: string | null | undefined; seconds?: number | null; tall?: boolean; small?: boolean; short?: boolean }) {
   const [failed, setFailed] = useState(0);
+  const [, redraw] = useState(0);
   const upright = props.short && props.src ? uprightThumb(props.src) : null;
   const sources = [upright, props.src].filter((s): s is string => Boolean(s));
-  const src = sources[failed];
-  const tall = props.tall || Boolean(upright && failed === 0);
+  const src = sources[Math.min(failed, sources.length - 1)];
+  const isUpright = Boolean(upright) && src === upright;
+  const ratio = src ? shapes.get(src) : undefined;
+  // Until the picture has loaded, guess: upright for a Short, wide for everything else.
+  const shape = ratio === undefined ? (props.tall || isUpright ? "tall" : "wide") : ratio < 0.8 ? "tall" : ratio < 1.25 ? "square" : "wide";
   return (
-    <span className={`thumb${tall ? " tall" : ""}${props.small ? " small" : ""}`}>
-      {src ? <img key={src} src={src} alt="" loading="lazy" onError={() => setFailed((n) => n + 1)} /> : null}
+    <span
+      className={`thumb${shape === "wide" ? "" : ` ${shape}`}${props.small ? " small" : ""}`}
+      style={ratio === undefined ? undefined : { aspectRatio: String(Math.min(2, Math.max(0.5, ratio))) }}
+    >
+      {src ? (
+        <img
+          key={src} src={src} alt="" loading="lazy"
+          onError={() => setFailed((n) => n + 1)}
+          onLoad={(e) => {
+            const { naturalWidth: w, naturalHeight: h } = e.currentTarget;
+            // YouTube answers a missing picture with a small grey placeholder; treat that as missing.
+            if (isUpright && w <= 120 && h <= 90) return setFailed((n) => n + 1);
+            if (w > 0 && h > 0 && shapes.get(src) !== w / h) {
+              shapes.set(src, w / h);
+              redraw((n) => n + 1);
+            }
+          }}
+        />
+      ) : null}
       {props.seconds ? <span className="len">{duration(props.seconds)}</span> : null}
     </span>
   );

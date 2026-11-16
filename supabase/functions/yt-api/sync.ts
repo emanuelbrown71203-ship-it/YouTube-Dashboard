@@ -5,7 +5,7 @@ import {
   analytics, type Api, chunk, closeApi, type Deps, EARNINGS_SCOPE, fetchChannels, fetchPlaylistIds, fetchVideos, getConfig,
   HttpError, mapLimit, openApi, playlistFor, type Report, reportObjects,
 } from "./google.ts";
-import { logChanges, syncComments, syncFeeders, syncReach, syncTestDays, syncTopics, tickGoals } from "./growth.ts";
+import { logChanges, nameTopics, readComments, syncComments, syncFeeders, syncReach, syncTestDays, syncTopics, tickGoals } from "./growth.ts";
 import { refreshWatched } from "./research.ts";
 import { classifyFormat } from "./scoring.ts";
 
@@ -70,6 +70,16 @@ async function report(api: Api, params: Params & { metrics: string }): Promise<R
   }
 }
 
+/** Optional steps: trouble with them is noted without failing the sync. */
+const soft = (fn: () => Promise<StepInfo>) => async () => {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof HttpError) return { skipped: describe(err) };
+    throw err;
+  }
+};
+
 const describe = (err: unknown) => (err instanceof HttpError ? `${err.message}${err.detail ? ` [${err.detail}]` : ""}` : String(err));
 
 export async function runSync(deps: Deps, source: string): Promise<{ status: string; run_id?: number; summary?: unknown; message?: string }> {
@@ -80,6 +90,11 @@ export async function runSync(deps: Deps, source: string): Promise<{ status: str
   const [busy] = await sql`
     select id from public.yt_sync_runs where status = 'running' and started_at > now() - interval '5 minutes' limit 1`;
   if (busy) return { status: "busy", message: "A sync is already running." };
+
+  // A run that was cut off before it could finish should not sit there as "running" for ever.
+  await sql`
+    update public.yt_sync_runs set status = 'error', finished_at = now(), error = 'Stopped before it finished.'
+    where status = 'running' and started_at < now() - interval '5 minutes'`;
 
   const [run] = await sql`insert into public.yt_sync_runs (source) values (${source}) returning id`;
   const steps: Record<string, StepInfo> = {};
@@ -418,19 +433,10 @@ export async function runSync(deps: Deps, source: string): Promise<{ status: str
       return { videos: done };
     });
 
-    // 8b. The extras: what feeds the long videos, tests, what each video is about, comments, goals.
-    // The AI and comments are optional, so trouble there is noted without failing the sync.
-    const soft = (fn: () => Promise<StepInfo>) => async () => {
-      try {
-        return await fn();
-      } catch (err) {
-        if (err instanceof HttpError) return { skipped: describe(err) };
-        throw err;
-      }
-    };
-    await step("feeders", () => syncFeeders(session, today, EARLIEST));
+    // 8b. Quick extras. The slow ones (what feeds the long videos, and everything the AI reads)
+    // run afterwards in runExtras, so a sync never runs out of time.
     await step("tests", () => syncTestDays(session, today));
-    await step("topics", soft(() => syncTopics(deps)));
+    await step("topics", () => syncTopics(deps));
     await step("comments", soft(() => syncComments(session, channel.id, cfg.google_scopes ?? "")));
     await step("reach", soft(() => syncReach(session)));
     await step("goals", async () => { await tickGoals(sql); });
@@ -450,5 +456,89 @@ export async function runSync(deps: Deps, source: string): Promise<{ status: str
     update public.yt_sync_runs
        set status = ${status}, finished_at = now(), summary = ${sql.json(summary)}, error = ${fatal}
      where id = ${run.id}`;
+  if (!fatal) await queueExtras(deps, Number(run.id), 0);
   return { status, run_id: Number(run.id), summary, message: fatal ?? undefined };
+}
+
+// ---------------------------------------------------------------------------
+// The slow extras, in their own request
+// ---------------------------------------------------------------------------
+
+const EXTRAS_MS = 45_000;
+const EXTRAS_HOPS = 14;
+
+/** Asks the database to call /sync/extras, so the work gets a fresh request with its own time limit. */
+async function queueExtras(deps: Deps, runId: number, hop: number): Promise<void> {
+  try {
+    const { cron_secret } = await getConfig(deps.sql, ["cron_secret"]);
+    if (!cron_secret) return;
+    await deps.sql`
+      select net.http_post(
+        url := ${`${deps.functionUrl}/sync/extras`},
+        headers := ${deps.sql.json({ "content-type": "application/json", "x-cron-secret": cron_secret })},
+        body := ${deps.sql.json({ run_id: runId, hop })},
+        timeout_milliseconds := 150000)`;
+  } catch (err) {
+    deps.log?.("could not queue the extras:", describe(err));
+  }
+}
+
+/**
+ * The slow parts of a sync: the AI naming each video's game and reading comments, and what feeds
+ * the long videos. Works for under a minute, then asks for another turn while there is more to do.
+ */
+export async function runExtras(deps: Deps, runId: number, hop: number): Promise<{ status: string; steps?: Record<string, StepInfo>; more?: boolean }> {
+  const { sql } = deps;
+  const cfg = await getConfig(sql, ["google_refresh_token"]);
+  if (!cfg.google_refresh_token) return { status: "skipped" };
+  const until = Date.now() + EXTRAS_MS;
+  const steps: Record<string, StepInfo> = {};
+  const step = async (name: string, fn: () => Promise<StepInfo>) => {
+    const t0 = Date.now();
+    try {
+      steps[name] = { ok: true, ...(await soft(fn)()), ms: Date.now() - t0 };
+    } catch (err) {
+      steps[name] = { ok: false, error: describe(err), ms: Date.now() - t0 };
+      deps.log?.(`extras step ${name} failed:`, describe(err));
+    }
+  };
+
+  await step("games", () => nameTopics(deps, until));
+  await step("comments_read", () => readComments(deps, until));
+  let api: Api | null = null;
+  if (Date.now() < until) {
+    try {
+      api = await openApi(deps);
+      const session = api;
+      await step("feeders", () => syncFeeders(session, isoDate(deps.now()), EARLIEST, until));
+    } catch (err) {
+      steps.feeders = { ok: false, error: describe(err) };
+    }
+  }
+  if (api) await closeApi(api).catch(() => undefined);
+
+  const progress = Number(steps.games?.named ?? 0) + Number(steps.comments_read?.read ?? 0) + Number(steps.feeders?.videos ?? 0);
+  const left = Number(steps.games?.left ?? 0) + Number(steps.comments_read?.left ?? 0) + Number(steps.feeders?.left ?? 0);
+  const more = progress > 0 && left > 0 && hop + 1 < EXTRAS_HOPS;
+
+  // Add this turn's results to the run that asked for them, summing the counts across turns.
+  const [row] = await sql`select summary from public.yt_sync_runs where id = ${runId}`;
+  if (row) {
+    // deno-lint-ignore no-explicit-any
+    const summary = (row.summary ?? {}) as any;
+    const all = { ...(summary.steps ?? {}) } as Record<string, StepInfo>;
+    for (const [name, now] of Object.entries(steps)) {
+      const before = (all[name] ?? {}) as StepInfo;
+      const merged: StepInfo = { ...before, ...now };
+      for (const key of ["named", "read", "videos", "ms"]) {
+        if (typeof now[key] === "number" && typeof before[key] === "number") merged[key] = (before[key] as number) + (now[key] as number);
+      }
+      if (now.ok && !("error" in now)) delete merged.error;
+      if (!("skipped" in now)) delete merged.skipped;
+      all[name] = merged;
+    }
+    await sql`update public.yt_sync_runs set summary = ${sql.json({ ...summary, steps: all })} where id = ${runId}`;
+  }
+  if (more) await queueExtras(deps, runId, hop + 1);
+  return { status: "ok", steps, more };
 }
