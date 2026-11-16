@@ -355,7 +355,7 @@ table.table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .th-sort[aria-pressed="true"] { color: var(--ink); }
 
 .thumb { display: block; position: relative; flex: none; width: 112px; aspect-ratio: 16 / 9; border-radius: 6px; overflow: hidden; background: var(--surface-2); }
-.thumb img { width: 100%; height: 100%; object-fit: contain; }
+.thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .thumb .len {
   position: absolute; right: 4px; bottom: 4px; padding: 0 5px; border-radius: 4px; background: rgba(8, 12, 20, 0.82); color: #fff;
   font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.5;

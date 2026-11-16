@@ -5,9 +5,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useMemo, useState } from "react";
 import { Drawer, ErrorNote, FormatTag, Loading, Segmented, Thumb, useToast } from "../components/ui.tsx";
 import { saveIdea } from "../lib/api.ts";
-import { ago, compact, count, day, duration, money, percent, whole } from "../lib/format.ts";
+import { ago, compact, count, day, duration, money, multiple, percent, whole } from "../lib/format.ts";
 import {
-  bestVideo, byTopic, type Comment, emptyWeeks, type Goal, type GoalDraft, goalProgress, growthKeys, kindWords, markComment, monthsWithData,
+  bestVideo, byTopic, shortsWorthAVideo, type Comment, emptyWeeks, type Goal, type GoalDraft, goalProgress, growthKeys, kindWords, markComment, monthsWithData,
   patchGoal, planMonth, recap, saveGoal, saveTest, shortsFunnel, type Test, type TestDraft, testResult, themes, trashTest,
   testCtr, useChanges, useComments, useGoals, useReachDays, useTests, useVideoDays,
 } from "../lib/growth.ts";
@@ -66,7 +66,7 @@ type TopicSort = "views" | "retention" | "typical" | "earned" | "subs";
 
 export function Games() {
   const videos = useVideos();
-  const [format, setFormat] = useState<"all" | "short" | "long" | "live">("all");
+  const [format, setFormat] = useState<"short" | "long" | "live">("long");
   const [sort, setSort] = useState<TopicSort>("retention");
   const [open, setOpen] = useState<string | null>(null);
   const all = videos.data ?? [];
@@ -86,13 +86,13 @@ export function Games() {
   return (
     <>
       <p className="soft" style={{ maxWidth: "70ch", marginBottom: 14 }}>
-        Your videos grouped by game. Retention is the middle video's, so one freak upload cannot carry a game. Games with a single video are left out, and streams have their own tab.
+        Your videos grouped by game. Retention is the middle video's, so one freak upload cannot carry a game. Games with a single video are left out. Long-form, Shorts and streams are kept apart, because their views are not comparable.
       </p>
       <div className="row-wrap" style={{ marginBottom: 12 }}>
         <div className="grow">
           <Segmented
             label="Format" value={format} onChange={setFormat}
-            options={[{ value: "all", label: "Videos" }, { value: "long", label: "Long-form" }, { value: "short", label: "Shorts" }, { value: "live", label: "Streams" }]}
+            options={[{ value: "long", label: "Long-form" }, { value: "short", label: "Shorts" }, { value: "live", label: "Streams" }]}
           />
         </div>
         <select className="select input" value={sort} onChange={(e) => setSort(e.target.value as TopicSort)} aria-label="Sort games by">
@@ -124,7 +124,7 @@ export function Games() {
                       <div className="small muted">{count(r.videos, "video")}{r.lastUpload ? `, last ${ago(r.lastUpload)}` : ""}</div>
                       {open === r.topic ? (
                         <div className="stack" style={{ marginTop: 10 }} onClick={(e) => e.stopPropagation()}>
-                          {all.filter((v) => v.topic === r.topic && v.privacy === "public" && (format === "all" ? v.content_type !== "live" : v.content_type === format))
+                          {all.filter((v) => v.topic === r.topic && v.privacy === "public" && v.content_type === format)
                             .sort((a, b) => (b.avg_view_pct ?? -1) - (a.avg_view_pct ?? -1)).slice(0, 8).map((v) => (
                               <VideoLine key={v.id} video={v}>
                                 <FormatTag format={v.content_type} /><span>Retention {percent(v.avg_view_pct)}</span><span>{compact(v.views)} views</span>
@@ -161,10 +161,43 @@ export function Funnel() {
   const all = videos.data ?? [];
   const funnel = useMemo(() => shortsFunnel(all), [all]);
   const longs = all.filter((v) => v.content_type === "long" && v.privacy === "public").length;
+  const hints = useMemo(() => shortsWorthAVideo(all), [all]);
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const makeIdea = async (short: Video) => {
+    try {
+      const idea = await saveIdea({
+        title: short.title.replace(/#\S+/g, "").trim() || short.title, format: "long", status: "idea",
+        notes: `From a Short that did ${multiple(short.vs_typical)} your usual Short: ${short.url ?? short.title}`,
+      } as never);
+      void queryClient.invalidateQueries({ queryKey: keys.ideas });
+      navigate(`/ideas?edit=${idea.id}`);
+    } catch (err) {
+      toast(message(err), { error: true });
+    }
+  };
   if (videos.isLoading) return <Loading label="Loading your videos" />;
   if (videos.error) return <ErrorNote error={videos.error} retry={() => void videos.refetch()} />;
   return (
     <>
+      {hints.length ? (
+        <Section title="Shorts that could carry a full video">
+          <p className="soft" style={{ maxWidth: "72ch", margin: "0 0 12px" }}>
+            A Short's views cannot be compared with a long video's. But a Short that did far better than your other Shorts is a fair hint that the idea has pull.
+          </p>
+          <div className="panel">
+            {hints.map(({ short, covered }) => (
+              <div className="item" key={short.id} style={{ gap: 12, alignItems: "flex-start" }}>
+                <VideoLine video={short}>
+                  <span>{multiple(short.vs_typical)} your usual Short</span>
+                  <span>{covered ? `You followed up: ${covered.title}` : short.topic ? `No long video on ${short.topic} since` : "No long video since"}</span>
+                </VideoLine>
+                {covered ? null : <button type="button" className="btn btn-small" style={{ flex: "none" }} onClick={() => void makeIdea(short)}>Make it an idea</button>}
+              </div>
+            ))}
+          </div>
+        </Section>
+      ) : null}
       <p className="soft" style={{ maxWidth: "72ch", marginBottom: 14 }}>
         Which Shorts sent viewers on to your long videos. This counts people YouTube moved from one of your videos to another through its suggestions.
         It cannot see someone who watched a Short, visited your channel later and picked a video there.
@@ -482,7 +515,8 @@ function GoalRow({ goal, onEdit }: { goal: Goal; onEdit?: () => void }) {
   const toast = useToast();
   const p = goalProgress(goal, ctx);
   const video = goal.video_id ? ctx.videos.find((v) => v.id === goal.video_id) : undefined;
-  const best = goal.kind === "video_views" && !goal.video_id ? bestVideo(ctx.videos) : undefined;
+  const best = goal.kind === "video_views" && !goal.video_id ? bestVideo(ctx.videos, goal.format) : undefined;
+  const anyOf = goal.format === "long" ? "Any long-form video" : goal.format === "short" ? "Any Short" : goal.format === "live" ? "Any stream" : "Any video";
   const tick = async () => {
     try {
       await patchGoal(goal.id, { done_at: goal.done_at ? null : new Date().toISOString() });
@@ -497,7 +531,7 @@ function GoalRow({ goal, onEdit }: { goal: Goal; onEdit?: () => void }) {
         <div className="grow" style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 600, lineHeight: 1.3 }}>{p.done ? "Reached: " : ""}{goal.title}</div>
           <div className="small muted clip">
-            {goal.kind === "video_views" ? (video ? video.title : best ? `Any video. Closest so far: ${best.title}` : "Any video") : goal.kind === "subscribers" ? "Channel subscribers" : goal.notes ?? "A goal of your own"}
+            {goal.kind === "video_views" ? (video ? video.title : best ? `${anyOf}. Closest so far: ${best.title}` : anyOf) : goal.kind === "subscribers" ? "Channel subscribers" : goal.notes ?? "A goal of your own"}
             {goal.due_on ? `. By ${day(goal.due_on)}` : ""}
           </div>
         </div>
@@ -562,15 +596,18 @@ function GoalEditor(props: { draft: GoalDraft; videos: Video[]; subscribers: num
   const [saving, setSaving] = useState(false);
   const set = <K extends keyof GoalDraft>(key: K, value: GoalDraft[K]) => setForm((f) => ({ ...f, [key]: value }));
   const picked = props.videos.find((v) => v.id === form.video_id);
-  const best = bestVideo(props.videos);
-  // A views goal counts any video unless the owner ties it to one.
+  // A views goal is for one kind of video; Shorts never count towards a long-form goal.
+  const format = form.format ?? "long";
+  const best = bestVideo(props.videos, format);
+  const KIND = { long: "long-form video", short: "Short", live: "stream" } as const;
+  // Within that kind it counts any video unless the owner ties it to one.
   const [oneVideo, setOneVideo] = useState(Boolean(props.draft.video_id));
   const matches = find.trim().length >= 2
     ? props.videos.filter((v) => v.title.toLowerCase().includes(find.trim().toLowerCase())).slice(0, 6)
     : [...props.videos].sort((a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? "")).slice(0, 5);
   const target = form.target ?? null;
   const auto = form.kind === "subscribers" && target ? `Reach ${whole(target)} subscribers`
-    : form.kind === "video_views" && target ? (form.video_id ? `${whole(target)} views on one video` : `A video with ${whole(target)} views`) : "";
+    : form.kind === "video_views" && target ? (form.video_id ? `${whole(target)} views on one video` : `A ${KIND[format]} with ${whole(target)} views`) : "";
   const ready = form.kind === "personal" ? form.title.trim() !== "" : Boolean(target && target > 0 && (form.kind !== "video_views" || !oneVideo || form.video_id));
   const save = async () => {
     setSaving(true);
@@ -579,6 +616,7 @@ function GoalEditor(props: { draft: GoalDraft; videos: Video[]; subscribers: num
       await saveGoal({
         ...form, title: form.title.trim() || auto, start_value: start,
         target: form.kind === "personal" ? null : target, video_id: form.kind === "video_views" && oneVideo ? form.video_id ?? null : null,
+        format: form.kind === "video_views" && !oneVideo ? format : null,
       });
       props.onSaved();
     } catch (err) {
@@ -609,10 +647,16 @@ function GoalEditor(props: { draft: GoalDraft; videos: Video[]; subscribers: num
           <span>Which video</span>
           <Segmented
             label="Which video" value={oneVideo ? "one" : "any"} onChange={(v) => { setOneVideo(v === "one"); if (v === "any") set("video_id", null); }}
-            options={[{ value: "any", label: "Any video" }, { value: "one", label: "One video" }]}
+            options={[{ value: "any", label: "Any of one kind" }, { value: "one", label: "One video" }]}
           />
           {!oneVideo ? (
-            <small>Reached as soon as any of your videos gets there, including ones you have not posted yet.</small>
+            <>
+              <Segmented
+                label="Kind of video" value={format} onChange={(v) => set("format", v)}
+                options={[{ value: "long", label: "Long-form" }, { value: "short", label: "Shorts" }, { value: "live", label: "Streams" }]}
+              />
+              <small>Reached as soon as any {KIND[format]} gets there, including ones you have not posted yet. Other kinds of video do not count.</small>
+            </>
           ) : picked ? (
             <div className="row between" style={{ gap: 10 }}>
               <span className="clip grow" style={{ fontWeight: 600 }}>{picked.title}</span>
@@ -635,7 +679,7 @@ function GoalEditor(props: { draft: GoalDraft; videos: Video[]; subscribers: num
           <small>
             {form.kind === "subscribers" && props.subscribers !== null ? `You have ${whole(props.subscribers)} now.` : ""}
             {form.kind === "video_views" && oneVideo && picked ? `It has ${whole(picked.views)} now.` : ""}
-            {form.kind === "video_views" && !oneVideo && best ? `Your best so far has ${whole(best.views)}.` : ""}
+            {form.kind === "video_views" && !oneVideo ? (best ? `Your best ${KIND[format]} so far has ${whole(best.views)}.` : `No ${KIND[format]} yet.`) : ""}
           </small>
         </label>
       ) : null}
@@ -1003,7 +1047,7 @@ export function Hub() {
   const ctx = { subscribers: channel.data?.subscribers ?? null, videos: all, daily: daily.data ?? [], today };
   const open = (goals.data ?? []).map((g) => ({ g, p: goalProgress(g, ctx) })).filter((x) => !x.p.done);
   const nearest = open.filter((x) => x.p.share !== null).sort((a, b) => (b.p.share ?? 0) - (a.p.share ?? 0))[0];
-  const games = byTopic(all, "all").filter((r) => r.videos >= 2 && r.retention !== null).sort((a, b) => (b.retention ?? 0) - (a.retention ?? 0));
+  const games = byTopic(all, "long").filter((r) => r.videos >= 2 && r.retention !== null).sort((a, b) => (b.retention ?? 0) - (a.retention ?? 0));
   const funnel = shortsFunnel(all);
   const running = (tests.data ?? []).filter((t) => !t.ended_on || t.ended_on >= today).length;
   const kind = (comments.data ?? []).filter((c) => c.sentiment === "positive").length;

@@ -75,7 +75,8 @@ tools here exist so that is not needed.
 - **Never write the stats tables by hand.** They belong to the sync.
 - **Add a goal or a test**: insert into `public.yt_goals` (`kind`:
   `subscribers` | `video_views` | `personal`, with `target`, `start_value`,
-  `video_id`; a `video_views` goal with no `video_id` is met by any video) or `public.yt_tests` (`video_id`, `kind`, `what`, `why`,
+  `video_id`; a `video_views` goal with no `video_id` is met by any video of
+  its `format`: `short` | `long` | `live`) or `public.yt_tests` (`video_id`, `kind`, `what`, `why`,
   `started_on`). Bin either with `trashed_at`.
 - **Let a new device in**: `select public.yt_create_access_code('note');`
   returns a one-time code that works for 24 hours (up to 7 days with a second
@@ -87,7 +88,7 @@ tools here exist so that is not needed.
 
 - `src/`: Vite + React + TypeScript. Reads go straight to Supabase with the
   publishable key; row level security lets only owners in.
-- `supabase/migrations/`: nine files, all `yt_` objects. No statement in them
+- `supabase/migrations/`: ten files, all `yt_` objects. No statement in them
   removes anything.
 - `supabase/functions/yt-api/`: one edge function, deployed with JWT
   verification off because it checks callers itself. Routes: `/auth/setup`,
@@ -123,9 +124,18 @@ tools here exist so that is not needed.
   Settings screen has a form for it.
 - Write copy the way the app already does: plain words, sentence case, no
   jargon, errors that say what happened and what to do.
-- Live streams are many and small. "Latest uploads", the default Videos list,
-  By game, the planner and the upload markers leave them out; they have their
-  own Streams tab. Keep new lists that way.
+- **Shorts, long-form videos and streams are three separate worlds.** Their
+  view counts are not comparable, so never rank, total, average or set a
+  target across them: goals, By game, "best of the month" and the Videos
+  list each work on one format at a time (`vs_typical` already does). The
+  one allowed bridge is a hint, said as a hint: a Short that beat the other
+  Shorts suggests the idea could carry a long video (`shortsWorthAVideo`).
+  The same goes when answering the owner's questions from the data.
+- Live streams are many and small. "Latest uploads", the planner and the
+  upload markers leave them out; they have their own Streams tab.
+- Thumbnails load only while on or near the screen (`Thumb` in
+  `src/components/ui.tsx`). An upright Short picture comes from YouTube at
+  full size, and a phone showing dozens at once turns them black.
 - Charts follow the palette in `src/styles/app.css`: blue for Shorts, orange
   for long-form, green for live, one blue ramp for "how many times the
   usual". Text never takes a series colour.

@@ -36,7 +36,8 @@ export function Videos() {
   const videos = useVideos();
   const channel = useChannel();
   const route = useRoute();
-  const [format, setFormat] = useState<"all" | Format>("all");
+  // Opens on long-form: each kind of video is its own list, because their views are not comparable.
+  const [format, setFormat] = useState<"all" | Format>("long");
   const [sort, setSort] = useState<SortKey>("newest");
   const [search, setSearch] = useState("");
   const [issue, setIssue] = useState<CheckKey | null>(null);
@@ -66,7 +67,7 @@ export function Videos() {
   const rows = useMemo(() => {
     const needle = search.trim().toLowerCase();
     const list = all.filter((v) =>
-      (format === "all" ? v.content_type !== "live" : v.content_type === format)
+      (format === "all" || v.content_type === format)
       && (!needle || v.title.toLowerCase().includes(needle))
       && (!issue || (audit.get(v.id) ?? []).some((c) => c.key === issue)));
     const by: Record<SortKey, (v: Video) => number> = {
@@ -125,7 +126,7 @@ export function Videos() {
 
       <div className="row-wrap" style={{ marginBottom: 12 }}>
         <div className="row-wrap" style={{ flex: "1 1 320px" }}>
-          {([["all", `Videos ${all.length - countOf("live")}`], ["short", `Shorts ${countOf("short")}`], ["long", `Long-form ${countOf("long")}`], ["live", `Streams ${countOf("live")}`]] as const).map(([value, label]) => (
+          {([["long", `Long-form ${countOf("long")}`], ["short", `Shorts ${countOf("short")}`], ["live", `Streams ${countOf("live")}`], ["all", `Everything ${all.length}`]] as const).map(([value, label]) => (
             <button key={value} type="button" className="chip" aria-pressed={format === value} onClick={() => { setFormat(value); setShown(60); }}>{label}</button>
           ))}
         </div>

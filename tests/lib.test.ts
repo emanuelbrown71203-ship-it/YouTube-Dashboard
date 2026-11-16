@@ -198,12 +198,33 @@ describe("growth", () => {
   it("measures a goal from where it started and projects when it lands", async () => {
     const { goalProgress } = await import("../src/lib/growth.ts");
     const daily = days(28, () => 100).map((d) => ({ ...d, subs_gained: 12, subs_lost: 2 }));
-    const goal = { id: "g", kind: "subscribers" as const, title: "5K", target: 5000, start_value: 3000, video_id: null, due_on: null, notes: null, done_at: null, created_at: "" };
+    const goal = { id: "g", kind: "subscribers" as const, title: "5K", target: 5000, start_value: 3000, video_id: null, format: null, due_on: null, notes: null, done_at: null, created_at: "" };
     const p = goalProgress(goal, { subscribers: 4000, videos: [], daily, today: "2026-11-16" });
     expect(p.share).toBe(0.5);
     expect(p.left).toBe(1000);
     expect(p.eta).toBe("2027-02-24"); // 1,000 to go at 10 a day
     expect(goalProgress({ ...goal, target: 4000 }, { subscribers: 4000, videos: [], daily, today: "2026-11-16" }).done).toBe(true);
+  });
+
+  it("never lets a Short count towards a long-form views goal", async () => {
+    const { goalProgress, bestVideo, byTopic, shortsWorthAVideo } = await import("../src/lib/growth.ts");
+    const v = (id: string, content_type: string, views: number, over: object = {}) => ({ id, title: id, content_type, views, privacy: "public", topic: "Elden Ring", published_at: "2026-10-01", views_per_day: 1, vs_typical: 1, avg_view_pct: 40, ...over }) as never;
+    const videos = [v("s1", "short", 90000, { vs_typical: 6 }), v("s2", "short", 500), v("l1", "long", 2600), v("l2", "long", 300, { published_at: "2026-09-01" }), v("x", "live", 400)];
+    expect(bestVideo(videos, "long")?.id).toBe("l1");
+    expect(bestVideo(videos, "short")?.id).toBe("s1");
+    const goal = { id: "g", kind: "video_views" as const, title: "t", target: 10000, start_value: 2600, video_id: null, format: "long" as const, due_on: null, notes: null, done_at: null, created_at: "2026-11-01" };
+    const p = goalProgress(goal, { subscribers: 1, videos, daily: [], today: "2026-11-16" });
+    expect(p.current).toBe(2600);
+    expect(p.done).toBe(false);
+    expect(goalProgress({ ...goal, format: "short" }, { subscribers: 1, videos, daily: [], today: "2026-11-16" }).done).toBe(true);
+    // A game's numbers are per format too.
+    expect(byTopic(videos, "long")[0]).toMatchObject({ videos: 2, views: 2900 });
+    expect(byTopic(videos, "short")[0].views).toBe(90500);
+    // The Short that beat the other Shorts is the hint; a long video on the game came after it, so it is covered.
+    const hints = shortsWorthAVideo(videos);
+    expect(hints.map((h) => h.short.id)).toEqual(["s1"]);
+    expect(hints[0].covered).toBeNull();
+    expect(shortsWorthAVideo([...videos, v("l3", "long", 100, { published_at: "2026-10-20" })])[0].covered?.id).toBe("l3");
   });
 
   it("shows only the comments the owner pinned on the front page", async () => {

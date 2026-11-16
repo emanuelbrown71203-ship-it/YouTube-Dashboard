@@ -18,6 +18,8 @@ export interface Goal {
   target: number | null;
   start_value: number | null;
   video_id: string | null;
+  /** For a views goal with no video picked: the kind of video that counts. Formats are never mixed. */
+  format: "short" | "long" | "live" | null;
   due_on: string | null;
   notes: string | null;
   done_at: string | null;
@@ -78,7 +80,7 @@ const addDays = (date: string, n: number) => new Date(Date.parse(`${date}T00:00:
 // Reads and writes
 // ---------------------------------------------------------------------------
 
-const GOAL = "id, kind, title, target, start_value, video_id, due_on, notes, done_at, created_at";
+const GOAL = "id, kind, title, target, start_value, video_id, format, due_on, notes, done_at, created_at";
 const TEST = "id, video_id, kind, what, why, started_on, ended_on, ctr_before, ctr_after, verdict, learned, created_at";
 
 export async function getGoals(): Promise<Goal[]> {
@@ -234,12 +236,12 @@ export interface TopicRow {
 }
 
 /** One row per game. Retention is the middle video's, so one freak upload cannot carry a game. */
-export function byTopic(videos: Video[], format: "all" | "short" | "long" | "live"): TopicRow[] {
+/** One kind of video at a time: a game's usual views or retention mean nothing across formats. */
+export function byTopic(videos: Video[], format: "short" | "long" | "live"): TopicRow[] {
   const groups = new Map<string, Video[]>();
   for (const v of videos) {
     if (v.privacy !== "public" || !v.topic) continue;
-    // "All" means the videos you made; streams have a tab of their own so they cannot drown the rest.
-    if (format === "all" ? v.content_type === "live" : v.content_type !== format) continue;
+    if (v.content_type !== format) continue;
     groups.set(v.topic, [...(groups.get(v.topic) ?? []), v]);
   }
   const nums = (list: Video[], pick: (v: Video) => number | null) => list.map(pick).filter((n): n is number => n !== null);
@@ -293,6 +295,24 @@ export function shortsFunnel(videos: Video[]): { rows: FeederRow[]; measured: nu
     }
   }
   return { rows: [...rows.values()].sort((a, b) => b.sent - a.sent), measured, longTotal, fromShorts, fromOthers };
+}
+
+/**
+ * Shorts that did far better than the owner's usual Short. A Short's views cannot be compared with a
+ * long video's, but a Short that beat the other Shorts is a fair hint that the idea has pull.
+ * `covered` says whether a long video about the same game went up after it.
+ */
+export function shortsWorthAVideo(videos: Video[], limit = 8): { short: Video; covered: Video | null }[] {
+  const longs = videos.filter((v) => v.content_type === "long" && v.privacy === "public");
+  return videos
+    .filter((v) => v.content_type === "short" && v.privacy === "public" && (v.vs_typical ?? 0) >= 2)
+    .sort((a, b) => (b.vs_typical ?? 0) - (a.vs_typical ?? 0))
+    .slice(0, limit)
+    .map((short) => ({
+      short,
+      covered: longs.filter((l) => short.topic && l.topic === short.topic && (l.published_at ?? "") > (short.published_at ?? ""))
+        .sort((a, b) => (a.published_at ?? "").localeCompare(b.published_at ?? ""))[0] ?? null,
+    }));
 }
 
 // ---------------------------------------------------------------------------
@@ -379,8 +399,8 @@ export function recap(month: string, daily: (DailyRow & { estimated_revenue?: nu
   const complete = month < today.slice(0, 7);
   const uploads = videos.filter((v) => v.published_at?.startsWith(month) && v.privacy === "public")
     .sort((a, b) => (b.views ?? 0) - (a.views ?? 0));
-  // The month's best is a video you made, unless streams are all there was.
-  const best = uploads.find((v) => v.content_type !== "live") ?? uploads[0] ?? null;
+  // The headline upload is the best long-form video, then the best Short, then a stream.
+  const best = uploads.find((v) => v.content_type === "long") ?? uploads.find((v) => v.content_type === "short") ?? uploads[0] ?? null;
   const topics = new Map<string, number>();
   for (const v of uploads) if (v.topic) topics.set(v.topic, (topics.get(v.topic) ?? 0) + (v.views ?? 0));
   const top = [...topics.entries()].sort((a, b) => b[1] - a[1])[0];
@@ -394,7 +414,11 @@ export function recap(month: string, daily: (DailyRow & { estimated_revenue?: nu
   lines.push(uploads.length === 0 ? "No public uploads this month." : `${uploads.length} public upload${uploads.length === 1 ? "" : "s"}: ${
     ["short", "long", "live"].map((f) => [f, uploads.filter((v) => v.content_type === f).length] as const).filter(([, n]) => n > 0)
       .map(([f, n]) => `${n} ${f === "short" ? (n === 1 ? "Short" : "Shorts") : f === "long" ? "long-form" : "live"}`).join(", ")}.`);
-  if (best) lines.push(`Best upload: "${best.title}" with ${(best.views ?? 0).toLocaleString("en-US")} views${best.vs_typical ? `, ${best.vs_typical}x your usual` : ""}.`);
+  // One best per kind of video: a Short's views say nothing about how a long video did.
+  for (const [f, name] of [["long", "long-form video"], ["short", "Short"], ["live", "stream"]] as const) {
+    const first = uploads.find((v) => v.content_type === f);
+    if (first) lines.push(`Best ${name}: "${first.title}" with ${(first.views ?? 0).toLocaleString("en-US")} views${first.vs_typical ? `, ${first.vs_typical}x your usual for ${f === "long" ? "long-form" : f === "short" ? "Shorts" : "streams"}` : ""}.`);
+  }
   if (top && topics.size > 1) lines.push(`${top[0]} brought the most views of anything you posted.`);
 
   return {
@@ -419,17 +443,21 @@ export interface GoalProgress {
   done: boolean;
 }
 
-/** The public video with the most views. */
-export function bestVideo(videos: Video[]): Video | undefined {
-  return videos.filter((v) => v.privacy === "public" && v.views !== null).sort((a, b) => (b.views ?? 0) - (a.views ?? 0))[0];
+/**
+ * The public video with the most views among one kind of video. Shorts, long-form videos and
+ * streams are never ranked against each other: their view counts are not comparable.
+ */
+export function bestVideo(videos: Video[], format?: "short" | "long" | "live" | null): Video | undefined {
+  return videos.filter((v) => v.privacy === "public" && v.views !== null && (!format || v.content_type === format))
+    .sort((a, b) => (b.views ?? 0) - (a.views ?? 0))[0];
 }
 
 export function goalProgress(goal: Goal, ctx: { subscribers: number | null; videos: Video[]; daily: DailyRow[]; today: string }): GoalProgress {
   if (goal.kind === "personal" || goal.target === null) {
     return { current: null, share: null, left: null, eta: null, done: Boolean(goal.done_at) };
   }
-  // A views goal with no video picked is for any video: it follows whichever one is furthest along.
-  const video = goal.kind === "video_views" ? (goal.video_id ? ctx.videos.find((v) => v.id === goal.video_id) : bestVideo(ctx.videos)) : undefined;
+  // A views goal with no video picked is for any video of its kind: it follows whichever one is furthest along.
+  const video = goal.kind === "video_views" ? (goal.video_id ? ctx.videos.find((v) => v.id === goal.video_id) : bestVideo(ctx.videos, goal.format)) : undefined;
   const current = goal.kind === "subscribers" ? ctx.subscribers : video?.views ?? null;
   if (current === null) return { current: null, share: null, left: null, eta: null, done: Boolean(goal.done_at) };
   const start = Math.min(goal.start_value ?? 0, current);

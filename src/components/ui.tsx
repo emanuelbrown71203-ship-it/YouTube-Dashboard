@@ -88,6 +88,32 @@ function uprightThumb(src: string): string | null {
   return id ? `https://i.ytimg.com/vi/${id}/oardefault.jpg` : null;
 }
 
+// Which thumbnails are on or near the screen, worked out from where they sit on the page each time
+// it scrolls. Plain position sums on purpose: they behave the same in every browser.
+const watched = new Set<{ el: HTMLElement; set: (near: boolean) => void }>();
+let looking = false;
+function look() {
+  looking = false;
+  const reach = 700;
+  for (const { el, set } of watched) {
+    const box = el.getBoundingClientRect();
+    // A frame with no size is not laid out yet (or is hidden); leave it for the next look.
+    set(box.width > 0 && box.bottom > -reach && box.top < window.innerHeight + reach);
+  }
+}
+function lookSoon() {
+  if (looking) return;
+  looking = true;
+  requestAnimationFrame(look);
+}
+if (typeof window !== "undefined") {
+  // Capture, so scrolling inside a panel or a table counts as well.
+  window.addEventListener("scroll", lookSoon, { passive: true, capture: true });
+  window.addEventListener("resize", lookSoon, { passive: true });
+  // Rows that appear without a scroll (a filter, more rows loading) are caught by a slow tick.
+  window.setInterval(() => { if (watched.size) lookSoon(); }, 1000);
+}
+
 /** The shape each picture turned out to have, so a list does not jump when it is drawn again. */
 const shapes = new Map<string, number>();
 
@@ -102,13 +128,14 @@ export function Thumb(props: { src: string | null | undefined; seconds?: number 
   // Only pictures on or near the screen are kept loaded. An upright picture comes from YouTube at
   // full size, and a long list of those is more than a phone will hold: they turn black.
   const frame = useRef<HTMLSpanElement>(null);
-  const [near, setNear] = useState(typeof IntersectionObserver === "undefined");
+  const [near, setNear] = useState(false);
   useEffect(() => {
     const el = frame.current;
-    if (!el || typeof IntersectionObserver === "undefined") return;
-    const watch = new IntersectionObserver(([entry]) => setNear(entry.isIntersecting), { rootMargin: "500px 0px" });
-    watch.observe(el);
-    return () => watch.disconnect();
+    if (!el) return;
+    const entry = { el, set: setNear };
+    watched.add(entry);
+    lookSoon();
+    return () => void watched.delete(entry);
   }, []);
   const upright = props.short && props.src ? uprightThumb(props.src) : null;
   const sources = [upright, props.src].filter((s): s is string => Boolean(s));

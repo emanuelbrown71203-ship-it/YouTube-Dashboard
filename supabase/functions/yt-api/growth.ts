@@ -292,9 +292,12 @@ export async function tickGoals(sql: Sql): Promise<void> {
     where g.done_at is null and g.trashed_at is null and g.target is not null and (
       (g.kind = 'subscribers' and (select subscribers from public.yt_channel order by updated_at desc limit 1) >= g.target)
       or (g.kind = 'video_views' and g.video_id is not null and (select views from public.yt_videos v where v.id = g.video_id) >= g.target)
-      -- No video picked: the goal is for any video to get there.
+      -- No video picked: the goal is for any video of its kind to get there.
       or (g.kind = 'video_views' and g.video_id is null
-          and (select max(views) from public.yt_videos v where v.removed_at is null and v.privacy = 'public') >= g.target))`;
+          and (select max(views) from public.yt_videos v
+               where v.removed_at is null and v.privacy = 'public'
+                 -- Only videos of the goal's kind count: a Short never meets a long-form goal.
+                 and (g.format is null or v.content_type = g.format)) >= g.target))`;
 }
 
 // ---------------------------------------------------------------------------

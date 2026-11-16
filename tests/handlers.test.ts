@@ -308,6 +308,11 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     const [{ top }] = await sql`select max(views)::int as top from public.yt_videos where removed_at is null and privacy = 'public'`;
     const [reach] = await sql`insert into public.yt_goals (kind, title, target) values ('video_views', 'reachable', ${top}) returning id`;
     const [far] = await sql`insert into public.yt_goals (kind, title, target) values ('video_views', 'far', ${top * 10}) returning id`;
+    // A goal for one kind of video ignores the others, however many views they have.
+    const [{ kind, best }] = await sql`
+      select content_type as kind, max(views)::int as best from public.yt_videos where removed_at is null and privacy = 'public'
+      group by content_type order by 2 limit 1`;
+    const [own] = await sql`insert into public.yt_goals (kind, title, target, format) values ('video_views', 'own kind', ${best + 1}, ${kind}) returning id`;
     const [{ value: secret }] = await sql`select value from public.yt_private where key = 'cron_secret'`;
     const { call } = setup();
     await sql`update public.yt_sync_runs set started_at = started_at - interval '10 minutes'`;
@@ -315,6 +320,10 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     const rows = await sql`select id, done_at from public.yt_goals where id in (${reach.id}, ${far.id}) order by target`;
     expect(rows[0].done_at).not.toBeNull();
     expect(rows[1].done_at).toBeNull();
+    expect(top).toBeGreaterThan(best);
+    const [mine] = await sql`select done_at from public.yt_goals where id = ${own.id}`;
+    expect(mine.done_at).toBeNull();
+    await sql`update public.yt_goals set trashed_at = now() where id = ${own.id}`;
     await sql`update public.yt_goals set trashed_at = now() where id in (${reach.id}, ${far.id})`;
   });
 
