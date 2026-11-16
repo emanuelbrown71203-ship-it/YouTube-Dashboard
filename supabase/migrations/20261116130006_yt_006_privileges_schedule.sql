@@ -62,7 +62,7 @@ select cron.schedule(
   '23 */6 * * *',
   $cron$
   select net.http_post(
-    url := 'https://nivsnjvrsqekyocvtema.supabase.co/functions/v1/yt-sync',
+    url := 'https://nivsnjvrsqekyocvtema.supabase.co/functions/v1/yt-api/sync',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
       'x-cron-secret', (select value from public.yt_private where key = 'cron_secret')

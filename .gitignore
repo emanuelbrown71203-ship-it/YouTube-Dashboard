@@ -1,0 +1,10 @@
+node_modules
+dist
+.vercel
+*.local
+.env.development
+.env.test
+# private channel data used for local development only
+dev/private/
+coverage
+.DS_Store

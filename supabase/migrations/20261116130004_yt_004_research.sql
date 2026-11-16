@@ -20,13 +20,14 @@ create table public.yt_research_channels (
   uploads_30d_short  integer,
   recent_long        jsonb not null default '[]'::jsonb,
   recent_short       jsonb not null default '[]'::jsonb,
-  baseline_at        timestamptz,
+  baseline_long_at   timestamptz,
+  baseline_short_at  timestamptz,
   stats_at           timestamptz,
   created_at         timestamptz not null default now(),
   updated_at         timestamptz not null default now()
 );
 comment on table public.yt_research_channels is
-  'Other YouTube channels seen in research. watched = on the "channels I watch" list (compared against my channel and refreshed by sync). typical_long / typical_short = median views of the channel''s last ~30 regular uploads / Shorts. recent_long / recent_short = those uploads as [{id, title, views, likes, comments, published_at, duration_s}].';
+  'Other YouTube channels seen in research. watched = on the "channels I watch" list (compared against my channel and refreshed by sync). typical_long / typical_short = median views of the channel''s last ~30 regular uploads / Shorts. recent_long / recent_short = those uploads as [{id, title, views, likes, comments, published_at, duration_s}]; baseline_long_at / baseline_short_at = when each was last fetched.';
 create index yt_research_channels_watched_idx on public.yt_research_channels (watched) where watched;
 
 create table public.yt_research_channel_daily (
