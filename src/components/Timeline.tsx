@@ -24,7 +24,7 @@ interface Props {
   value: (n: number) => string;
 }
 
-const SERIES_LABEL: Record<SeriesKey, string> = { ...FORMAT_PLURAL, other: "All formats" } as Record<SeriesKey, string>;
+const seriesLabel = (key: SeriesKey, series: SeriesKey[]) => (key === "other" ? (series.length > 1 ? "Other" : "All formats") : FORMAT_PLURAL[key]);
 
 function niceCeil(n: number): number {
   if (n <= 0) return 1;
@@ -117,7 +117,7 @@ export function Timeline({ points, mode, series, unit, uploads, weekly, value }:
         <div className="legend">
           {mode === "stack"
             ? series.map((key) => (
-              <span className="key" key={key}><span className="swatch" style={{ background: `var(--s-${key})` }} />{SERIES_LABEL[key]}</span>
+              <span className="key" key={key}><span className="swatch" style={{ background: `var(--s-${key})` }} />{seriesLabel(key, series)}</span>
             ))
             : (
               <>
@@ -140,7 +140,7 @@ export function Timeline({ points, mode, series, unit, uploads, weekly, value }:
               <tr>
                 <th>{weekly ? "Week" : "Day"}</th>
                 {mode === "stack"
-                  ? <>{series.length > 1 ? <th className="num">Total</th> : null}{series.map((k) => <th className="num" key={k}>{SERIES_LABEL[k]}</th>)}</>
+                  ? <>{series.length > 1 ? <th className="num">Total</th> : null}{series.map((k) => <th className="num" key={k}>{seriesLabel(k, series)}</th>)}</>
                   : <><th className="num">Gained</th><th className="num">Lost</th></>}
                 <th>Uploads</th>
               </tr>
@@ -253,7 +253,7 @@ export function Timeline({ points, mode, series, unit, uploads, weekly, value }:
                   ) : null}
                   {series.map((key) => (
                     <div className="t-row" key={key}>
-                      <span className="t-key"><i style={{ background: `var(--s-${key})` }} />{SERIES_LABEL[key]}</span>
+                      <span className="t-key"><i style={{ background: `var(--s-${key})` }} />{seriesLabel(key, series)}</span>
                       <span className="t-val">{value(current[key])}{series.length === 1 ? ` ${unit}` : ""}</span>
                     </div>
                   ))}

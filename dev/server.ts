@@ -100,20 +100,25 @@ const ident = (name: string) => {
 const RESERVED = new Set(["select", "order", "limit", "offset", "on_conflict", "columns"]);
 const OPS: Record<string, string> = { eq: "=", neq: "<>", gt: ">", gte: ">=", lt: "<", lte: "<=" };
 
-function where(url: URL, params: unknown[]): string {
+// Filter values go in as untyped literals, the way PostgREST sends them, so Postgres
+// turns "true" or "2026-11-16" into whatever type the column has.
+const literal = (value: string) => `'${value.replace(/'/g, "''")}'`;
+
+function where(url: URL, table = ""): string {
   const parts: string[] = [];
-  for (const [column, raw] of url.searchParams) {
-    if (RESERVED.has(column)) continue;
+  for (const [name, raw] of url.searchParams) {
+    if (RESERVED.has(name)) continue;
+    const column = { toString: () => `${table}${ident(name)}` };
     const negate = raw.startsWith("not.");
     const expr = negate ? raw.slice(4) : raw;
     const dot = expr.indexOf(".");
     const op = expr.slice(0, dot), value = expr.slice(dot + 1);
     let clause: string;
-    if (op === "is") clause = `${ident(column)} is ${({ null: "null", true: "true", false: "false" } as Record<string, string>)[value] ?? "null"}`;
+    if (op === "is") clause = `${column} is ${({ null: "null", true: "true", false: "false" } as Record<string, string>)[value] ?? "null"}`;
     else if (op === "in") {
       const items = value.replace(/^\(|\)$/g, "").split(",").map((v) => v.replace(/^"|"$/g, ""));
-      clause = `${ident(column)} in (${items.map((v) => `$${params.push(v)}`).join(", ")})`;
-    } else if (OPS[op]) clause = `${ident(column)} ${OPS[op]} $${params.push(value)}`;
+      clause = `${column} in (${items.map(literal).join(", ")})`;
+    } else if (OPS[op]) clause = `${column} ${OPS[op]} ${literal(value)}`;
     else throw Object.assign(new Error(`the local stand-in does not support the "${op}" filter`), { code: "PGRST100" });
     parts.push(negate ? `not (${clause})` : clause);
   }
@@ -138,15 +143,16 @@ async function rest(req: Request, url: URL): Promise<Response> {
   if (path.startsWith("rpc/")) {
     rpc = true;
     const args = req.method === "POST" ? await req.json().catch(() => ({})) : {};
+    // Values keep their own type (true stays a boolean, 5 a number) so the driver sends them correctly.
     const list = Object.entries(args).map(([name, value]) =>
-      `${ident(name)} := $${params.push(value !== null && typeof value === "object" ? JSON.stringify(value) : value === null ? null : String(value))}`);
+      `${ident(name)} := $${params.push(value !== null && typeof value === "object" ? JSON.stringify(value) : value)}`);
     query = `select public.${ident(path.slice(4))}(${list.join(", ")}) as result`;
   } else if (req.method === "GET") {
     const order = (url.searchParams.get("order") ?? "").split(",").filter(Boolean).map((o) => {
       const [column, ...flags] = o.split(".");
       return `${ident(column)}${flags.includes("desc") ? " desc" : ""}${flags.includes("nullslast") ? " nulls last" : flags.includes("nullsfirst") ? " nulls first" : ""}`;
     });
-    query = `select ${columnsOf(url)} from public.${ident(path)}${where(url, params)}` +
+    query = `select ${columnsOf(url)} from public.${ident(path)}${where(url)}` +
       `${order.length ? ` order by ${order.join(", ")}` : ""}` +
       `${url.searchParams.get("limit") ? ` limit ${Number(url.searchParams.get("limit"))}` : ""}` +
       `${url.searchParams.get("offset") ? ` offset ${Number(url.searchParams.get("offset"))}` : ""}`;
@@ -155,12 +161,12 @@ async function rest(req: Request, url: URL): Promise<Response> {
     const rows = Array.isArray(body) ? body : [body];
     const columns = Object.keys(rows[0] ?? {}).map(ident).join(", ");
     params.push(JSON.stringify(rows));
-    query = `insert into public.${ident(path)} (${columns}) select ${columns} from jsonb_populate_recordset(null::public.${ident(path)}, $1::jsonb) returning ${columnsOf(url)}`;
+    query = `insert into public.${ident(path)} (${columns}) select ${columns} from jsonb_populate_recordset(null::public.${ident(path)}, $1::text::jsonb) returning ${columnsOf(url)}`;
   } else if (req.method === "PATCH") {
     const body = await req.json();
     params.push(JSON.stringify(body));
     const sets = Object.keys(body).map((c) => `${ident(c)} = x.${ident(c)}`).join(", ");
-    query = `update public.${ident(path)} t set ${sets} from jsonb_populate_record(null::public.${ident(path)}, $1::jsonb) x${where(url, params)} returning ${columnsOf(url).replace(/"(\w+)"/g, 't."$1"').replace(/^\*$/, "t.*")}`;
+    query = `update public.${ident(path)} t set ${sets} from jsonb_populate_record(null::public.${ident(path)}, $1::text::jsonb) x${where(url, "t.")} returning ${columnsOf(url).replace(/"(\w+)"/g, 't."$1"').replace(/^\*$/, "t.*")}`;
   } else {
     return json({ message: "the local stand-in does not support this method" }, 405);
   }

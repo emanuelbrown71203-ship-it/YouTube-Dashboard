@@ -96,7 +96,7 @@ export function ResearchChannels({ connected }: { connected: boolean }) {
                 <div key={c.id} className="row" style={{ padding: "8px 0", borderTop: "1px solid var(--line)" }}>
                   <div className="grow">
                     <div className="clip" style={{ fontWeight: 600 }}>{c.title}</div>
-                    <div className="small muted clip">{c.handle ?? ""} {c.subscribers_hidden ? "Subscribers hidden" : `${compact(c.subscribers)} subscribers`}, {whole(c.videos)} uploads</div>
+                    <div className="small muted clip">{c.handle ? `${c.handle}, ` : ""}{c.subscribers_hidden ? "Subscribers hidden" : `${compact(c.subscribers)} subscribers`}, {whole(c.videos)} uploads</div>
                   </div>
                   {c.watched || channels.some((w) => w.id === c.id)
                     ? <span className="small muted">Watching</span>

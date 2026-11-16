@@ -112,8 +112,15 @@ export function timeline(period: DailyRow[], formats: FormatDailyRow[], metric: 
       gained: day.subs_gained ?? 0, lost: day.subs_lost ?? 0,
     };
     const parts = byDate.get(day.date);
-    if (parts?.length) for (const p of parts) point[p.content_type] += pick(p);
-    else point.other = pick(day);
+    if (parts?.length) {
+      for (const p of parts) point[p.content_type] += pick(p);
+      // YouTube leaves a few views out of every format; keep them so the parts add up to the day's total.
+      const known = point.short + point.long + point.live + point.other;
+      const rest = pick(day) - known;
+      if (rest >= (metric === "watch" ? 0.05 : 1)) point.other += rest;
+    } else {
+      point.other = pick(day);
+    }
     point.total = point.short + point.long + point.live + point.other;
     return point;
   });

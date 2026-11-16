@@ -98,7 +98,7 @@ export function Videos() {
       {issues.length ? (
         <section className="panel panel-pad" style={{ marginBottom: 20 }}>
           <h2>Worth fixing</h2>
-          <p className="soft small" style={{ margin: "2px 0 10px" }}>Small things on your uploads that cost views. Pick one to see the videos.</p>
+          <p className="soft small" style={{ margin: "2px 0 10px" }}>Quick things to tidy up on your uploads. Pick one to see the videos.</p>
           <div className="row-wrap">
             {issues.map(([key, info]) => (
               <button key={key} type="button" className="chip" aria-pressed={issue === key} onClick={() => { setIssue(issue === key ? null : key); setShown(60); }}>

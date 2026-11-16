@@ -29,6 +29,7 @@ export function ResearchOutliers({ connected }: { connected: boolean }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [sort, setSort] = useState<Sort>("outlier");
+  const [visible, setVisible] = useState(20);
   const set = <K extends keyof OutlierSearch>(key: K, value: OutlierSearch[K]) => setSearch((s) => ({ ...s, [key]: value }));
   const topics = useMemo(() => myTopics(videos.data ?? []), [videos.data]);
   const watchedIds = new Set((watched.data ?? []).map((c) => c.id));
@@ -39,6 +40,7 @@ export function ResearchOutliers({ connected }: { connected: boolean }) {
     try {
       const res = await findOutliers(params, pageToken);
       queryClient.setQueryData(keys.quota, res.quota.used_today);
+      if (!pageToken) setVisible(20);
       setResult((prev) => ({
         search: params,
         items: pageToken && prev ? [...prev.items, ...res.items.filter((i) => !prev.items.some((p) => p.video_id === i.video_id))] : res.items,
@@ -210,8 +212,8 @@ export function ResearchOutliers({ connected }: { connected: boolean }) {
           ) : (
             <div className="two-col">
               <div className={`panel${busy ? " fade" : ""}`}>
-                {items.map((item) => (
-                  <div className="item" key={item.video_id}>
+                {items.slice(0, visible).map((item) => (
+                  <div className="item result" key={item.video_id}>
                     <a href={youtubeUrl(item.video_id, item.format)} target="_blank" rel="noreferrer" aria-label={`Open "${item.title}" on YouTube`}>
                       <Thumb src={item.thumbnail_url} seconds={item.duration_s} small />
                     </a>
@@ -225,15 +227,16 @@ export function ResearchOutliers({ connected }: { connected: boolean }) {
                           <Icon name="bookmark" filled={item.saved} />{item.saved ? "Saved" : "Save"}
                         </button>
                         <button type="button" className="btn btn-small" onClick={() => makeIdea(item, result.search.mode)}>Make it an idea</button>
-                        {watchedIds.has(item.channel_id)
-                          ? <span className="small muted">Watching this channel</span>
-                          : <button type="button" className="btn btn-quiet btn-small" onClick={() => void watch(item)}>Watch channel</button>}
+                        {item.channel_id === channel.data?.id
+                          ? <span className="tag">Your video</span>
+                          : watchedIds.has(item.channel_id)
+                            ? <span className="small muted">Watching this channel</span>
+                            : <button type="button" className="btn btn-quiet btn-small" onClick={() => void watch(item)}>Watch channel</button>}
                       </div>
                     </div>
-                    <div style={{ textAlign: "right", flex: "none" }}>
+                    <div className="result-stats" style={{ textAlign: "right", flex: "none" }}>
                       <Mult value={item.outlier_score} title={item.typical_views !== null ? `${multiple(item.outlier_score)} this channel's usual ${compact(item.typical_views)} views` : undefined} />
-                      <div className="fig" style={{ fontSize: 18, marginTop: 6 }}>{compact(item.views)}</div>
-                      <div className="small muted">views</div>
+                      <div><span className="fig" style={{ fontSize: 18 }}>{compact(item.views)}</span> <span className="small muted">views</span></div>
                       <div className="small muted">{compact(item.views_per_day)} a day</div>
                     </div>
                   </div>
@@ -258,13 +261,16 @@ export function ResearchOutliers({ connected }: { connected: boolean }) {
               </aside>
             </div>
           )}
-          {result.next ? (
-            <div style={{ marginTop: 12 }}>
+          <div className="row-wrap" style={{ marginTop: 12 }}>
+            {items.length > visible ? (
+              <button type="button" className="btn" onClick={() => setVisible((n) => n + 20)}>Show 20 more ({whole(items.length - visible)} left)</button>
+            ) : null}
+            {result.next ? (
               <button type="button" className="btn" disabled={busy} onClick={() => void run(result.search, result.next)}>
-                {busy ? "Searching YouTube" : "Search further down the results"}
+                {busy ? "Searching YouTube" : "Search further down YouTube's results"}
               </button>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </section>
       ) : null}
 
@@ -300,6 +306,7 @@ export function ResearchOutliers({ connected }: { connected: boolean }) {
                 onClick={() => {
                   const params = { ...search, ...(r.params as Partial<OutlierSearch>), query: r.query };
                   setSearch(params);
+                  setVisible(20);
                   setResult({ search: params, items: r.results, next: null, summary: null });
                   setError(null);
                 }}

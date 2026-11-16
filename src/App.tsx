@@ -69,13 +69,16 @@ function Shell(props: { google: GoogleResult | null; clearGoogle: () => void; on
   const queryClient = useQueryClient();
   const channel = useChannel();
   const [watchUntil, setWatchUntil] = useState(0);
+  const [avatarBroken, setAvatarBroken] = useState(false);
   const runs = useSyncRuns(Date.now() < watchUntil ? 3000 : false);
   const latest = runs.data?.[0];
   const wasRunning = useRef(false);
   const { google, clearGoogle } = props;
 
+  const handled = useRef<GoogleResult | null>(null);
   useEffect(() => {
-    if (!google) return;
+    if (!google || handled.current === google) return;
+    handled.current = google;
     if (google.kind === "connected") {
       toast("YouTube is connected. Your numbers are loading.");
       setWatchUntil(Date.now() + 90_000);
@@ -107,8 +110,8 @@ function Shell(props: { google: GoogleResult | null; clearGoogle: () => void; on
     <div className="app">
       <nav className="rail" aria-label="Sections">
         <div className="rail-channel">
-          {channel.data?.thumbnail_url
-            ? <img className="avatar" src={channel.data.thumbnail_url} alt="" />
+          {channel.data?.thumbnail_url && !avatarBroken
+            ? <img className="avatar" src={channel.data.thumbnail_url} alt="" onError={() => setAvatarBroken(true)} />
             : <span className="avatar" aria-hidden="true" style={{ display: "grid", placeItems: "center", fontWeight: 750, color: "var(--accent-strong)" }}>{title.slice(0, 1)}</span>}
           <div className="grow">
             <div className="name clip">{title}</div>

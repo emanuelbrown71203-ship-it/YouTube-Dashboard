@@ -14,8 +14,8 @@ export const CHECK_LABEL: Record<CheckKey, string> = {
   tags_off_topic: "Tags copied from another video",
   title_missing_topic: "Title never names the topic",
   duplicate_title: "Same title as another upload",
-  hashtags: "Too many hashtags in the title",
-  title_long: "Title gets cut off",
+  hashtags: "Title crowded with hashtags",
+  title_long: "Long title",
 };
 
 const GENERIC = new Set([
@@ -68,18 +68,18 @@ export function auditVideo(video: Video, titleCounts: Map<string, number>): Chec
     });
   }
 
-  const hashtags = (title.match(/#\S+/g) ?? []).length;
-  if (hashtags > 3) {
+  const tagsInTitle = title.match(/#\S+/g) ?? [];
+  const bare = title.replace(/\s*#\S+/g, "").trim();
+  if (tagsInTitle.length > 3) {
     checks.push({
       key: "hashtags", level: "tip",
-      detail: `${hashtags} hashtags in the title. YouTube shows three at most, and the rest take the room your hook needs.`,
+      detail: `${tagsInTitle.length} hashtags take up ${title.length - bare.length} of the title's ${title.length} characters. YouTube's own advice is to keep them few: each one you add makes the others count for less. They work just as well in the description.`,
     });
   }
-  const bare = title.replace(/\s*#\S+/g, "").trim();
   if (bare.length > 70) {
     checks.push({
       key: "title_long", level: "tip",
-      detail: `${bare.length} characters. YouTube usually cuts a title off after 60 to 70, so the end may never be seen.`,
+      detail: `${bare.length} characters. Most screens show only the first 60 to 70, so the end may never be seen.`,
     });
   }
   return checks;

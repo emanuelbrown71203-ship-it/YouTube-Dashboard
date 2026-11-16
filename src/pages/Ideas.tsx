@@ -27,8 +27,14 @@ export function Ideas() {
   const [filter, setFilter] = useState<"all" | "long" | "short">("all");
   const [quick, setQuick] = useState("");
   const [quickFormat, setQuickFormat] = useState<"long" | "short">("long");
-  const [editing, setEditing] = useState<IdeaDraft | null>(null);
+  const [editing, setEditingDraft] = useState<IdeaDraft | null>(null);
+  const [editorKey, setEditorKey] = useState(0);
   const [busy, setBusy] = useState(false);
+  // Every open gets a fresh editor, so one idea's half-typed text never leaks into the next.
+  const setEditing = (draft: IdeaDraft | null) => {
+    setEditorKey((k) => k + 1);
+    setEditingDraft(draft);
+  };
 
   // An idea started on another screen (research) opens straight in the editor.
   useEffect(() => {
@@ -135,7 +141,7 @@ export function Ideas() {
         </div>
       )}
 
-      {editing ? <IdeaEditor draft={editing} onClose={() => setEditing(null)} onChanged={reload} onOpen={setEditing} /> : null}
+      {editing ? <IdeaEditor key={editorKey} draft={editing} onClose={() => setEditing(null)} onChanged={reload} onOpen={setEditing} /> : null}
     </>
   );
 }
