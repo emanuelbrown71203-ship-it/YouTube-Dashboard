@@ -85,6 +85,9 @@ tools here exist so that is not needed.
   browser that started it comes back with the secret it kept (`/auth/finish`);
   do not weaken that. `index.ts` is the only Deno-specific file; the rest take their
   database client, `fetch` and clock as arguments so tests can replace them.
+  Supabase stops accepting the older `anon` key at the end of 2026, so the app
+  sends the publishable key from `.env` and `index.ts` reads the function's
+  `SUPABASE_PUBLISHABLE_KEYS`; do not go back to `SUPABASE_ANON_KEY`.
 - `dev/`: a local stand-in for the hosted backend (`server.ts`), a made-up
   YouTube (`mock-youtube.ts`) and a database reset script.
 
@@ -122,9 +125,38 @@ made-up YouTube; drive it in a browser before calling a screen done.
   tell them a prompt is coming. Regenerate `src/lib/database.types.ts` with
   `npx tsx dev/gen-types.ts`.
 - **Edge function**: `deploy_edge_function` with every file in
-  `supabase/functions/yt-api` (entry `index.ts`, `verify_jwt` false).
-- **Site**: the static build in `dist`. If its address changes, update the
-  `allowed_origins` JSON list in `yt_private` or Google sign-in will refuse to
-  return there.
+  `supabase/functions/yt-api` (entry `index.ts`, `verify_jwt` false). The
+  type check and the tests skip `index.ts`; check it with Deno first (see
+  `dev/README.md`). Afterwards confirm the live function answers (next
+  section) and that `get_edge_function` returns the files you sent.
+- **Site**: the Vercel project `youtube-dashboard`, built from this
+  repository with the settings in `vercel.json`. Vercel's production branch
+  is `main`, which holds only a README until the work is merged, so a push
+  to the working branch makes a preview and nothing more. To put a change
+  live, start a production deployment of the branch with the Vercel
+  connector (`create_deployment`, target `production`). The site's public
+  address is the first entry of the `allowed_origins` JSON list in
+  `yt_private`; the project's other Vercel addresses sit behind Vercel's own
+  login. If the address changes, update that list or Google sign-in will
+  refuse to return there.
 - Do not create hosting projects, publish the site, or open a pull request
   unless the owner asks.
+
+## Checking the live app from a cloud session
+
+Cloud sessions cannot reach `supabase.co` or `vercel.app`, so neither `curl`
+nor a browser here can open the live app. Ask the database to make the
+request and read the answer back:
+
+```sql
+select net.http_get(url := 'https://nivsnjvrsqekyocvtema.supabase.co/functions/v1/yt-api/health');
+select status_code, left(content, 300) from net._http_response where id = 123;  -- the id the first line returned
+```
+
+Answers are kept for about six hours. Read only the rows for requests you
+made: that table is shared with the other apps. To see what a signed-in
+browser sees, sign up an anonymous user (`POST /auth/v1/signup` with the
+publishable key in the `apikey` header), redeem a code minted for the check,
+call the routes with that session, and switch the test browser off again
+with `revoked_at` when you are done. Build the headers inside SQL so the
+session token never leaves the database.

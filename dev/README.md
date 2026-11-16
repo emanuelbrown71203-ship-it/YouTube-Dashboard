@@ -57,3 +57,25 @@ rebuilds a database called `yttest` and runs the edge function's routes
 against it and the made-up YouTube: sign-in, the first sync, repeat syncs,
 every research action, the daily budget and the error paths. It is skipped
 when no local Postgres answers.
+
+## Checking the entry file
+
+`supabase/functions/yt-api/index.ts` only runs on Deno, so the tests and
+`npm run typecheck` leave it out. Before deploying a change to it, install
+Deno somewhere outside the repository (`npm i deno` in a scratch folder
+works) and run:
+
+```bash
+deno check supabase/functions/yt-api/index.ts
+
+SUPABASE_URL=http://localhost:54321 \
+SUPABASE_DB_URL=postgresql://ytdev:ytdev@localhost:5432/ytdash \
+SUPABASE_PUBLISHABLE_KEYS='{"default":"local"}' \
+  deno run -A supabase/functions/yt-api/index.ts
+```
+
+With `npm run dev:local` running beside it, the function answers on
+`http://localhost:8000/yt-api/...` the way it does once deployed, with the
+stand-in checking who is signed in. `/health` should say `{"ok":true}`, and
+`/sync` with the `x-cron-secret` from `yt_private` should say YouTube is not
+connected yet.
