@@ -160,7 +160,7 @@ export function Overview() {
             {latest.length === 0 ? <div className="empty"><h3>No uploads stored yet</h3><p>They appear after the first sync.</p></div> : null}
             {latest.map((v) => (
               <a key={v.id} className="item" href={`#/videos?v=${v.id}`}>
-                <Thumb src={v.thumbnail_url} seconds={v.duration_s} small />
+                <Thumb src={v.thumbnail_url} seconds={v.duration_s} small short={v.content_type === "short"} />
                 <span className="grow">
                   <span className="title clip2">{v.title}</span>
                   <span className="meta row-wrap">

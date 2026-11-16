@@ -72,6 +72,8 @@ export interface Video {
   thumbnail_url: string | null;
   tags: string[] | null;
   traffic: Traffic | null;
+  estimated_revenue: number | null;
+  revenue_per_1000_views: number | null;
 }
 
 export interface MyFormat {
@@ -172,7 +174,7 @@ export interface OutlierResponse {
   run_id: string;
   items: OutlierResult[];
   next_page_token: string | null;
-  summary: { searched: number; shown: number; hidden_live: number; below_min_views: number; channels_too_big: number; channels: number; units: number };
+  summary: { searched: number; shown: number; hidden_live: number; not_english?: number; below_min_views: number; channels_too_big: number; channels: number; units: number };
   quota: Quota;
 }
 

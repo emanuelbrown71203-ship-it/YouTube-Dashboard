@@ -6,7 +6,7 @@ import {
   HttpError, mapLimit, openApi, playlistFor, searchChannelIds, searchVideoIds, SEARCH_COST, type Sql,
 } from "./google.ts";
 import {
-  ageDays, analyzeKeyword, normalizeKeyword, type OutlierItem, type PublicChannel, type PublicVideo,
+  ageDays, analyzeKeyword, isEnglish, normalizeKeyword, type OutlierItem, type PublicChannel, type PublicVideo,
   type RecentUpload, scoreOutlier, sortOutliers, typicalViews,
 } from "./scoring.ts";
 
@@ -282,7 +282,9 @@ async function findOutliers(api: Api, params: OutlierParams) {
   const ids = [...new Set(pages.flatMap((p) => p.ids))];
   const videos = ids.length ? await fetchVideos(api, ids) : [];
   const hiddenLive = videos.filter((v) => v.is_live).length;
-  const rightLength = videos.filter((v) =>
+  const english = videos.filter((v) => v.is_live || isEnglish(v));
+  const notEnglish = videos.length - english.length;
+  const rightLength = english.filter((v) =>
     !v.is_live && (params.format === "short" ? v.duration_s > 0 && v.duration_s <= 180 : v.duration_s > 180));
   const belowMinViews = rightLength.filter((v) => v.views < params.min_views).length;
   let candidates = rightLength.filter((v) => v.views >= params.min_views).sort((a, b) => b.views - a.views);
@@ -350,6 +352,7 @@ async function findOutliers(api: Api, params: OutlierParams) {
     searched: videos.length,
     shown: items.length,
     hidden_live: hiddenLive,
+    not_english: notEnglish,
     below_min_views: belowMinViews,
     channels_too_big: tooBig,
     channels: keepChannels.length,

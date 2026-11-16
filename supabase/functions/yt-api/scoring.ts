@@ -18,6 +18,8 @@ export interface PublicVideo {
   tags: string[];
   is_live: boolean;
   privacy: string | null;
+  /** The language the uploader declared ("en", "es-419"...), when they declared one. */
+  language?: string | null;
 }
 
 export interface PublicChannel {
@@ -122,6 +124,19 @@ export function classifyFormat(v: {
   const text = `${v.title ?? ""} ${v.description ?? ""}`.toLowerCase();
   if (v.duration_s > 0 && v.duration_s <= 180 && text.includes("#shorts")) return { format: "short", source: "duration" };
   return { format: "long", source: "duration" };
+}
+
+/**
+ * Is this video in English? The uploader's declared language decides when there
+ * is one. Otherwise the title has to be written in plain Latin letters, without
+ * the accents and marks other European languages use. A guess, not a certainty.
+ */
+export function isEnglish(v: { title: string; language?: string | null }): boolean {
+  if (v.language) return v.language.toLowerCase().startsWith("en");
+  const letters = v.title.match(/\p{L}/gu) ?? [];
+  if (letters.length === 0) return true;
+  const plain = letters.filter((ch) => /[a-z]/i.test(ch)).length;
+  return plain / letters.length >= 0.95 && !/[¿¡ñßçãõåøæœ]/i.test(v.title);
 }
 
 export const MIN_BASELINE_VIDEOS = 5;

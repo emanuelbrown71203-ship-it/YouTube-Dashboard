@@ -82,3 +82,14 @@ export function count(n: number, singular: string, pluralForm = `${singular}s`):
 
 export const FORMAT_LABEL: Record<string, string> = { short: "Short", long: "Long-form", live: "Live", other: "Other" };
 export const FORMAT_PLURAL: Record<string, string> = { short: "Shorts", long: "Long-form", live: "Live", other: "Other" };
+
+/** A percentage to the nearest whole number, or a dash when there is none. */
+export function percent(n: number | null | undefined): string {
+  return n === null || n === undefined || !Number.isFinite(n) ? "–" : `${Math.round(n)}%`;
+}
+
+/** US dollars: cents under $100, whole dollars above. */
+export function money(n: number | null | undefined): string {
+  if (n === null || n === undefined || !Number.isFinite(n)) return "–";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: Math.abs(n) < 100 ? 2 : 0 }).format(n);
+}

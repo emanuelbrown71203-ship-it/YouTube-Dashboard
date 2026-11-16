@@ -180,3 +180,19 @@ describe("sync helpers", () => {
     expect(contentType("story")).toBe("other");
   });
 });
+
+describe("isEnglish", () => {
+  it("trusts the language the uploader declared", async () => {
+    const { isEnglish } = await import("../supabase/functions/yt-api/scoring.ts");
+    expect(isEnglish({ title: "Elden Ring pero sin armas", language: "en-US" })).toBe(true);
+    expect(isEnglish({ title: "Can You Beat Elden Ring?", language: "es-419" })).toBe(false);
+  });
+  it("falls back to the title when no language is declared", async () => {
+    const { isEnglish } = await import("../supabase/functions/yt-api/scoring.ts");
+    expect(isEnglish({ title: "Can You Beat Cuphead With Only 1 HP? #shorts" })).toBe(true);
+    expect(isEnglish({ title: "エルデンリング 初見プレイ" })).toBe(false);
+    expect(isEnglish({ title: "¿Puedes pasar Elden Ring sin morir?" })).toBe(false);
+    expect(isEnglish({ title: "Elden Ring ПРОХОЖДЕНИЕ без урона" })).toBe(false);
+    expect(isEnglish({ title: "100% 🔥🔥" })).toBe(true);
+  });
+});

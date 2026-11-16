@@ -2,7 +2,7 @@
 // Each step is independent: one failing step makes the run "partial", not lost.
 
 import {
-  analytics, type Api, chunk, closeApi, type Deps, fetchChannels, fetchPlaylistIds, fetchVideos, getConfig,
+  analytics, type Api, chunk, closeApi, type Deps, EARNINGS_SCOPE, fetchChannels, fetchPlaylistIds, fetchVideos, getConfig,
   HttpError, mapLimit, openApi, playlistFor, type Report, reportObjects,
 } from "./google.ts";
 import { refreshWatched } from "./research.ts";
@@ -73,7 +73,7 @@ const describe = (err: unknown) => (err instanceof HttpError ? `${err.message}${
 
 export async function runSync(deps: Deps, source: string): Promise<{ status: string; run_id?: number; summary?: unknown; message?: string }> {
   const { sql } = deps;
-  const cfg = await getConfig(sql, ["google_refresh_token", "owner_channel_id"]);
+  const cfg = await getConfig(sql, ["google_refresh_token", "owner_channel_id", "google_scopes"]);
   if (!cfg.google_refresh_token) return { status: "skipped", message: "YouTube is not connected yet." };
 
   const [busy] = await sql`
@@ -283,6 +283,52 @@ export async function runSync(deps: Deps, source: string): Promise<{ status: str
       });
       return { videos: updated };
     });
+
+    // 5b. Estimated earnings, when the owner granted that permission. A channel that
+    // is not earning yet is refused by YouTube; that is not a failed sync.
+    if ((cfg.google_scopes ?? "").split(" ").includes(EARNINGS_SCOPE)) {
+      await step("earnings", async () => {
+        try {
+          let days = 0;
+          for (const [startDate, endDate] of ranges) {
+            const rows = reportObjects(await analytics(session, { startDate, endDate, metrics: "estimatedRevenue", dimensions: "day" }));
+            if (rows.length === 0) continue;
+            days += rows.length;
+            await sql`
+              update public.yt_analytics_daily a set estimated_revenue = x."estimatedRevenue"
+              from jsonb_to_recordset(${sql.json(rows)}) as x(day date, "estimatedRevenue" numeric)
+              where a.date = x.day`;
+          }
+          let videos = 0;
+          // deno-lint-ignore no-explicit-any
+          const save = async (rows: any[]) => {
+            if (rows.length === 0) return;
+            videos += rows.length;
+            await sql`
+              update public.yt_videos v set estimated_revenue = x."estimatedRevenue"
+              from jsonb_to_recordset(${sql.json(rows)}) as x(video text, "estimatedRevenue" numeric)
+              where v.id = x.video`;
+          };
+          const top = reportObjects(await analytics(session, {
+            startDate: EARLIEST, endDate: today, metrics: "views,estimatedRevenue", dimensions: "video", sort: "-views", maxResults: 200,
+          }));
+          await save(top);
+          const seen = new Set(top.map((r) => String(r.video)));
+          const all = await sql`select id from public.yt_videos where removed_at is null`;
+          // deno-lint-ignore no-explicit-any
+          const rest = (all as any[]).map((r) => r.id as string).filter((id) => !seen.has(id));
+          await mapLimit(chunk(rest, 100), 3, async (ids) => {
+            await save(reportObjects(await analytics(session, {
+              startDate: EARLIEST, endDate: today, metrics: "estimatedRevenue", dimensions: "video", filters: `video==${ids.join(",")}`,
+            })));
+          });
+          return { days, videos };
+        } catch (err) {
+          if (err instanceof HttpError) return { skipped: describe(err) };
+          throw err;
+        }
+      });
+    }
 
     // 6. How recent uploads built up day by day
     await step("recent_uploads", async () => {

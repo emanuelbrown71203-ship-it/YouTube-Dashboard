@@ -362,6 +362,7 @@ table.table { width: 100%; border-collapse: collapse; font-size: 14px; }
 }
 .thumb.small { width: 80px; }
 .thumb.tall { width: 54px; aspect-ratio: 9 / 16; }
+.thumb.tall.small { width: 46px; }
 
 .item { display: flex; gap: 12px; padding: 12px 18px; border-bottom: 1px solid var(--line); align-items: flex-start; min-width: 0; }
 .item:last-child { border-bottom: 0; }
@@ -456,7 +457,10 @@ button.item:hover, a.item:hover { background: var(--surface-2); }
 .loading { display: flex; align-items: center; gap: 10px; color: var(--ink-3); padding: 28px 4px; }
 .fade { opacity: 0.55; transition: opacity 0.15s; }
 
+.narrow-only { display: none; }
 @media (max-width: 860px) {
+  .narrow-only { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; margin-top: 8px; }
+  .narrow-only > span { white-space: nowrap; }
   .table .wide { display: none; }
   .table td, .table th { padding-left: 10px; padding-right: 10px; }
 }

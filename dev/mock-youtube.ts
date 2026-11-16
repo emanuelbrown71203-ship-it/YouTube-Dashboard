@@ -266,6 +266,7 @@ export function createMockGoogle(options: MockOptions): { fetch: typeof fetch; u
         case "subscribersGained": return Math.round(unit * 3);
         case "subscribersLost": return Math.round(unit * 1.4);
         case "viewerPercentage": return Math.round(unit * 2000) / 100;
+        case "estimatedRevenue": return Math.round(scale * (0.2 + unit) * 0.3) / 100;
         default: return Math.round(unit * 6);
       }
     };
@@ -322,6 +323,7 @@ export function createMockGoogle(options: MockOptions): { fetch: typeof fetch; u
         access_token: `mock-access-${Date.now()}`, expires_in: 3599, token_type: "Bearer",
         scope: (options.grantedScopes ?? [
           "https://www.googleapis.com/auth/youtube.readonly", "https://www.googleapis.com/auth/yt-analytics.readonly",
+          "https://www.googleapis.com/auth/yt-analytics-monetary.readonly",
         ]).join(" "),
         ...(body.get("grant_type") === "authorization_code" ? { refresh_token: "mock-refresh-token" } : {}),
       });

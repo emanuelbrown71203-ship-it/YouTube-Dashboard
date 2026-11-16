@@ -36,6 +36,8 @@ export const SCOPES = [
   "https://www.googleapis.com/auth/youtube.readonly",
   "https://www.googleapis.com/auth/yt-analytics.readonly",
 ];
+/** Asked for as well, but optional: without it everything works except estimated earnings. */
+export const EARNINGS_SCOPE = "https://www.googleapis.com/auth/yt-analytics-monetary.readonly";
 
 // ---------------------------------------------------------------------------
 // Server-only settings (public.yt_private)
@@ -344,6 +346,7 @@ export function toVideo(item: any): PublicVideo {
     tags: Array.isArray(s.tags) ? s.tags : [],
     is_live: Boolean(item.liveStreamingDetails) || s.liveBroadcastContent === "live" || s.liveBroadcastContent === "upcoming",
     privacy: item.status?.privacyStatus ?? null,
+    language: s.defaultAudioLanguage ?? s.defaultLanguage ?? null,
   };
 }
 

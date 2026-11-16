@@ -13,7 +13,7 @@
 // redirect and the scheduler carry no JWT; every route checks its caller here.
 
 import {
-  type Api, closeApi, type Deps, exchangeToken, fetchChannels, getConfig, HttpError, SCOPES, setConfig,
+  type Api, closeApi, type Deps, EARNINGS_SCOPE, exchangeToken, fetchChannels, getConfig, HttpError, SCOPES, setConfig,
 } from "./google.ts";
 import { research } from "./research.ts";
 import { runSync } from "./sync.ts";
@@ -145,7 +145,7 @@ async function authStart(deps: Deps, userId: string, body: any) {
     client_id: cfg.google_client_id,
     redirect_uri: redirectUri(deps),
     response_type: "code",
-    scope: SCOPES.join(" "),
+    scope: [...SCOPES, EARNINGS_SCOPE].join(" "),
     access_type: "offline",
     prompt: "consent",
     include_granted_scopes: "true",
@@ -197,6 +197,7 @@ async function authCallback(url: URL, deps: Deps): Promise<Response> {
       google_access_token: String(token.access_token),
       google_access_expires: String(deps.now().getTime() + Number(token.expires_in ?? 3600) * 1000),
       google_connected_at: deps.now().toISOString(),
+      google_scopes: granted.join(" "),
       google_error: "",
     });
     // Google has confirmed the channel owner approved, but not which browser they are in.
@@ -248,7 +249,7 @@ async function authDisconnect(deps: Deps) {
     }).catch(() => undefined);
   }
   await setConfig(deps.sql, {
-    google_refresh_token: "", google_access_token: "", google_access_expires: "", google_connected_at: "", google_error: "",
+    google_refresh_token: "", google_access_token: "", google_access_expires: "", google_connected_at: "", google_scopes: "", google_error: "",
   });
   return { ok: true };
 }

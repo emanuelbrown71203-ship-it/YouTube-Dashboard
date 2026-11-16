@@ -76,7 +76,7 @@ tools here exist so that is not needed.
 
 - `src/`: Vite + React + TypeScript. Reads go straight to Supabase with the
   publishable key; row level security lets only owners in.
-- `supabase/migrations/`: six files, all `yt_` objects. No statement in them
+- `supabase/migrations/`: seven files, all `yt_` objects. No statement in them
   removes anything.
 - `supabase/functions/yt-api/`: one edge function, deployed with JWT
   verification off because it checks callers itself. Routes: `/auth/setup`,

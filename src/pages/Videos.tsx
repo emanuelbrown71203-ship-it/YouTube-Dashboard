@@ -3,14 +3,14 @@ import { useMemo, useState } from "react";
 import { BarList } from "../components/Timeline.tsx";
 import { Drawer, ErrorNote, FormatTag, Icon, Loading, Mult, Thumb, useToast } from "../components/ui.tsx";
 import { setVideoType } from "../lib/api.ts";
-import { ago, compact, count, day, duration, FORMAT_LABEL, FORMAT_PLURAL, multiple, whole } from "../lib/format.ts";
+import { ago, compact, count, day, duration, FORMAT_LABEL, FORMAT_PLURAL, money, multiple, percent, whole } from "../lib/format.ts";
 import { keys, useChannel, useVideos } from "../lib/hooks.ts";
 import { navigate, useRoute } from "../lib/router.ts";
 import { auditAll, type Check, CHECK_LABEL, type CheckKey } from "../lib/seo.ts";
 import { libraryComplete } from "../lib/stats.ts";
 import type { Format, Traffic, Video } from "../lib/types.ts";
 
-type SortKey = "newest" | "views" | "per_day" | "vs_usual";
+type SortKey = "newest" | "views" | "per_day" | "vs_usual" | "watched" | "avg_view" | "watch_hours" | "earned";
 
 const TRAFFIC_GROUP: Record<string, string> = {
   search: "YouTube search",
@@ -43,6 +43,7 @@ export function Videos() {
   const all = useMemo(() => videos.data ?? [], [videos.data]);
   const audit = useMemo(() => auditAll(all), [all]);
   const complete = libraryComplete(all, channel.data?.videos);
+  const earning = all.some((v) => v.estimated_revenue !== null);
 
   const issues = useMemo(() => {
     const counts = new Map<CheckKey, { n: number; fix: boolean }>();
@@ -67,6 +68,10 @@ export function Videos() {
       views: (v) => v.views ?? -1,
       per_day: (v) => v.views_per_day ?? -1,
       vs_usual: (v) => v.vs_typical ?? -1,
+      watched: (v) => v.avg_view_pct ?? -1,
+      avg_view: (v) => v.avg_view_duration_s ?? -1,
+      watch_hours: (v) => v.watch_hours ?? -1,
+      earned: (v) => v.estimated_revenue ?? -1,
     };
     return [...list].sort((a, b) => by[sort](b) - by[sort](a));
   }, [all, format, search, issue, sort, audit]);
@@ -122,8 +127,17 @@ export function Videos() {
           <option value="views">Most views</option>
           <option value="per_day">Most views per day</option>
           {complete ? <option value="vs_usual">Furthest above your usual</option> : null}
+          <option value="watched">Highest retention</option>
+          <option value="avg_view">Longest average view</option>
+          <option value="watch_hours">Most watch hours</option>
+          {earning ? <option value="earned">Most earned</option> : null}
         </select>
       </div>
+      {earning ? null : (
+        <p className="small muted" style={{ margin: "0 0 12px" }}>
+          Estimated earnings need one more permission from Google. In Settings, press Disconnect, then sign in with Google again and leave all three boxes ticked.
+        </p>
+      )}
 
       <div className={`panel${videos.isFetching ? " fade" : ""}`}>
         {rows.length === 0 ? (
@@ -138,7 +152,9 @@ export function Videos() {
                   {complete ? <th className="num">Against usual</th> : null}
                   <th className="num wide">Per day</th>
                   <th className="num wide">Watch hours</th>
-                  <th className="num wide">Watched</th>
+                  <th className="num wide">Retention</th>
+                  <th className="num wide">Average view</th>
+                  {earning ? <th className="num wide">Earned</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -148,7 +164,7 @@ export function Videos() {
                     <tr key={v.id} className="clickable" onClick={() => navigate(`/videos?v=${v.id}`)}>
                       <td>
                         <div className="row" style={{ alignItems: "flex-start", gap: 12 }}>
-                          <Thumb src={v.thumbnail_url} seconds={v.duration_s} small />
+                          <Thumb src={v.thumbnail_url} seconds={v.duration_s} small short={v.content_type === "short"} />
                           <div className="grow">
                             <button type="button" className="th-sort clip2" style={{ fontWeight: 600, color: "var(--ink)", textAlign: "left", lineHeight: 1.3 }} onClick={(e) => { e.stopPropagation(); navigate(`/videos?v=${v.id}`); }}>
                               {v.title}
@@ -161,12 +177,20 @@ export function Videos() {
                             </div>
                           </div>
                         </div>
+                        <div className="small narrow-only">
+                          <span><span className="muted">Retention</span> {percent(v.avg_view_pct)}</span>
+                          <span><span className="muted">Avg view</span> {duration(v.avg_view_duration_s)}</span>
+                          <span><span className="muted">Watch hrs</span> {v.watch_hours === null ? "–" : compact(v.watch_hours)}</span>
+                          {earning ? <span><span className="muted">Earned</span> {money(v.estimated_revenue)}</span> : null}
+                        </div>
                       </td>
                       <td className="num fig" style={{ fontSize: 16 }}>{compact(v.views)}</td>
                       {complete ? <td className="num"><Mult value={v.vs_typical} /></td> : null}
                       <td className="num wide">{compact(v.views_per_day)}</td>
                       <td className="num wide">{v.watch_hours === null ? "–" : compact(v.watch_hours)}</td>
-                      <td className="num wide">{v.avg_view_pct === null ? "–" : `${Math.round(v.avg_view_pct)}%`}</td>
+                      <td className="num wide">{percent(v.avg_view_pct)}</td>
+                      <td className="num wide">{duration(v.avg_view_duration_s)}</td>
+                      {earning ? <td className="num wide">{money(v.estimated_revenue)}</td> : null}
                     </tr>
                   );
                 })}
@@ -204,9 +228,13 @@ function VideoDetail({ video: v, checks, complete, onClose }: { video: Video; ch
     ["Likes", whole(v.likes)],
     ["Comments", whole(v.comments)],
     ["Watch hours", v.watch_hours === null ? "–" : compact(v.watch_hours)],
-    ["Watched on average", v.avg_view_pct === null ? "–" : `${Math.round(v.avg_view_pct)}%`],
+    ["Retention", percent(v.avg_view_pct)],
     ["Average view", duration(v.avg_view_duration_s)],
     ["Subscribers gained", whole(v.subs_gained)],
+    ...(v.estimated_revenue === null ? [] : [
+      ["Estimated earnings", money(v.estimated_revenue)],
+      ["Earned per 1,000 views", money(v.revenue_per_1000_views)],
+    ] as [string, string][]),
   ];
 
   const changeFormat = async (type: Format) => {
@@ -227,7 +255,7 @@ function VideoDetail({ video: v, checks, complete, onClose }: { video: Video; ch
       footer={<a className="btn" href={v.url} target="_blank" rel="noreferrer"><Icon name="external" />Open on YouTube</a>}
     >
       <div className="row" style={{ alignItems: "flex-start", gap: 14 }}>
-        <Thumb src={v.thumbnail_url} seconds={v.duration_s} />
+        <Thumb src={v.thumbnail_url} seconds={v.duration_s} short={v.content_type === "short"} />
         <div className="grow">
           <h3>{v.title}</h3>
           <div className="row-wrap small muted" style={{ marginTop: 6 }}>

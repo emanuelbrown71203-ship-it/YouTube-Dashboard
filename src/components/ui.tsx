@@ -79,11 +79,24 @@ export function FormatTag({ format }: { format: string | null | undefined }) {
   );
 }
 
-export function Thumb(props: { src: string | null | undefined; seconds?: number | null; tall?: boolean; small?: boolean }) {
-  const [broken, setBroken] = useState(false);
+/**
+ * YouTube's standard thumbnail for a Short is a wide crop from the middle of an
+ * upright video, which looks zoomed in. Shorts have an upright one as well.
+ */
+function uprightThumb(src: string): string | null {
+  const id = /\/vi\/([\w-]{11})\//.exec(src)?.[1];
+  return id ? `https://i.ytimg.com/vi/${id}/oardefault.jpg` : null;
+}
+
+export function Thumb(props: { src: string | null | undefined; seconds?: number | null; tall?: boolean; small?: boolean; short?: boolean }) {
+  const [failed, setFailed] = useState(0);
+  const upright = props.short && props.src ? uprightThumb(props.src) : null;
+  const sources = [upright, props.src].filter((s): s is string => Boolean(s));
+  const src = sources[failed];
+  const tall = props.tall || Boolean(upright && failed === 0);
   return (
-    <span className={`thumb${props.tall ? " tall" : ""}${props.small ? " small" : ""}`}>
-      {props.src && !broken ? <img src={props.src} alt="" loading="lazy" onError={() => setBroken(true)} /> : null}
+    <span className={`thumb${tall ? " tall" : ""}${props.small ? " small" : ""}`}>
+      {src ? <img key={src} src={src} alt="" loading="lazy" onError={() => setFailed((n) => n + 1)} /> : null}
       {props.seconds ? <span className="len">{duration(props.seconds)}</span> : null}
     </span>
   );

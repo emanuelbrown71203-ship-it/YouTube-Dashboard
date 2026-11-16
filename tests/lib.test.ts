@@ -15,7 +15,8 @@ const video = (over: Partial<Video>): Video => ({
   id: "v", title: "t", content_type: "long", privacy: "public", published_at: null, duration_s: 600, views: 100, likes: 1,
   comments: 0, shares: null, subs_gained: null, watch_hours: null, avg_view_duration_s: null, avg_view_pct: null,
   age_days: 1, views_per_day: 1, engagement_pct: 1, typical_views: null, vs_typical: null, search_pct: null,
-  recommended_pct: null, discovery: null, url: "", thumbnail_url: null, tags: null, traffic: null, ...over,
+  recommended_pct: null, discovery: null, url: "", thumbnail_url: null, tags: null, traffic: null,
+  estimated_revenue: null, revenue_per_1000_views: null, ...over,
 });
 
 describe("formatting", () => {

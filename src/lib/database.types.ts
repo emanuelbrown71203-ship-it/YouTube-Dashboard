@@ -46,6 +46,7 @@ export type Database = {
           comments: number | null;
           shares: number | null;
           updated_at: string;
+          estimated_revenue: number | null;
         };
         Insert: {
           date: string;
@@ -60,6 +61,7 @@ export type Database = {
           comments?: number | null;
           shares?: number | null;
           updated_at?: string;
+          estimated_revenue?: number | null;
         };
         Update: {
           date?: string;
@@ -74,6 +76,7 @@ export type Database = {
           comments?: number | null;
           shares?: number | null;
           updated_at?: string;
+          estimated_revenue?: number | null;
         };
         Relationships: [];
       };
@@ -747,6 +750,7 @@ export type Database = {
           removed_at: string | null;
           created_at: string;
           updated_at: string;
+          estimated_revenue: number | null;
         };
         Insert: {
           id: string;
@@ -775,6 +779,7 @@ export type Database = {
           removed_at?: string | null;
           created_at?: string;
           updated_at?: string;
+          estimated_revenue?: number | null;
         };
         Update: {
           id?: string;
@@ -803,6 +808,7 @@ export type Database = {
           removed_at?: string | null;
           created_at?: string;
           updated_at?: string;
+          estimated_revenue?: number | null;
         };
         Relationships: [];
       };
@@ -880,6 +886,8 @@ export type Database = {
           tags: string[] | null;
           traffic: Json | null;
           stats_updated_at: string | null;
+          estimated_revenue: number | null;
+          revenue_per_1000_views: number | null;
         };
         Relationships: [];
       };

@@ -204,6 +204,7 @@ export function ResearchOutliers({ connected }: { connected: boolean }) {
               {result.summary.below_min_views ? ` Left out: ${count(result.summary.below_min_views, "video")} under ${whole(result.search.min_views)} views.` : ""}
               {result.summary.channels_too_big ? ` ${count(result.summary.channels_too_big, "video")} from bigger channels.` : ""}
               {result.summary.hidden_live ? ` ${count(result.summary.hidden_live, "live stream")}.` : ""}
+              {result.summary.not_english ? ` ${count(result.summary.not_english, "video")} not in English.` : ""}
             </p>
           ) : null}
 
@@ -215,7 +216,7 @@ export function ResearchOutliers({ connected }: { connected: boolean }) {
                 {items.slice(0, visible).map((item) => (
                   <div className="item result" key={item.video_id}>
                     <a href={youtubeUrl(item.video_id, item.format)} target="_blank" rel="noreferrer" aria-label={`Open "${item.title}" on YouTube`}>
-                      <Thumb src={item.thumbnail_url} seconds={item.duration_s} small />
+                      <Thumb src={item.thumbnail_url} seconds={item.duration_s} small short={item.format === "short"} />
                     </a>
                     <div className="grow">
                       <a className="title clip2" href={youtubeUrl(item.video_id, item.format)} target="_blank" rel="noreferrer" style={{ color: "var(--ink)", textDecoration: "none" }}>{item.title}</a>
