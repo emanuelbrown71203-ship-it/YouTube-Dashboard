@@ -1,0 +1,335 @@
+import { useQueryClient } from "@tanstack/react-query";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { Drawer, ErrorNote, FormatTag, Icon, Loading, Mult, Segmented, useToast } from "../components/ui.tsx";
+import { saveIdea, setIdeaTrashed } from "../lib/api.ts";
+import { takePendingIdea } from "../lib/draft.ts";
+import { compact, day } from "../lib/format.ts";
+import { keys, useIdeas, useSavedVideos, useVideos } from "../lib/hooks.ts";
+import { navigate } from "../lib/router.ts";
+import type { Idea, IdeaDraft, IdeaStatus } from "../lib/types.ts";
+
+const STATUSES: { key: IdeaStatus; label: string }[] = [
+  { key: "idea", label: "Ideas" },
+  { key: "scripting", label: "Scripting" },
+  { key: "filming", label: "Filming" },
+  { key: "editing", label: "Editing" },
+  { key: "scheduled", label: "Scheduled" },
+  { key: "published", label: "Published" },
+];
+const next = (status: IdeaStatus) => STATUSES[STATUSES.findIndex((s) => s.key === status) + 1] ?? null;
+
+const blank = (format: "long" | "short"): IdeaDraft => ({ title: "", format, status: "idea", priority: 2, title_options: [], discovery: null });
+
+export function Ideas() {
+  const ideas = useIdeas();
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const [filter, setFilter] = useState<"all" | "long" | "short">("all");
+  const [quick, setQuick] = useState("");
+  const [quickFormat, setQuickFormat] = useState<"long" | "short">("long");
+  const [editing, setEditing] = useState<IdeaDraft | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  // An idea started on another screen (research) opens straight in the editor.
+  useEffect(() => {
+    const pending = takePendingIdea();
+    if (pending) setEditing({ ...blank(pending.format ?? "long"), ...pending });
+  }, []);
+
+  const reload = () => queryClient.invalidateQueries({ queryKey: keys.ideas });
+  const list = useMemo(() => (ideas.data ?? []).filter((i) => filter === "all" || i.format === filter), [ideas.data, filter]);
+
+  const add = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!quick.trim()) return;
+    setBusy(true);
+    try {
+      await saveIdea({ ...blank(quickFormat), title: quick });
+      setQuick("");
+      await reload();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Could not add the idea.", { error: true });
+    }
+    setBusy(false);
+  };
+
+  const advance = async (idea: Idea) => {
+    const to = next(idea.status);
+    if (!to) return;
+    try {
+      await saveIdea({ id: idea.id, title: idea.title, status: to.key });
+      await reload();
+      toast(`Moved to ${to.label}.`, { action: { label: "Undo", run: () => void saveIdea({ id: idea.id, title: idea.title, status: idea.status }).then(reload) } });
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Could not move the idea.", { error: true });
+    }
+  };
+
+  if (ideas.isLoading) return <Loading label="Loading your ideas" />;
+  if (ideas.error) return <ErrorNote error={ideas.error} retry={() => void ideas.refetch()} />;
+
+  return (
+    <>
+      <div className="page-head">
+        <h1>Ideas</h1>
+        <Segmented
+          label="Format" value={filter} onChange={setFilter}
+          options={[{ value: "all", label: "All" }, { value: "long", label: "Long-form" }, { value: "short", label: "Shorts" }]}
+        />
+      </div>
+
+      <form className="quick-add" onSubmit={add} style={{ marginBottom: 22 }}>
+        <input className="input" value={quick} onChange={(e) => setQuick(e.target.value)} placeholder="A video you could make" aria-label="New idea title" maxLength={200} />
+        <Segmented
+          label="Format of the new idea" value={quickFormat} onChange={setQuickFormat}
+          options={[{ value: "long", label: "Long-form" }, { value: "short", label: "Short" }]}
+        />
+        <button type="submit" className="btn btn-primary" disabled={busy || !quick.trim()}><Icon name="plus" />Add idea</button>
+        <button type="button" className="btn" onClick={() => setEditing(blank(quickFormat))}>Write one out in full</button>
+      </form>
+
+      {(ideas.data ?? []).length === 0 ? (
+        <div className="panel">
+          <div className="empty">
+            <h3>No ideas yet</h3>
+            <p>Add one above, or go to Research and turn a video that broke out, or a search phrase worth chasing, into an idea.</p>
+            <p style={{ marginTop: 10 }}><a href="#/research">Open Research</a></p>
+          </div>
+        </div>
+      ) : (
+        <div className={`board${ideas.isFetching ? " fade" : ""}`}>
+          {STATUSES.map((status) => {
+            const cards = list.filter((i) => i.status === status.key).sort((a, b) => a.priority - b.priority || a.sort_order - b.sort_order);
+            return (
+              <section className="column" key={status.key} aria-label={status.label}>
+                <div className="column-head"><h3>{status.label}</h3><span className="n">{cards.length}</span></div>
+                {cards.map((idea) => {
+                  const to = next(idea.status);
+                  return (
+                    <div className="idea" key={idea.id} onClick={() => setEditing(idea)}>
+                      <button type="button" className="th-sort title" style={{ color: "var(--ink)", textAlign: "left" }} onClick={(e) => { e.stopPropagation(); setEditing(idea); }}>
+                        {idea.title}
+                      </button>
+                      {idea.hook ? <div className="hook clip2">{idea.hook}</div> : null}
+                      <div className="foot">
+                        <FormatTag format={idea.format} />
+                        {idea.discovery === "search" ? <span className="tag">For search{idea.target_keyword ? `: ${idea.target_keyword}` : ""}</span> : null}
+                        {idea.discovery === "recommended" ? <span className="tag">For the feed</span> : null}
+                        {idea.priority === 1 ? <span className="tag" style={{ borderColor: "var(--note-line)", background: "var(--note-bg)", color: "var(--note-ink)" }}>High priority</span> : null}
+                        {idea.target_date ? <span className="small muted">Due {day(idea.target_date)}</span> : null}
+                      </div>
+                      {to ? (
+                        <div className="idea-move">
+                          <button type="button" className="btn btn-quiet btn-small" style={{ paddingLeft: 0 }} onClick={(e) => { e.stopPropagation(); void advance(idea); }}>
+                            Move to {to.label}
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+                {cards.length === 0 ? <p className="small muted" style={{ padding: "2px 2px 10px" }}>Nothing here.</p> : null}
+              </section>
+            );
+          })}
+        </div>
+      )}
+
+      {editing ? <IdeaEditor draft={editing} onClose={() => setEditing(null)} onChanged={reload} onOpen={setEditing} /> : null}
+    </>
+  );
+}
+
+function IdeaEditor(props: { draft: IdeaDraft; onClose: () => void; onChanged: () => Promise<void>; onOpen: (draft: IdeaDraft) => void }) {
+  const toast = useToast();
+  const videos = useVideos();
+  const saved = useSavedVideos();
+  const [form, setForm] = useState<IdeaDraft>(props.draft);
+  const [dirty, setDirty] = useState(!props.draft.id && Boolean(props.draft.title));
+  const [saving, setSaving] = useState(false);
+  const set = <K extends keyof IdeaDraft>(key: K, value: IdeaDraft[K]) => {
+    setForm((f) => ({ ...f, [key]: value }));
+    setDirty(true);
+  };
+  const text = (key: "hook" | "concept" | "outline" | "thumbnail_concept" | "target_keyword" | "inspiration_url" | "notes") =>
+    ({ value: form[key] ?? "", onChange: (e: { target: { value: string } }) => set(key, e.target.value || null) });
+
+  const close = () => {
+    if (!dirty || window.confirm("Close without saving your changes?")) props.onClose();
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await saveIdea({ ...form, title_options: (form.title_options ?? []).map((t) => t.trim()).filter(Boolean) });
+      await props.onChanged();
+      toast("Idea saved.");
+      props.onClose();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Could not save the idea.", { error: true });
+    }
+    setSaving(false);
+  };
+
+  const bin = async () => {
+    if (!form.id) return;
+    const id = form.id;
+    await setIdeaTrashed(id, true);
+    await props.onChanged();
+    props.onClose();
+    toast("Moved to the bin.", { action: { label: "Undo", run: () => void setIdeaTrashed(id, false).then(props.onChanged) } });
+  };
+
+  const title = form.title ?? "";
+  const bare = title.replace(/\s*#\S+/g, "").trim();
+  const hashtags = (title.match(/#\S+/g) ?? []).length;
+  const inspiration = saved.data?.find((v) => v.id === form.inspiration_video_id);
+  const options = form.title_options ?? [];
+
+  return (
+    <Drawer
+      title={form.id ? "Edit idea" : "New idea"} onClose={close}
+      footer={(
+        <>
+          <div className="row-wrap">
+            {form.id ? <button type="button" className="btn btn-danger" onClick={() => void bin()}>Move to bin</button> : null}
+            {form.id && form.format === "long" ? (
+              <button
+                type="button" className="btn"
+                onClick={() => props.onOpen({ ...blank("short"), title: `${title} (Short)`, parent_id: form.id, discovery: "recommended" })}
+              >
+                Make a Short from this
+              </button>
+            ) : null}
+          </div>
+          <button type="button" className="btn btn-primary" onClick={() => void save()} disabled={saving || !title.trim()}>
+            {saving ? "Saving" : "Save idea"}
+          </button>
+        </>
+      )}
+    >
+      <label className="field">
+        <span>Title</span>
+        <input className="input" value={title} onChange={(e) => set("title", e.target.value)} maxLength={200} autoFocus={!form.id} />
+        <small>
+          {bare.length} characters{bare.length > 70 ? ". YouTube cuts titles off after about 60 to 70, so the end may not show" : ""}
+          {hashtags > 3 ? `. ${hashtags} hashtags: only three are shown` : ""}.
+        </small>
+      </label>
+
+      <div className="field-row">
+        <div className="field">
+          <span>Format</span>
+          <Segmented label="Format" value={form.format ?? "long"} onChange={(v) => set("format", v)} options={[{ value: "long", label: "Long-form" }, { value: "short", label: "Short" }]} />
+        </div>
+        <label className="field">
+          <span>Stage</span>
+          <select className="select input" value={form.status ?? "idea"} onChange={(e) => set("status", e.target.value as IdeaStatus)}>
+            {STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+          </select>
+        </label>
+      </div>
+
+      <div className="field">
+        <span>Made for</span>
+        <Segmented
+          label="Made for" value={form.discovery ?? "none"} onChange={(v) => set("discovery", v === "none" ? null : v)}
+          options={[{ value: "none", label: "Not decided" }, { value: "recommended", label: "The feed" }, { value: "search", label: "Search" }]}
+        />
+        <small>
+          {form.discovery === "search"
+            ? "People typing a phrase into YouTube. The title has to match what they type."
+            : form.discovery === "recommended"
+              ? "The home page, suggested videos and the Shorts feed. It lives or dies on the hook and the thumbnail."
+              : "Is this one meant to be recommended by YouTube, or found by people searching?"}
+        </small>
+      </div>
+
+      {form.discovery === "search" ? (
+        <label className="field">
+          <span>Search phrase to rank for</span>
+          <input className="input" {...text("target_keyword")} placeholder="elden ring challenge run" maxLength={80} />
+          <small>
+            {form.target_keyword
+              ? <a href={`#/research/keywords?q=${encodeURIComponent(form.target_keyword)}`} onClick={(e) => { if (dirty && !window.confirm("Leave without saving your changes?")) e.preventDefault(); }}>Check this phrase in Research</a>
+              : "Use the words someone would actually type."}
+          </small>
+        </label>
+      ) : null}
+
+      <label className="field">
+        <span>Hook</span>
+        <textarea className="textarea" style={{ minHeight: 60 }} {...text("hook")} placeholder="The first line, or the first five seconds" />
+      </label>
+      <label className="field">
+        <span>What happens</span>
+        <textarea className="textarea" {...text("concept")} placeholder="The challenge, the stakes, how it ends" />
+      </label>
+      <label className="field">
+        <span>Outline or script notes</span>
+        <textarea className="textarea" style={{ minHeight: 140 }} {...text("outline")} />
+      </label>
+      {form.format !== "short" ? (
+        <label className="field">
+          <span>Thumbnail idea</span>
+          <input className="input" {...text("thumbnail_concept")} placeholder="What the picture shows, and the two or three words on it" />
+        </label>
+      ) : null}
+
+      <div className="field">
+        <span>Other titles to try</span>
+        {options.map((option, i) => (
+          <div className="row" key={i}>
+            <input className="input" value={option} aria-label={`Other title ${i + 1}`} onChange={(e) => set("title_options", options.map((o, j) => (j === i ? e.target.value : o)))} />
+            <button type="button" className="btn btn-quiet btn-small" aria-label={`Remove other title ${i + 1}`} onClick={() => set("title_options", options.filter((_, j) => j !== i))}><Icon name="close" /></button>
+          </div>
+        ))}
+        {options.length < 5 ? <div><button type="button" className="btn btn-small" onClick={() => set("title_options", [...options, ""])}><Icon name="plus" />Add a title</button></div> : null}
+      </div>
+
+      <div className="field-row">
+        <label className="field">
+          <span>Aim to post by</span>
+          <input className="input" type="date" value={form.target_date ?? ""} onChange={(e) => set("target_date", e.target.value || null)} />
+        </label>
+        <label className="field">
+          <span>Priority</span>
+          <select className="select input" value={form.priority ?? 2} onChange={(e) => set("priority", Number(e.target.value))}>
+            <option value={1}>High</option>
+            <option value={2}>Normal</option>
+            <option value={3}>Low</option>
+          </select>
+        </label>
+      </div>
+
+      {inspiration ? (
+        <div className="notice plain" style={{ margin: 0 }}>
+          <Mult value={inspiration.outlier_score} />
+          <span className="grow small">
+            Inspired by "{inspiration.title}" from {inspiration.channel_title}, {compact(inspiration.views)} views.
+          </span>
+        </div>
+      ) : null}
+      <label className="field">
+        <span>Inspiration link</span>
+        <input className="input" type="url" {...text("inspiration_url")} placeholder="https://www.youtube.com/watch?v=" />
+      </label>
+
+      {form.status === "published" ? (
+        <label className="field">
+          <span>Which upload did it become?</span>
+          <select className="select input" style={{ width: "100%" }} value={form.video_id ?? ""} onChange={(e) => set("video_id", e.target.value || null)}>
+            <option value="">Not linked</option>
+            {(videos.data ?? []).slice(0, 60).map((v) => <option key={v.id} value={v.id}>{v.title}</option>)}
+          </select>
+          {form.video_id ? <small><a href={`#/videos?v=${form.video_id}`} onClick={(e) => { e.preventDefault(); if (!dirty || window.confirm("Leave without saving your changes?")) navigate(`/videos?v=${form.video_id}`); }}>See how it did</a></small> : null}
+        </label>
+      ) : null}
+
+      <label className="field">
+        <span>Notes</span>
+        <textarea className="textarea" {...text("notes")} />
+      </label>
+    </Drawer>
+  );
+}
