@@ -125,7 +125,27 @@ async function callApi<T>(path: string, body: unknown = {}): Promise<T> {
   return data as T;
 }
 
-export const startGoogleSignIn = () => callApi<{ url: string }>("/auth/start", { return_to: window.location.origin });
+const VERIFIER_KEY = "yt-google-verifier";
+const hex = (bytes: Uint8Array) => Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+
+/**
+ * Starts Google sign-in. A secret stays in this browser and only its hash is
+ * sent, so the sign-in can only be finished from here, never from a link
+ * someone else started.
+ */
+export async function startGoogleSignIn(): Promise<{ url: string }> {
+  const verifier = hex(crypto.getRandomValues(new Uint8Array(32)));
+  const challenge = hex(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
+  localStorage.setItem(VERIFIER_KEY, verifier);
+  return callApi<{ url: string }>("/auth/start", { return_to: window.location.origin, challenge });
+}
+
+/** Google sent the browser back with a one-time grant: prove this is the browser that asked. */
+export async function finishGoogleSignIn(grant: string): Promise<void> {
+  const verifier = localStorage.getItem(VERIFIER_KEY) ?? "";
+  localStorage.removeItem(VERIFIER_KEY);
+  await callApi("/auth/finish", { grant, verifier, device: describeDevice() });
+}
 export const saveGoogleClient = (client_id: string, client_secret: string) =>
   callApi<{ ok: true; redirect_uri: string }>("/auth/setup", { client_id, client_secret });
 export const disconnectYouTube = () => callApi<{ ok: true }>("/auth/disconnect");

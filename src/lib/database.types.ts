@@ -310,22 +310,34 @@ export type Database = {
           state: string;
           user_id: string;
           return_to: string | null;
+          challenge: string;
+          grant_hash: string | null;
           created_at: string;
           used_at: string | null;
+          granted_at: string | null;
+          finished_at: string | null;
         };
         Insert: {
           state: string;
           user_id: string;
           return_to?: string | null;
+          challenge: string;
+          grant_hash?: string | null;
           created_at?: string;
           used_at?: string | null;
+          granted_at?: string | null;
+          finished_at?: string | null;
         };
         Update: {
           state?: string;
           user_id?: string;
           return_to?: string | null;
+          challenge?: string;
+          grant_hash?: string | null;
           created_at?: string;
           used_at?: string | null;
+          granted_at?: string | null;
+          finished_at?: string | null;
         };
         Relationships: [];
       };

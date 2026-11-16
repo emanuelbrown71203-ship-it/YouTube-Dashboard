@@ -6,7 +6,7 @@ import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createMockGoogle, MY_CHANNEL_ID, type MockOptions } from "../dev/mock-youtube.ts";
 import { resetDatabase } from "../dev/reset-db.ts";
-import { handle, postgresTypes } from "../supabase/functions/yt-api/app.ts";
+import { handle, postgresTypes, sha256Hex } from "../supabase/functions/yt-api/app.ts";
 import type { Deps } from "../supabase/functions/yt-api/google.ts";
 
 const OWNER = "11111111-1111-4111-8111-111111111111";
@@ -65,6 +65,8 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     return { deps, mock, background, call };
   }
 
+  const startBody = async (secret: string, returnTo = APP) => ({ return_to: returnTo, challenge: await sha256Hex(secret) });
+
   beforeAll(async () => {
     sql = postgres(dbUrl!, { max: 4, prepare: false, types: postgresTypes, onnotice: () => {} });
     await sql`insert into public.yt_owners (user_id, method) values (${OWNER}, 'access_code')`;
@@ -112,12 +114,14 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     expect(ok.data).toEqual({ ok: true, redirect_uri: `${BASE}/auth/callback` });
   });
 
-  it("only starts sign-in for web addresses on the allowed list", async () => {
+  it("only starts sign-in for web addresses on the allowed list, from a browser holding a secret", async () => {
     const { call } = setup();
-    const evil = await call("POST", "/auth/start", { user: NEWCOMER, body: { return_to: "https://evil.example/app" } });
+    const evil = await call("POST", "/auth/start", { user: NEWCOMER, body: await startBody("s", "https://evil.example/app") });
     expect(evil.status).toBe(400);
     expect(evil.data.code).toBe("origin_not_allowed");
-    const ok = await call("POST", "/auth/start", { user: NEWCOMER, body: { return_to: `${APP}/#/settings` } });
+    expect((await call("POST", "/auth/start", { user: NEWCOMER, body: { return_to: APP } })).status).toBe(400);
+    expect((await call("POST", "/auth/start", { user: NEWCOMER, body: { return_to: APP, challenge: "short" } })).status).toBe(400);
+    const ok = await call("POST", "/auth/start", { user: NEWCOMER, body: await startBody("s", `${APP}/#/settings`) });
     const url = new URL(ok.data.url);
     expect(url.origin + url.pathname).toBe("https://accounts.google.com/o/oauth2/v2/auth");
     expect(url.searchParams.get("redirect_uri")).toBe(`${BASE}/auth/callback`);
@@ -129,7 +133,7 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
   it("turns away a Google account that owns a different channel", async () => {
     const other = setup();
     const impostor = setup({ signedInChannelId: other.mock.universe[3].id });
-    const start = await impostor.call("POST", "/auth/start", { user: STRANGER, body: { return_to: APP } });
+    const start = await impostor.call("POST", "/auth/start", { user: STRANGER, body: await startBody("impostor") });
     const state = new URL(start.data.url).searchParams.get("state");
     const res = await impostor.call("GET", `/auth/callback?state=${state}&code=good-code`);
     expect(res.status).toBe(302);
@@ -142,29 +146,63 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
 
   it("requires both YouTube permissions to be ticked", async () => {
     const partial = setup({ grantedScopes: ["https://www.googleapis.com/auth/youtube.readonly"] });
-    const start = await partial.call("POST", "/auth/start", { user: STRANGER, body: { return_to: APP } });
+    const start = await partial.call("POST", "/auth/start", { user: STRANGER, body: await startBody("partial") });
     const state = new URL(start.data.url).searchParams.get("state");
     expect((await partial.call("GET", `/auth/callback?state=${state}&code=good-code`)).location).toContain("google=scopes");
   });
 
+  it("cannot be used to sign in a browser other than the one the owner is sitting at", async () => {
+    // A stranger starts a sign-in and tricks the real owner into approving it at Google.
+    const { call, background } = setup();
+    const start = await call("POST", "/auth/start", { user: STRANGER, body: await startBody("stranger-secret") });
+    const state = new URL(start.data.url).searchParams.get("state");
+    const res = await call("GET", `/auth/callback?state=${state}&code=good-code`);
+    const grant = new URL(res.location!.replace("/#/?", "/?")).searchParams.get("grant")!;
+    expect(grant).toMatch(/^[0-9a-f]{64}$/);
+
+    // Google approving is not enough: nobody is an owner yet.
+    const [afterGoogle] = await sql`select 1 as ok from public.yt_owners where user_id = ${STRANGER}`;
+    expect(afterGoogle).toBeUndefined();
+    // The grant lands in the owner's browser, which never had the stranger's secret...
+    expect((await call("POST", "/auth/finish", { user: NEWCOMER, body: { grant, verifier: "stranger-secret" } })).status).toBe(403);
+    expect((await call("POST", "/auth/finish", { user: NEWCOMER, body: { grant, verifier: "a-guess" } })).status).toBe(403);
+    // ...and the stranger has the secret but never sees the grant.
+    const guess = await call("POST", "/auth/finish", { user: STRANGER, body: { grant: "0".repeat(64), verifier: "stranger-secret" } });
+    expect(guess.status).toBe(403);
+    expect(guess.data.code).toBe("not_this_browser");
+    expect((await call("POST", "/auth/finish", { user: STRANGER, body: {} })).status).toBe(403);
+    expect((await call("POST", "/auth/finish", { body: { grant, verifier: "stranger-secret" } })).status).toBe(401);
+    const [{ n }] = await sql`select count(*)::int as n from public.yt_owners where method = 'google'`;
+    expect(n).toBe(0);
+    // The owner did approve, so the channel is now connected and syncing, but only for people already let in.
+    await background[0];
+    expect((await call("POST", "/research", { user: STRANGER, body: { action: "outliers", query: "elden ring" } })).status).toBe(403);
+    expect((await call("POST", "/sync", { user: STRANGER })).status).toBe(403);
+  });
+
   it("lets the channel owner in through Google, once per sign-in link, and runs the first sync", async () => {
     const { call, background } = setup();
-    const start = await call("POST", "/auth/start", { user: NEWCOMER, body: { return_to: APP } });
+    const start = await call("POST", "/auth/start", { user: NEWCOMER, body: await startBody("owner-secret") });
     const state = new URL(start.data.url).searchParams.get("state");
 
     const denied = setup();
-    const startDenied = await denied.call("POST", "/auth/start", { user: NEWCOMER, body: { return_to: APP } });
+    const startDenied = await denied.call("POST", "/auth/start", { user: NEWCOMER, body: await startBody("other") });
     const deniedState = new URL(startDenied.data.url).searchParams.get("state");
     expect((await denied.call("GET", `/auth/callback?state=${deniedState}&error=access_denied`)).location).toContain("google=denied");
 
     const res = await call("GET", `/auth/callback?state=${state}&code=good-code`);
     expect(res.status).toBe(302);
-    expect(res.location).toBe(`${APP}/#/?google=connected`);
+    expect(res.location).toMatch(new RegExp(`^${APP}/#/\\?google=verify&grant=[0-9a-f]{64}$`));
+    const grant = res.location!.split("grant=")[1];
     expect((await call("GET", `/auth/callback?state=${state}&code=good-code`)).status).toBe(400);
     expect((await call("GET", "/auth/callback?state=made-up&code=x")).status).toBe(400);
 
-    const [owner] = await sql`select method, revoked_at from public.yt_owners where user_id = ${NEWCOMER}`;
-    expect(owner).toMatchObject({ method: "google", revoked_at: null });
+    expect((await call("POST", "/auth/finish", { user: NEWCOMER, body: { grant, verifier: "wrong-secret" } })).status).toBe(403);
+    const finish = await call("POST", "/auth/finish", { user: NEWCOMER, body: { grant, verifier: "owner-secret", device: "Test phone" } });
+    expect(finish.data).toEqual({ ok: true });
+    expect((await call("POST", "/auth/finish", { user: NEWCOMER, body: { grant, verifier: "owner-secret" } })).status).toBe(403);
+    const [owner] = await sql`select method, device, revoked_at from public.yt_owners where user_id = ${NEWCOMER}`;
+    expect(owner).toMatchObject({ method: "google", device: "Test phone", revoked_at: null });
 
     expect(background).toHaveLength(1);
     await background[0];

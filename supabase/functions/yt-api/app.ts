@@ -4,6 +4,7 @@
 //   POST /auth/setup        owner saves the Google client id and secret
 //   POST /auth/start        any signed-in browser asks for the Google sign-in address
 //   GET  /auth/callback     Google sends the browser back here
+//   POST /auth/finish       the browser that started it proves itself and is let in
 //   POST /auth/disconnect   owner disconnects YouTube
 //   POST /sync              owner or the scheduler pulls fresh numbers
 //   POST /research          owner runs a research action
@@ -48,10 +49,16 @@ function sameText(a: string, b: string): boolean {
   return diff === 0;
 }
 
+const toHex = (bytes: Uint8Array) => Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+
 function randomHex(bytes: number): string {
   const buf = new Uint8Array(bytes);
   crypto.getRandomValues(buf);
-  return Array.from(buf, (b) => b.toString(16).padStart(2, "0")).join("");
+  return toHex(buf);
+}
+
+export async function sha256Hex(text: string): Promise<string> {
+  return toHex(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text))));
 }
 
 async function signedInUser(req: Request, deps: Deps): Promise<string> {
@@ -121,12 +128,18 @@ async function authStart(deps: Deps, userId: string, body: any) {
   if (!allowed.includes(origin)) {
     throw new HttpError(400, "origin_not_allowed", `Sign-in is not allowed from ${origin}.`);
   }
+  // The browser keeps a secret and sends only its hash. It has to show the secret
+  // again after Google, which proves the sign-in is finishing where it started.
+  const challenge = String(body.challenge ?? "");
+  if (!/^[0-9a-f]{64}$/.test(challenge)) throw new HttpError(400, "bad_request", "Reload the page and try again.");
   const [{ n }] = await sql`
     select count(*)::int as n from public.yt_oauth_states where created_at > now() - interval '10 minutes'`;
   if (n >= 30) throw new HttpError(429, "slow_down", "Too many sign-in attempts. Wait a few minutes and try again.");
 
   const state = randomHex(32);
-  await sql`insert into public.yt_oauth_states (state, user_id, return_to) values (${state}, ${userId}, ${origin})`;
+  await sql`
+    insert into public.yt_oauth_states (state, user_id, return_to, challenge)
+    values (${state}, ${userId}, ${origin}, ${challenge})`;
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   url.search = new URLSearchParams({
     client_id: cfg.google_client_id,
@@ -186,17 +199,42 @@ async function authCallback(url: URL, deps: Deps): Promise<Response> {
       google_connected_at: deps.now().toISOString(),
       google_error: "",
     });
+    // Google has confirmed the channel owner approved, but not which browser they are in.
+    // Hand back a one-time grant; only the browser holding the secret can turn it into access.
+    const grant = randomHex(32);
     await sql`
-      insert into public.yt_owners (user_id, method) values (${pending.user_id}, 'google')
-      on conflict (user_id) do update set revoked_at = null, method = 'google', last_seen_at = now()`;
+      update public.yt_oauth_states set grant_hash = ${await sha256Hex(grant)}, granted_at = now()
+       where state = ${state}`;
 
     const firstSync = runSync(deps, "connect").catch((err) => deps.log?.("first sync failed", String(err)));
     deps.background?.(firstSync);
-    return back("connected");
+    return back("verify", { grant });
   } catch (err) {
     deps.log?.("google callback failed", String(err), err instanceof HttpError ? err.detail : "");
     return back("error", { message: err instanceof HttpError ? err.message : "Something went wrong finishing the sign-in." });
   }
+}
+
+/** Last step of Google sign-in: the browser that started it proves itself and is let in. */
+// deno-lint-ignore no-explicit-any
+async function authFinish(deps: Deps, userId: string, body: any) {
+  const grant = String(body.grant ?? "");
+  const verifier = String(body.verifier ?? "");
+  const [done] = grant && verifier
+    ? await deps.sql`
+        update public.yt_oauth_states set finished_at = now()
+         where grant_hash = ${await sha256Hex(grant)} and challenge = ${await sha256Hex(verifier)}
+           and user_id = ${userId} and finished_at is null and granted_at > now() - interval '10 minutes'
+        returning state`
+    : [];
+  if (!done) {
+    throw new HttpError(403, "not_this_browser", "That sign-in was not started in this browser. Press Sign in with Google here to try again.");
+  }
+  await deps.sql`
+    insert into public.yt_owners (user_id, method, device) values (${userId}, 'google', ${String(body.device ?? "").slice(0, 160) || null})
+    on conflict (user_id) do update
+      set revoked_at = null, method = 'google', device = coalesce(excluded.device, public.yt_owners.device), last_seen_at = now()`;
+  return { ok: true };
 }
 
 async function authDisconnect(deps: Deps) {
@@ -231,6 +269,8 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
     switch (route) {
       case "/auth/start":
         return json(await authStart(deps, await signedInUser(req, deps), body));
+      case "/auth/finish":
+        return json(await authFinish(deps, await signedInUser(req, deps), body));
       case "/auth/setup":
         await requireOwner(req, deps);
         return json(await authSetup(deps, body));

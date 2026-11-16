@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon, Loading, useToast } from "./components/ui.tsx";
-import { ensureSession, whoami } from "./lib/api.ts";
+import { ensureSession, finishGoogleSignIn, whoami } from "./lib/api.ts";
 import { keys, useChannel, useSyncRuns } from "./lib/hooks.ts";
 import { navigate, useRoute } from "./lib/router.ts";
 import { Ideas } from "./pages/Ideas.tsx";
@@ -25,9 +25,18 @@ export function App() {
   const [error, setError] = useState("");
   const [google, setGoogle] = useState<GoogleResult | null>(null);
 
-  const check = useCallback(async () => {
+  const check = useCallback(async (grant: string | null = null) => {
     try {
       await ensureSession();
+      if (grant) {
+        // Back from Google: this browser shows the secret it kept, and is let in.
+        try {
+          await finishGoogleSignIn(grant);
+          setGoogle({ kind: "connected" });
+        } catch (err) {
+          setGoogle({ kind: "error", message: err instanceof Error ? err.message : undefined });
+        }
+      }
       setState((await whoami()).owner ? "in" : "gate");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not start.");
@@ -35,14 +44,20 @@ export function App() {
     }
   }, []);
 
+  const started = useRef(false);
   useEffect(() => {
-    void check();
+    if (started.current) return;
+    started.current = true;
+    const query = new URLSearchParams(window.location.hash.split("?")[1] ?? "");
+    const grant = query.get("google") === "verify" ? query.get("grant") : null;
+    if (grant) navigate("/", true); // take the one-time grant out of the address bar straight away
+    void check(grant);
   }, [check]);
 
   // Google sends the browser back with the outcome in the address; read it once and tidy up.
   useEffect(() => {
     const kind = route.query.get("google");
-    if (!kind) return;
+    if (!kind || kind === "verify") return;
     setGoogle({ kind, name: route.query.get("name") ?? undefined, message: route.query.get("message") ?? undefined });
     navigate(route.path, true);
   }, [route]);

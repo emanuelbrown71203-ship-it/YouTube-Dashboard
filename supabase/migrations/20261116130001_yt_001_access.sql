@@ -45,11 +45,16 @@ comment on table public.yt_private is
 create table public.yt_oauth_states (
   state      text primary key,
   user_id    uuid not null,
-  return_to  text,
-  created_at timestamptz not null default now(),
-  used_at    timestamptz
+  return_to   text,
+  challenge   text not null,
+  grant_hash  text,
+  created_at  timestamptz not null default now(),
+  used_at     timestamptz,
+  granted_at  timestamptz,
+  finished_at timestamptz
 );
-comment on table public.yt_oauth_states is 'Short-lived Google sign-in state values (server-only).';
+comment on table public.yt_oauth_states is
+  'Short-lived Google sign-in attempts (server-only). challenge is the hash of a secret that stays in the browser that started the attempt; Google''s answer is only honoured when that same browser comes back with the secret, so nobody can be signed in by a link someone else started.';
 
 create table public.yt_access_codes (
   code_hash  text primary key,
