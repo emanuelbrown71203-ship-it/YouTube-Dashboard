@@ -66,12 +66,13 @@ Deno somewhere outside the repository (`npm i deno` in a scratch folder
 works) and run:
 
 ```bash
-deno check supabase/functions/yt-api/index.ts
+# from a copy outside the repository, so Deno fetches the function's own packages
+cp -r supabase/functions/yt-api /tmp/yt-api-check && deno check /tmp/yt-api-check/index.ts
 
 SUPABASE_URL=http://localhost:54321 \
 SUPABASE_DB_URL=postgresql://ytdev:ytdev@localhost:5432/ytdash \
 SUPABASE_PUBLISHABLE_KEYS='{"default":"local"}' \
-  deno run -A supabase/functions/yt-api/index.ts
+  deno run -A /tmp/yt-api-check/index.ts
 ```
 
 With `npm run dev:local` running beside it, the function answers on

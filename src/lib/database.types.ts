@@ -149,6 +149,51 @@ export type Database = {
         };
         Relationships: [];
       };
+      yt_comments: {
+        Row: {
+          id: string;
+          video_id: string | null;
+          author: string | null;
+          text: string;
+          likes: number;
+          published_at: string | null;
+          sentiment: string | null;
+          theme: string | null;
+          is_question: boolean | null;
+          pinned: boolean;
+          hidden: boolean;
+          fetched_at: string;
+        };
+        Insert: {
+          id: string;
+          video_id?: string | null;
+          author?: string | null;
+          text: string;
+          likes?: number;
+          published_at?: string | null;
+          sentiment?: string | null;
+          theme?: string | null;
+          is_question?: boolean | null;
+          pinned?: boolean;
+          hidden?: boolean;
+          fetched_at?: string;
+        };
+        Update: {
+          id?: string;
+          video_id?: string | null;
+          author?: string | null;
+          text?: string;
+          likes?: number;
+          published_at?: string | null;
+          sentiment?: string | null;
+          theme?: string | null;
+          is_question?: boolean | null;
+          pinned?: boolean;
+          hidden?: boolean;
+          fetched_at?: string;
+        };
+        Relationships: [];
+      };
       yt_content_type_daily: {
         Row: {
           date: string;
@@ -173,6 +218,51 @@ export type Database = {
           engaged_views?: number | null;
           minutes_watched?: number | null;
           updated_at?: string;
+        };
+        Relationships: [];
+      };
+      yt_goals: {
+        Row: {
+          id: string;
+          kind: string;
+          title: string;
+          target: number | null;
+          start_value: number | null;
+          video_id: string | null;
+          due_on: string | null;
+          notes: string | null;
+          done_at: string | null;
+          created_at: string;
+          updated_at: string;
+          trashed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          kind: string;
+          title: string;
+          target?: number | null;
+          start_value?: number | null;
+          video_id?: string | null;
+          due_on?: string | null;
+          notes?: string | null;
+          done_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          trashed_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          kind?: string;
+          title?: string;
+          target?: number | null;
+          start_value?: number | null;
+          video_id?: string | null;
+          due_on?: string | null;
+          notes?: string | null;
+          done_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          trashed_at?: string | null;
         };
         Relationships: [];
       };
@@ -592,6 +682,10 @@ export type Database = {
           note: string | null;
           first_seen_at: string;
           fetched_at: string;
+          language: string | null;
+          description: string | null;
+          explanation: Json | null;
+          explained_at: string | null;
         };
         Insert: {
           id: string;
@@ -615,6 +709,10 @@ export type Database = {
           note?: string | null;
           first_seen_at?: string;
           fetched_at?: string;
+          language?: string | null;
+          description?: string | null;
+          explanation?: Json | null;
+          explained_at?: string | null;
         };
         Update: {
           id?: string;
@@ -638,6 +736,10 @@ export type Database = {
           note?: string | null;
           first_seen_at?: string;
           fetched_at?: string;
+          language?: string | null;
+          description?: string | null;
+          explanation?: Json | null;
+          explained_at?: string | null;
         };
         Relationships: [];
       };
@@ -671,6 +773,57 @@ export type Database = {
         };
         Relationships: [];
       };
+      yt_tests: {
+        Row: {
+          id: string;
+          video_id: string;
+          kind: string;
+          what: string;
+          why: string | null;
+          started_on: string;
+          ended_on: string | null;
+          ctr_before: number | null;
+          ctr_after: number | null;
+          verdict: string | null;
+          learned: string | null;
+          created_at: string;
+          updated_at: string;
+          trashed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          video_id: string;
+          kind?: string;
+          what: string;
+          why?: string | null;
+          started_on?: string;
+          ended_on?: string | null;
+          ctr_before?: number | null;
+          ctr_after?: number | null;
+          verdict?: string | null;
+          learned?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          trashed_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          video_id?: string;
+          kind?: string;
+          what?: string;
+          why?: string | null;
+          started_on?: string;
+          ended_on?: string | null;
+          ctr_before?: number | null;
+          ctr_after?: number | null;
+          verdict?: string | null;
+          learned?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          trashed_at?: string | null;
+        };
+        Relationships: [];
+      };
       yt_video_analytics_daily: {
         Row: {
           video_id: string;
@@ -695,6 +848,33 @@ export type Database = {
           engaged_views?: number | null;
           minutes_watched?: number | null;
           subs_gained?: number | null;
+        };
+        Relationships: [];
+      };
+      yt_video_changes: {
+        Row: {
+          id: number;
+          video_id: string;
+          field: string;
+          old_value: string | null;
+          new_value: string | null;
+          changed_at: string;
+        };
+        Insert: {
+          id?: number;
+          video_id: string;
+          field: string;
+          old_value?: string | null;
+          new_value?: string | null;
+          changed_at?: string;
+        };
+        Update: {
+          id?: number;
+          video_id?: string;
+          field?: string;
+          old_value?: string | null;
+          new_value?: string | null;
+          changed_at?: string;
         };
         Relationships: [];
       };
@@ -751,6 +931,10 @@ export type Database = {
           created_at: string;
           updated_at: string;
           estimated_revenue: number | null;
+          topic: string | null;
+          topic_source: string | null;
+          feeders: Json | null;
+          feeders_updated_at: string | null;
         };
         Insert: {
           id: string;
@@ -780,6 +964,10 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           estimated_revenue?: number | null;
+          topic?: string | null;
+          topic_source?: string | null;
+          feeders?: Json | null;
+          feeders_updated_at?: string | null;
         };
         Update: {
           id?: string;
@@ -809,6 +997,10 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           estimated_revenue?: number | null;
+          topic?: string | null;
+          topic_source?: string | null;
+          feeders?: Json | null;
+          feeders_updated_at?: string | null;
         };
         Relationships: [];
       };
@@ -888,6 +1080,8 @@ export type Database = {
           stats_updated_at: string | null;
           estimated_revenue: number | null;
           revenue_per_1000_views: number | null;
+          topic: string | null;
+          feeders: Json | null;
         };
         Relationships: [];
       };
@@ -908,6 +1102,10 @@ export type Database = {
       yt_is_owner: {
         Args: Record<PropertyKey, never>;
         Returns: boolean;
+      };
+      yt_mark_comment: {
+        Args: { p_comment_id: string; p_pinned: boolean; p_hidden: boolean };
+        Returns: undefined;
       };
       yt_public_status: {
         Args: Record<PropertyKey, never>;
@@ -931,6 +1129,10 @@ export type Database = {
       };
       yt_save_research_video: {
         Args: { p_video_id: string; p_saved: boolean; p_note?: string | null };
+        Returns: undefined;
+      };
+      yt_set_video_topic: {
+        Args: { p_video_id: string; p_topic: string };
         Returns: undefined;
       };
       yt_set_video_type: {

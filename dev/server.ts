@@ -203,6 +203,35 @@ const deps: Deps = {
   functionUrl: `${ORIGIN}/functions/v1/yt-api`,
   verifyUser: async (token) => readToken(token)?.sub ?? null,
   log: (...args) => console.log("[yt-api]", ...args),
+  // A stand-in for the AI: it answers in the right shape without thinking.
+  claude: async (_key, req) => {
+    const props = (req.schema.properties ?? {}) as Record<string, unknown>;
+    if (props.videos) {
+      const list = JSON.parse(req.prompt.slice(req.prompt.indexOf("Videos:") + 7)) as { id: string; title: string }[];
+      const games = ["Elden Ring", "Baldur's Gate 3", "Cuphead", "Dark Souls 3"];
+      return { videos: list.map((v) => ({ id: v.id, topic: games.find((g) => v.title.toLowerCase().includes(g.toLowerCase().split(" ")[0])) ?? null })) };
+    }
+    if (props.comments) {
+      const list = JSON.parse(req.prompt) as { id: string; text: string }[];
+      return {
+        comments: list.map((c) => {
+          const negative = /quiet|not your best/i.test(c.text);
+          const question = /\?|please|can you/i.test(c.text);
+          return {
+            id: c.id, sentiment: negative ? "negative" : question ? "neutral" : "positive", is_question: question,
+            theme: negative ? "Feedback on quality" : /more|next|try/i.test(c.text) ? "Wants more challenge runs" : question ? "Asks how it was made" : "Enjoyed the video",
+          };
+        }),
+      };
+    }
+    return {
+      title_en: "(made-up) The same title in English",
+      what_happens: "A made-up description for local testing: the creator attempts a challenge run and narrates each failure.",
+      why_it_worked: "A clear one-line premise in the title and a thumbnail that shows the stakes.",
+      your_version: "Try the same restriction in a game your viewers already watch you play.",
+      confidence: "medium",
+    };
+  },
 };
 
 async function functions(req: Request, url: URL): Promise<Response> {

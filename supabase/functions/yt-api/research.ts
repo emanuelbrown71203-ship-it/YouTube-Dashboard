@@ -2,13 +2,14 @@
 // the list of channels to watch. Public YouTube data only.
 
 import {
-  type Api, closeApi, DAILY_BUDGET, type Deps, ensureBudget, fetchChannels, fetchPlaylistIds, fetchVideos,
+  type Api, closeApi, DAILY_BUDGET, type Deps, ensureBudget, fetchChannels, fetchPlaylistIds, fetchVideos, getConfig,
   HttpError, mapLimit, openApi, playlistFor, searchChannelIds, searchVideoIds, SEARCH_COST, type Sql,
 } from "./google.ts";
 import {
   ageDays, analyzeKeyword, isEnglish, normalizeKeyword, type OutlierItem, type PublicChannel, type PublicVideo,
   type RecentUpload, scoreOutlier, sortOutliers, typicalViews,
 } from "./scoring.ts";
+import { explainVideo } from "./growth.ts";
 
 const BASELINE_SIZE = 30;
 const BASELINE_TTL_MS = 7 * 86_400_000;
@@ -282,9 +283,7 @@ async function findOutliers(api: Api, params: OutlierParams) {
   const ids = [...new Set(pages.flatMap((p) => p.ids))];
   const videos = ids.length ? await fetchVideos(api, ids) : [];
   const hiddenLive = videos.filter((v) => v.is_live).length;
-  const english = videos.filter((v) => v.is_live || isEnglish(v));
-  const notEnglish = videos.length - english.length;
-  const rightLength = english.filter((v) =>
+  const rightLength = videos.filter((v) =>
     !v.is_live && (params.format === "short" ? v.duration_s > 0 && v.duration_s <= 180 : v.duration_s > 180));
   const belowMinViews = rightLength.filter((v) => v.views < params.min_views).length;
   let candidates = rightLength.filter((v) => v.views >= params.min_views).sort((a, b) => b.views - a.views);
@@ -345,14 +344,16 @@ async function findOutliers(api: Api, params: OutlierParams) {
     : [];
   // deno-lint-ignore no-explicit-any
   const savedIds = new Set((savedRows as any[]).map((r) => r.id));
-  const items: (OutlierItem & { saved: boolean })[] = scored.map((s) => ({ ...s, saved: savedIds.has(s.video_id) }));
+  const languageOf = new Map(candidates.map((v) => [v.id, v]));
+  const items: (OutlierItem & { saved: boolean; english: boolean })[] = scored.map((s) => ({
+    ...s, saved: savedIds.has(s.video_id), english: isEnglish(languageOf.get(s.video_id) ?? { title: s.title }),
+  }));
 
   const units = api.units;
   const summary = {
     searched: videos.length,
     shown: items.length,
     hidden_live: hiddenLive,
-    not_english: notEnglish,
     below_min_views: belowMinViews,
     channels_too_big: tooBig,
     channels: keepChannels.length,
@@ -474,7 +475,7 @@ async function keyword(api: Api, input: unknown) {
 export async function research(deps: Deps, body: any): Promise<unknown> {
   const action = String(body?.action ?? "");
   if (action === "suggest") return suggest(deps, body.seed);
-  if (!["outliers", "keyword", "channel_lookup", "channel_watch", "channel_refresh"].includes(action)) {
+  if (!["outliers", "keyword", "channel_lookup", "channel_watch", "channel_refresh", "explain"].includes(action)) {
     throw new HttpError(400, "bad_request", "Unknown research action.");
   }
   const api = await openApi(deps);
@@ -488,6 +489,11 @@ export async function research(deps: Deps, body: any): Promise<unknown> {
         return await channelLookup(api, String(body.input ?? ""));
       case "channel_watch":
         return await channelWatch(api, String(body.channel_id ?? ""));
+      case "explain": {
+        const { google_scopes } = await getConfig(deps.sql, ["google_scopes"]);
+        const out = await explainVideo(api, String(body.video_id ?? ""), google_scopes ?? "");
+        return { ...out, quota: { used_today: await closeApi(api), daily_budget: DAILY_BUDGET } };
+      }
       default:
         return await channelRefresh(api, String(body.channel_id ?? ""));
     }

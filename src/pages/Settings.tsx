@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { CopyLine, ErrorNote, Loading, Segmented, useTheme, useToast } from "../components/ui.tsx";
 import {
-  createAccessCode, currentUserId, disconnectYouTube, getBriefing, saveGoogleClient, signOut, startGoogleSignIn, syncNow,
+  createAccessCode, currentUserId, disconnectYouTube, getBriefing, saveAiKey, saveGoogleClient, signOut, startGoogleSignIn, syncNow,
 } from "../lib/api.ts";
 import { ago, day } from "../lib/format.ts";
 import { keys, useConnection, useOwners, useSyncRuns } from "../lib/hooks.ts";
@@ -89,7 +89,9 @@ export function Settings({ onSignedOut }: { onSignedOut: () => void }) {
               <p><strong>Almost there.</strong> <span className="soft">Sign in with the Google account that runs your channel.</span></p>
               <p className="soft small" style={{ maxWidth: "70ch" }}>
                 Google will warn that the app is not verified. That is normal for an app only you use: choose Advanced, then continue.
-                Leave both YouTube boxes ticked. The dashboard can only read; it can never post, edit or remove anything.
+                Leave every box ticked. Two are needed for your stats; one adds estimated earnings and one adds comments.
+                Google words the comments one as managing your account, because it has no read-only version, but the dashboard only ever reads:
+                it never posts, edits or removes anything. Untick it if you would rather not, and comments simply stay off.
               </p>
               <div className="row-wrap">
                 <button type="button" className="btn btn-primary" disabled={busy !== null} onClick={() => void run("google", async () => { window.location.assign((await startGoogleSignIn()).url); })}>
@@ -153,6 +155,19 @@ export function Settings({ onSignedOut }: { onSignedOut: () => void }) {
               </button>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="section-head"><h2>Extras</h2></div>
+        <div className="panel panel-pad stack">
+          {c.youtube_connected ? (
+            <p className="soft" style={{ maxWidth: "70ch" }}>
+              Estimated earnings are <strong>{c.earnings ? "on" : "off"}</strong> and comments are <strong>{c.comments ? "on" : "off"}</strong>.
+              {c.earnings && c.comments ? "" : " To switch one on, press Disconnect above, then sign in with Google again and leave every box ticked."}
+            </p>
+          ) : null}
+          <AiKey on={Boolean(c.ai)} error={c.ai_error ?? null} onChanged={() => void queryClient.invalidateQueries({ queryKey: keys.connection })} />
         </div>
       </section>
 
@@ -294,5 +309,46 @@ function ConnectSteps({ clientId, onSaved, onCancel }: { clientId: string | null
         </li>
       </ol>
     </div>
+  );
+}
+
+/** The key that lets an AI read text for the owner: outlier descriptions, comment themes, the game each video is about. */
+function AiKey(props: { on: boolean; error: string | null; onChanged: () => void }) {
+  const toast = useToast();
+  const [key, setKey] = useState("");
+  const [saving, setSaving] = useState(false);
+  const save = async (value: string) => {
+    setSaving(true);
+    try {
+      await saveAiKey(value);
+      setKey("");
+      props.onChanged();
+      toast(value ? "Saved. The AI helper is on." : "Removed. The AI helper is off.");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "That did not save. Try again.", { error: true });
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <form className="stack" onSubmit={(e) => { e.preventDefault(); void save(key.trim()); }}>
+      <h3>AI helper</h3>
+      <p className="soft" style={{ maxWidth: "70ch" }}>
+        {props.on ? "The AI helper is on. " : ""}
+        With a Claude API key, the dashboard can describe in plain English what happens in any outlier video, sort your comments into themes,
+        and work out which game each of your videos is about. The key comes from <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">Anthropic's console</a>,
+        which is a separate paid account from the Claude app: you add a few dollars of credit there and it is used a little at a time.
+      </p>
+      {props.error ? <div className="notice error" role="alert" style={{ margin: 0 }}>{props.error}</div> : null}
+      <label className="field">
+        <span>{props.on ? "Replace the key" : "Claude API key"}</span>
+        <input className="input" type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder="sk-ant-" autoComplete="off" spellCheck={false} />
+        <small>Stored on the server and never shown again. Paste it here, never into a chat.</small>
+      </label>
+      <div className="row-wrap">
+        <button type="submit" className="btn btn-primary" disabled={saving || !key.trim()}>{saving ? "Saving" : "Save key"}</button>
+        {props.on ? <button type="button" className="btn btn-danger" disabled={saving} onClick={() => { if (window.confirm("Remove the key? Descriptions and comment themes stop until you add one again.")) void save(""); }}>Remove key</button> : null}
+      </div>
+    </form>
   );
 }

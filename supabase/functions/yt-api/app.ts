@@ -6,6 +6,7 @@
 //   GET  /auth/callback     Google sends the browser back here
 //   POST /auth/finish       the browser that started it proves itself and is let in
 //   POST /auth/disconnect   owner disconnects YouTube
+//   POST /ai/setup          owner saves the key for the AI
 //   POST /sync              owner or the scheduler pulls fresh numbers
 //   POST /research          owner runs a research action
 //
@@ -13,7 +14,7 @@
 // redirect and the scheduler carry no JWT; every route checks its caller here.
 
 import {
-  type Api, closeApi, type Deps, EARNINGS_SCOPE, exchangeToken, fetchChannels, getConfig, HttpError, SCOPES, setConfig,
+  type Api, closeApi, COMMENTS_SCOPE, type Deps, EARNINGS_SCOPE, exchangeToken, fetchChannels, getConfig, HttpError, SCOPES, setConfig,
 } from "./google.ts";
 import { research } from "./research.ts";
 import { runSync } from "./sync.ts";
@@ -145,7 +146,7 @@ async function authStart(deps: Deps, userId: string, body: any) {
     client_id: cfg.google_client_id,
     redirect_uri: redirectUri(deps),
     response_type: "code",
-    scope: [...SCOPES, EARNINGS_SCOPE].join(" "),
+    scope: [...SCOPES, EARNINGS_SCOPE, ...(body.comments === false ? [] : [COMMENTS_SCOPE])].join(" "),
     access_type: "offline",
     prompt: "consent",
     include_granted_scopes: "true",
@@ -238,6 +239,17 @@ async function authFinish(deps: Deps, userId: string, body: any) {
   return { ok: true };
 }
 
+/** The owner saves (or, with an empty box, removes) the key that lets the AI read text for them. */
+// deno-lint-ignore no-explicit-any
+async function aiSetup(deps: Deps, body: any) {
+  const key = String(body.api_key ?? "").trim();
+  if (key && (!/^sk-ant-[\w-]{20,}$/.test(key) || key.startsWith("sk-ant-admin"))) {
+    throw new HttpError(400, "bad_ai_key", "That does not look like a Claude API key. It starts with sk-ant-");
+  }
+  await setConfig(deps.sql, { anthropic_api_key: key, ai_error: "" });
+  return { ok: true, ai: Boolean(key) };
+}
+
 async function authDisconnect(deps: Deps) {
   const cfg = await getConfig(deps.sql, ["google_refresh_token"]);
   if (cfg.google_refresh_token) {
@@ -275,6 +287,9 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
       case "/auth/setup":
         await requireOwner(req, deps);
         return json(await authSetup(deps, body));
+      case "/ai/setup":
+        await requireOwner(req, deps);
+        return json(await aiSetup(deps, body));
       case "/auth/disconnect":
         await requireOwner(req, deps);
         return json(await authDisconnect(deps));

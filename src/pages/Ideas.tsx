@@ -1,11 +1,12 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { IDEA_TABS, Tabs } from "./Growth.tsx";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { Drawer, ErrorNote, FormatTag, Icon, Loading, Mult, Segmented, useToast } from "../components/ui.tsx";
 import { saveIdea, setIdeaTrashed } from "../lib/api.ts";
 import { takePendingIdea } from "../lib/draft.ts";
 import { compact, day } from "../lib/format.ts";
 import { keys, useIdeas, useSavedVideos, useVideos } from "../lib/hooks.ts";
-import { navigate } from "../lib/router.ts";
+import { navigate, useRoute } from "../lib/router.ts";
 import type { Idea, IdeaDraft, IdeaStatus } from "../lib/types.ts";
 
 const STATUSES: { key: IdeaStatus; label: string }[] = [
@@ -41,6 +42,17 @@ export function Ideas() {
     const pending = takePendingIdea();
     if (pending) setEditing({ ...blank(pending.format ?? "long"), ...pending });
   }, []);
+
+  // The planner links straight to an idea.
+  const route = useRoute();
+  const editId = route.query.get("edit");
+  useEffect(() => {
+    const idea = editId ? ideas.data?.find((i) => i.id === editId) : undefined;
+    if (!idea) return;
+    setEditing(idea);
+    navigate("/ideas", true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editId, ideas.data]);
 
   const reload = () => queryClient.invalidateQueries({ queryKey: keys.ideas });
   const list = useMemo(() => (ideas.data ?? []).filter((i) => filter === "all" || i.format === filter), [ideas.data, filter]);
@@ -83,6 +95,7 @@ export function Ideas() {
           options={[{ value: "all", label: "All" }, { value: "long", label: "Long-form" }, { value: "short", label: "Shorts" }]}
         />
       </div>
+      <Tabs label="Ideas" base="/ideas" current="" tabs={IDEA_TABS} />
 
       <form className="quick-add" onSubmit={add} style={{ marginBottom: 22 }}>
         <input className="input" value={quick} onChange={(e) => setQuick(e.target.value)} placeholder="A video you could make" aria-label="New idea title" maxLength={200} />

@@ -74,6 +74,8 @@ export interface Video {
   traffic: Traffic | null;
   estimated_revenue: number | null;
   revenue_per_1000_views: number | null;
+  topic: string | null;
+  feeders: { video_id: string; views: number }[] | null;
 }
 
 export interface MyFormat {
@@ -143,6 +145,10 @@ export interface Connection {
   connected_at: string | null;
   connection_error: string | null;
   owner_channel_id: string | null;
+  earnings?: boolean;
+  comments?: boolean;
+  ai?: boolean;
+  ai_error?: string | null;
 }
 
 export interface OwnerRow {
@@ -159,7 +165,7 @@ export interface Quota {
   daily_budget: number;
 }
 
-export type OutlierResult = OutlierItem & { saved: boolean };
+export type OutlierResult = OutlierItem & { saved: boolean; english?: boolean };
 
 export interface OutlierSearch {
   query: string;
@@ -174,7 +180,7 @@ export interface OutlierResponse {
   run_id: string;
   items: OutlierResult[];
   next_page_token: string | null;
-  summary: { searched: number; shown: number; hidden_live: number; not_english?: number; below_min_views: number; channels_too_big: number; channels: number; units: number };
+  summary: { searched: number; shown: number; hidden_live: number; below_min_views: number; channels_too_big: number; channels: number; units: number };
   quota: Quota;
 }
 

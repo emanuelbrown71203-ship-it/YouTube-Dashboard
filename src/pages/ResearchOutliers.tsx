@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { type Explanation, explainVideo } from "../lib/api.ts";
 import { type FormEvent, useMemo, useState } from "react";
 import { ErrorNote, Icon, Mult, Segmented, Thumb, useToast } from "../components/ui.tsx";
 import { findOutliers, saveResearchVideo, watchChannel } from "../lib/api.ts";
@@ -57,6 +58,18 @@ export function ResearchOutliers({ connected }: { connected: boolean }) {
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (search.query.trim().length >= 2) void run({ ...search, query: search.query.trim() });
+  };
+
+  const [explained, setExplained] = useState<Record<string, Explanation | "loading">>({});
+  const explain = async (id: string) => {
+    setExplained((m) => ({ ...m, [id]: "loading" }));
+    try {
+      const out = await explainVideo(id);
+      setExplained((m) => ({ ...m, [id]: out.explanation }));
+    } catch (err) {
+      setExplained((m) => { const { [id]: _gone, ...rest } = m; return rest; });
+      toast(err instanceof Error ? err.message : "That did not work. Try again.", { error: true });
+    }
   };
 
   const toggleSaved = async (item: { video_id: string; saved: boolean }) => {
@@ -204,7 +217,6 @@ export function ResearchOutliers({ connected }: { connected: boolean }) {
               {result.summary.below_min_views ? ` Left out: ${count(result.summary.below_min_views, "video")} under ${whole(result.search.min_views)} views.` : ""}
               {result.summary.channels_too_big ? ` ${count(result.summary.channels_too_big, "video")} from bigger channels.` : ""}
               {result.summary.hidden_live ? ` ${count(result.summary.hidden_live, "live stream")}.` : ""}
-              {result.summary.not_english ? ` ${count(result.summary.not_english, "video")} not in English.` : ""}
             </p>
           ) : null}
 
@@ -228,12 +240,34 @@ export function ResearchOutliers({ connected }: { connected: boolean }) {
                           <Icon name="bookmark" filled={item.saved} />{item.saved ? "Saved" : "Save"}
                         </button>
                         <button type="button" className="btn btn-small" onClick={() => makeIdea(item, result.search.mode)}>Make it an idea</button>
+                        {explained[item.video_id] && explained[item.video_id] !== "loading" ? null : (
+                          <button type="button" className="btn btn-small" disabled={explained[item.video_id] === "loading"} onClick={() => void explain(item.video_id)}>
+                            {explained[item.video_id] === "loading" ? "Reading it" : "What happens in it?"}
+                          </button>
+                        )}
+                        {item.english === false ? <span className="tag">Not in English</span> : null}
                         {item.channel_id === channel.data?.id
                           ? <span className="tag">Your video</span>
                           : watchedIds.has(item.channel_id)
                             ? <span className="small muted">Watching this channel</span>
                             : <button type="button" className="btn btn-quiet btn-small" onClick={() => void watch(item)}>Watch channel</button>}
                       </div>
+                      {(() => {
+                        const e = explained[item.video_id];
+                        if (!e || e === "loading") return null;
+                        return (
+                          <div className="stack small" style={{ marginTop: 10, gap: 6, maxWidth: "62ch" }}>
+                            {e.title_en && e.title_en.trim().toLowerCase() !== item.title.trim().toLowerCase() ? <div><span className="muted">In English:</span> {e.title_en}</div> : null}
+                            <div><span className="muted">What happens:</span> {e.what_happens}</div>
+                            <div><span className="muted">Why it worked:</span> {e.why_it_worked}</div>
+                            <div><span className="muted">Your version:</span> {e.your_version}</div>
+                            <div className="muted">
+                              Written by AI from the title, description and comments. It has not watched the video.
+                              {e.confidence === "low" ? " The text said little, so treat this one as a guess." : ""}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                     <div className="result-stats" style={{ textAlign: "right", flex: "none" }}>
                       <Mult value={item.outlier_score} title={item.typical_views !== null ? `${multiple(item.outlier_score)} this channel's usual ${compact(item.typical_views)} views` : undefined} />

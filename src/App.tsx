@@ -4,6 +4,7 @@ import { Icon, Loading, useToast } from "./components/ui.tsx";
 import { ensureSession, finishGoogleSignIn, whoami } from "./lib/api.ts";
 import { keys, useChannel, useSyncRuns } from "./lib/hooks.ts";
 import { navigate, useRoute } from "./lib/router.ts";
+import { Comments, Funnel, Games, Goals, HOME_TABS, IDEA_TABS, Planner, Recap, Tabs, Tests, VIDEO_TABS } from "./pages/Growth.tsx";
 import { Ideas } from "./pages/Ideas.tsx";
 import { Overview } from "./pages/Overview.tsx";
 import { Research } from "./pages/Research.tsx";
@@ -119,7 +120,11 @@ function Shell(props: { google: GoogleResult | null; clearGoogle: () => void; on
     wasRunning.current = running;
   }, [latest?.status, latest?.id, queryClient]);
 
-  const section = route.segments[0] ?? "";
+  const first = route.segments[0] ?? "";
+  // The recap, goals and comments are tabs of the front page.
+  const home = ["recap", "goals", "comments"].includes(first);
+  const section = home ? "" : first;
+  const sub = route.segments[1] ?? "";
   const title = channel.data?.title ?? "My channel";
   return (
     <div className="app">
@@ -144,8 +149,28 @@ function Shell(props: { google: GoogleResult | null; clearGoogle: () => void; on
         </div>
       </nav>
       <main className="main">
-        {section === "" ? <Overview />
+        {home ? (
+          <>
+            <div className="page-head"><h1>{HOME_TABS.find((t) => t.key === first)?.label}</h1></div>
+            <Tabs label="Front page" base="" current={first} tabs={HOME_TABS} />
+            {first === "recap" ? <Recap /> : first === "goals" ? <Goals /> : <Comments />}
+          </>
+        ) : section === "" ? <Overview />
+          : section === "videos" && ["games", "funnel", "tests"].includes(sub) ? (
+            <>
+              <div className="page-head"><h1>Videos</h1></div>
+              <Tabs label="Videos" base="/videos" current={sub} tabs={VIDEO_TABS} />
+              {sub === "games" ? <Games /> : sub === "funnel" ? <Funnel /> : <Tests />}
+            </>
+          )
           : section === "videos" ? <Videos />
+          : section === "ideas" && sub === "planner" ? (
+            <>
+              <div className="page-head"><h1>Ideas</h1></div>
+              <Tabs label="Ideas" base="/ideas" current={sub} tabs={IDEA_TABS} />
+              <Planner />
+            </>
+          )
           : section === "ideas" ? <Ideas />
           : section === "research" ? <Research />
           : section === "settings" ? <Settings onSignedOut={props.onSignedOut} />

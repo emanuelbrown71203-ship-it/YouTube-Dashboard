@@ -37,6 +37,12 @@ research and the last sync. Every table and view has a comment explaining it;
 | `yt_v_ideas` | The ideas board (ideas in the bin are left out). |
 | `yt_research_videos`, `yt_keywords`, `yt_research_channels`, `yt_research_runs` | Outliers found, phrases scored, channels watched, and every research run with what it returned. |
 | `yt_sync_runs` | Sync history. Check the newest row before trusting freshness. |
+| `yt_goals`, `yt_tests`, `yt_video_changes` | The owner's goals, their title and thumbnail tests (what they changed, what they expected, how it went), and every title or thumbnail change the sync noticed. |
+| `yt_comments` | Recent comments with the AI's reading: `sentiment`, `theme`, `is_question`. `pinned` ones sit on the front page. |
+
+`yt_v_videos` also carries `topic` (the game), `estimated_revenue` and `feeders`
+(which videos sent viewers to a long video). `yt_research_videos.explanation`
+holds the AI's plain-English notes on an outlier.
 
 Things to keep in mind when reading the numbers:
 
@@ -66,6 +72,10 @@ tools here exist so that is not needed.
 - **Never hard-remove rows.** To bin an idea set `trashed_at = now()`. Browsers
   are switched off with `revoked_at`, codes with `used_at`.
 - **Never write the stats tables by hand.** They belong to the sync.
+- **Add a goal or a test**: insert into `public.yt_goals` (`kind`:
+  `subscribers` | `video_views` | `personal`, with `target`, `start_value`,
+  `video_id`) or `public.yt_tests` (`video_id`, `kind`, `what`, `why`,
+  `started_on`). Bin either with `trashed_at`.
 - **Let a new device in**: `select public.yt_create_access_code('note');`
   returns a one-time code that works for 24 hours (up to 7 days with a second
   argument). Give the code to the owner in the chat.
@@ -76,18 +86,24 @@ tools here exist so that is not needed.
 
 - `src/`: Vite + React + TypeScript. Reads go straight to Supabase with the
   publishable key; row level security lets only owners in.
-- `supabase/migrations/`: seven files, all `yt_` objects. No statement in them
+- `supabase/migrations/`: eight files, all `yt_` objects. No statement in them
   removes anything.
 - `supabase/functions/yt-api/`: one edge function, deployed with JWT
   verification off because it checks callers itself. Routes: `/auth/setup`,
   `/auth/start`, `/auth/callback`, `/auth/finish`, `/auth/disconnect`, `/sync`,
-  `/research`, `/health`. Google sign-in only lets a browser in when the same
+  `/research`, `/ai/setup`, `/health`. Google sign-in only lets a browser in when the same
   browser that started it comes back with the secret it kept (`/auth/finish`);
   do not weaken that. `index.ts` is the only Deno-specific file; the rest take their
   database client, `fetch` and clock as arguments so tests can replace them.
   Supabase stops accepting the older `anon` key at the end of 2026, so the app
   sends the publishable key from `.env` and `index.ts` reads the function's
   `SUPABASE_PUBLISHABLE_KEYS`; do not go back to `SUPABASE_ANON_KEY`.
+- The AI helper (`growth.ts`, called through `deps.claude` in `index.ts`) uses
+  the owner's own Claude API key from `yt_private` and the official SDK. It
+  describes outliers, sorts comments into themes and names the game each
+  video is about. It only ever sees text, never video, and the screens say so.
+  Earnings and comments each need an optional Google permission, recorded in
+  `google_scopes`; the sync skips what was not granted.
 - `dev/`: a local stand-in for the hosted backend (`server.ts`), a made-up
   YouTube (`mock-youtube.ts`) and a database reset script.
 
@@ -126,8 +142,8 @@ made-up YouTube; drive it in a browser before calling a screen done.
   `npx tsx dev/gen-types.ts`.
 - **Edge function**: `deploy_edge_function` with every file in
   `supabase/functions/yt-api` (entry `index.ts`, `verify_jwt` false). The
-  type check and the tests skip `index.ts`; check it with Deno first (see
-  `dev/README.md`). Afterwards confirm the live function answers (next
+  type check and the tests skip `index.ts`; check it with Deno first, from a
+  copy of the folder outside the repository (see `dev/README.md`). Afterwards confirm the live function answers (next
   section) and that `get_edge_function` returns the files you sent.
 - **Site**: the Vercel project `youtube-dashboard`, built from this
   repository with the settings in `vercel.json`. Vercel's production branch

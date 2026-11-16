@@ -16,7 +16,7 @@ const video = (over: Partial<Video>): Video => ({
   comments: 0, shares: null, subs_gained: null, watch_hours: null, avg_view_duration_s: null, avg_view_pct: null,
   age_days: 1, views_per_day: 1, engagement_pct: 1, typical_views: null, vs_typical: null, search_pct: null,
   recommended_pct: null, discovery: null, url: "", thumbnail_url: null, tags: null, traffic: null,
-  estimated_revenue: null, revenue_per_1000_views: null, ...over,
+  estimated_revenue: null, revenue_per_1000_views: null, topic: null, feeders: null, ...over,
 });
 
 describe("formatting", () => {
@@ -171,5 +171,56 @@ describe("upload checks", () => {
     expect(keys("long")).toEqual(["title_long"]);
     expect(audit.has("fine")).toBe(false);
     expect(audit.has("private")).toBe(false);
+  });
+});
+
+describe("growth", () => {
+  it("guesses the game from tags and hashtags, and ignores generic ones", async () => {
+    const { guessTopic } = await import("../supabase/functions/yt-api/growth.ts");
+    expect(guessTopic("Elden Ring But EVERY Weapon I GET I MUST USE!", ["elden ring", "elden ring dlc", "gaming"])).toBe("Elden Ring");
+    expect(guessTopic("HOW I BECAME GOD IN BG3! #baldursgate #bg3 #shorts", [])).toBe("Baldursgate");
+    expect(guessTopic("THIS BOSS TOOK ME 6 HOURS TO BEAT! #shorts #gaming", ["gaming"])).toBeNull();
+  });
+
+  it("compares the weeks before a test with the days after, leaving out days YouTube has not reported", async () => {
+    const { testResult } = await import("../src/lib/growth.ts");
+    const dayAt = (n: number) => new Date(Date.UTC(2026, 9, 1) + n * 86_400_000).toISOString().slice(0, 10);
+    const days = Array.from({ length: 60 }, (_, i) => ({ video_id: "v", date: dayAt(i), views: i < 30 ? 100 : 150, minutes_watched: 10, subs_gained: 0 }));
+    const test = { id: "t", video_id: "v", kind: "thumbnail" as const, what: "x", why: null, started_on: dayAt(30), ended_on: null, ctr_before: null, ctr_after: null, verdict: null, learned: null, created_at: "" };
+    const r = testResult(test, days, dayAt(45));
+    expect(r.before.viewsPerDay).toBe(100);
+    expect(r.after.viewsPerDay).toBe(150);
+    expect(r.after.days).toBe(13); // day 30 to day 42: the last three days are not in yet
+    expect(Math.round((r.viewsChange ?? 0) * 100)).toBe(50);
+    expect(r.running).toBe(true);
+  });
+
+  it("measures a goal from where it started and projects when it lands", async () => {
+    const { goalProgress } = await import("../src/lib/growth.ts");
+    const daily = days(28, () => 100).map((d) => ({ ...d, subs_gained: 12, subs_lost: 2 }));
+    const goal = { id: "g", kind: "subscribers" as const, title: "5K", target: 5000, start_value: 3000, video_id: null, due_on: null, notes: null, done_at: null, created_at: "" };
+    const p = goalProgress(goal, { subscribers: 4000, videos: [], daily, today: "2026-11-16" });
+    expect(p.share).toBe(0.5);
+    expect(p.left).toBe(1000);
+    expect(p.eta).toBe("2027-02-24"); // 1,000 to go at 10 a day
+    expect(goalProgress({ ...goal, target: 4000 }, { subscribers: 4000, videos: [], daily, today: "2026-11-16" }).done).toBe(true);
+  });
+
+  it("keeps negative and hidden comments off the front page, pinned ones first", async () => {
+    const { kindWords } = await import("../src/lib/growth.ts");
+    const c = (id: string, over: object) => ({ id, video_id: null, author: null, text: "This video was great fun", likes: 1, published_at: "2026-11-01", sentiment: "positive" as const, theme: null, is_question: false, pinned: false, hidden: false, ...over });
+    const picked = kindWords([c("a", { likes: 9 }), c("b", { sentiment: "negative", likes: 99 }), c("c", { hidden: true, likes: 50 }), c("d", { pinned: true, sentiment: null }), c("e", { sentiment: null })]);
+    expect(picked.map((x) => x.id)).toEqual(["d", "a"]);
+  });
+
+  it("lays a month out as whole weeks with plans and uploads on their days", async () => {
+    const { planMonth, emptyWeeks } = await import("../src/lib/growth.ts");
+    const idea = { id: "i", title: "Run", format: "long", status: "idea", target_date: "2026-11-30" } as never;
+    const weeks = planMonth("2026-11", [idea], [video({ id: "u", published_at: "2026-11-04T18:00:00Z" })]);
+    expect(weeks).toHaveLength(5);
+    expect(weeks[0][0].date).toBe("2026-11-01");
+    expect(weeks.flat().find((d) => d.date === "2026-11-30")?.ideas).toHaveLength(1);
+    expect(weeks.flat().find((d) => d.date === "2026-11-04")?.uploads).toHaveLength(1);
+    expect(emptyWeeks([idea], "2026-11-16", 3)).toEqual(["2026-11-15", "2026-11-22"]);
   });
 });

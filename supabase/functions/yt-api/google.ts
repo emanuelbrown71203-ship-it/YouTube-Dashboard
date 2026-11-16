@@ -17,6 +17,8 @@ export interface Deps {
   functionUrl: string;
   /** Keeps work running after the response has been sent (edge runtime only). */
   background?: (work: Promise<unknown>) => void;
+  /** Asks the AI for a JSON answer that follows a schema (edge runtime, or a stand-in in tests). */
+  claude?: (apiKey: string, req: { system: string; prompt: string; schema: Record<string, unknown>; effort?: string }) => Promise<unknown>;
   log?: (...args: unknown[]) => void;
 }
 
@@ -38,6 +40,11 @@ export const SCOPES = [
 ];
 /** Asked for as well, but optional: without it everything works except estimated earnings. */
 export const EARNINGS_SCOPE = "https://www.googleapis.com/auth/yt-analytics-monetary.readonly";
+/**
+ * Also optional. YouTube only lets an app read comments under this wider permission,
+ * which Google words as managing the account; this app never writes with it.
+ */
+export const COMMENTS_SCOPE = "https://www.googleapis.com/auth/youtube.force-ssl";
 
 // ---------------------------------------------------------------------------
 // Server-only settings (public.yt_private)

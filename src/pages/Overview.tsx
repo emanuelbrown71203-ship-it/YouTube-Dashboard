@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { GoalsStrip, HOME_TABS, KindWords, Tabs } from "./Growth.tsx";
 import { BarList, Sparkline, Timeline, type UploadPin } from "../components/Timeline.tsx";
 import { Delta, ErrorNote, FormatTag, Loading, Mult, Segmented, Thumb } from "../components/ui.tsx";
 import { ago, compact, day, FORMAT_PLURAL, hours, signed, whole } from "../lib/format.ts";
@@ -86,6 +87,7 @@ export function Overview() {
         <h1>Overview</h1>
         <Segmented label="Time range" value={range} options={RANGES} onChange={setRange} />
       </div>
+      <Tabs label="Front page" base="" current="" tabs={HOME_TABS} />
 
       {connection.data?.connection_error ? (
         <div className="notice error" role="alert">
@@ -113,6 +115,11 @@ export function Overview() {
             <div><div className="k">Uploads</div><div className="v fig">{whole(channel.data.videos)}</div></div>
           </div>
         ) : null}
+      </div>
+
+      <div style={{ marginBottom: 22 }}>
+        <KindWords />
+        <GoalsStrip />
       </div>
 
       <div className={`panel${daily.isFetching ? " fade" : ""}`}>

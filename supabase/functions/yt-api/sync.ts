@@ -5,6 +5,7 @@ import {
   analytics, type Api, chunk, closeApi, type Deps, EARNINGS_SCOPE, fetchChannels, fetchPlaylistIds, fetchVideos, getConfig,
   HttpError, mapLimit, openApi, playlistFor, type Report, reportObjects,
 } from "./google.ts";
+import { logChanges, syncComments, syncFeeders, syncTestDays, syncTopics, tickGoals } from "./growth.ts";
 import { refreshWatched } from "./research.ts";
 import { classifyFormat } from "./scoring.ts";
 
@@ -137,6 +138,7 @@ export async function runSync(deps: Deps, source: string): Promise<{ status: str
       ]);
       const sets = { shorts: new Set(shorts), long: new Set(long), live: new Set(live) };
       const videos = await fetchVideos(session, uploads);
+      const changes = await logChanges(sql, videos);
       const rows = videos.map((v) => {
         const c = classifyFormat(v, sets);
         return {
@@ -179,7 +181,7 @@ export async function runSync(deps: Deps, source: string): Promise<{ status: str
             set views = excluded.views, likes = excluded.likes, comments = excluded.comments`;
       }
       const count = (f: string) => rows.filter((r) => r.content_type === f).length;
-      return { count: rows.length, shorts: count("short"), long: count("long"), live: count("live") };
+      return { count: rows.length, shorts: count("short"), long: count("long"), live: count("live"), changes };
     });
 
     // 3 + 4. Channel-wide Studio numbers per day, in total and per format
@@ -415,6 +417,22 @@ export async function runSync(deps: Deps, source: string): Promise<{ status: str
       });
       return { videos: done };
     });
+
+    // 8b. The extras: what feeds the long videos, tests, what each video is about, comments, goals.
+    // The AI and comments are optional, so trouble there is noted without failing the sync.
+    const soft = (fn: () => Promise<StepInfo>) => async () => {
+      try {
+        return await fn();
+      } catch (err) {
+        if (err instanceof HttpError) return { skipped: describe(err) };
+        throw err;
+      }
+    };
+    await step("feeders", () => syncFeeders(session, today, EARLIEST));
+    await step("tests", () => syncTestDays(session, today));
+    await step("topics", soft(() => syncTopics(deps)));
+    await step("comments", soft(() => syncComments(session, channel.id, cfg.google_scopes ?? "")));
+    await step("goals", async () => { await tickGoals(sql); });
 
     // 9. Channels on the watch list
     await step("watched_channels", async () => ({ refreshed: await refreshWatched(session, 10) }));

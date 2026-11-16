@@ -14,7 +14,7 @@ export class ApiError extends Error {
   }
 }
 
-function fail(error: { message: string; code?: string } | null): void {
+export function fail(error: { message: string; code?: string } | null): void {
   if (!error) return;
   if (error.code === "42501" || /not allowed|permission denied/i.test(error.message)) {
     throw new ApiError("This browser is no longer signed in. Reload the page.", "not_owner", 403);
@@ -149,6 +149,16 @@ export async function finishGoogleSignIn(grant: string): Promise<void> {
 export const saveGoogleClient = (client_id: string, client_secret: string) =>
   callApi<{ ok: true; redirect_uri: string }>("/auth/setup", { client_id, client_secret });
 export const disconnectYouTube = () => callApi<{ ok: true }>("/auth/disconnect");
+export const saveAiKey = (api_key: string) => callApi<{ ok: true; ai: boolean }>("/ai/setup", { api_key });
+export interface Explanation {
+  title_en: string;
+  what_happens: string;
+  why_it_worked: string;
+  your_version: string;
+  confidence: "high" | "medium" | "low";
+}
+export const explainVideo = (video_id: string) =>
+  callApi<{ video_id: string; explanation: Explanation }>("/research", { action: "explain", video_id });
 export const syncNow = () => callApi<{ status: string; message?: string }>("/sync");
 
 export const findOutliers = (search: OutlierSearch, page_token: string | null = null) =>
@@ -194,7 +204,7 @@ export const getFormatDaily = () =>
 
 export const getVideos = () =>
   all<Video>((from, to) => supabase.from("yt_v_videos")
-    .select("id, title, content_type, privacy, published_at, duration_s, views, likes, comments, shares, subs_gained, watch_hours, avg_view_duration_s, avg_view_pct, age_days, views_per_day, engagement_pct, typical_views, vs_typical, search_pct, recommended_pct, discovery, url, thumbnail_url, tags, traffic, estimated_revenue, revenue_per_1000_views")
+    .select("id, title, content_type, privacy, published_at, duration_s, views, likes, comments, shares, subs_gained, watch_hours, avg_view_duration_s, avg_view_pct, age_days, views_per_day, engagement_pct, typical_views, vs_typical, search_pct, recommended_pct, discovery, url, thumbnail_url, tags, traffic, estimated_revenue, revenue_per_1000_views, topic, feeders")
     .order("published_at", { ascending: false, nullsFirst: false }).order("id").range(from, to));
 
 export async function getMyFormats(): Promise<MyFormat[]> {

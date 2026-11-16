@@ -235,6 +235,33 @@ export function createMockGoogle(options: MockOptions): { fetch: typeof fetch; u
         pageInfo: { totalResults: hits.length },
       });
     }
+    if (path === "commentThreads") {
+      const me = channelById.get(signedIn());
+      const lines = [
+        "This was so funny, the ending got me", "Please do more Elden Ring challenge runs!", "Underrated channel, subscribed",
+        "What build were you using here?", "The editing keeps getting better", "Audio was a bit quiet this time",
+        "Can you try this with no healing next?", "I laughed way too hard at 2:14", "Great video as always",
+        "Este video es increíble", "Not your best one honestly", "How long did this take to record?",
+      ];
+      const mine = [...(me?.videos ?? [])].sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
+      const only = q.get("videoId");
+      return json({
+        items: lines.map((text, i) => ({
+          id: `mockthread${only ?? ""}${i}`,
+          snippet: {
+            channelId: me?.id, videoId: only ?? mine[i % Math.max(1, mine.length)]?.id,
+            topLevelComment: {
+              id: `mockcomment${only ?? ""}${i}`,
+              snippet: {
+                videoId: only ?? mine[i % Math.max(1, mine.length)]?.id, authorDisplayName: `Viewer ${i + 1}`, textOriginal: text,
+                likeCount: (i * 7) % 23, publishedAt: new Date(options.now().getTime() - i * 5 * 3_600_000).toISOString(),
+                authorChannelId: { value: `UCviewer${i}` },
+              },
+            },
+          },
+        })),
+      });
+    }
     return apiError(404, "notFound", "Unknown mock endpoint.");
   }
 
@@ -294,6 +321,13 @@ export function createMockGoogle(options: MockOptions): { fetch: typeof fetch; u
       rows = picked.map((v) => [
         v.id, ...metrics.map((m) => (m === "views" ? v.views : value(v.id, m, v.views))),
       ]);
+    } else if (key === "insightTrafficSourceDetail") {
+      // Which videos sent viewers to this one: a few of the channel's own Shorts, and a stranger's video.
+      const shorts = me.videos.filter((v) => v.kind === "short").slice(0, 4);
+      rows = [
+        ...shorts.map((v, i) => [v.id, value((videoFilter ?? "") + v.id, "feed", 1) * 40 + (4 - i) * 25] as (string | number)[]),
+        ["zzOtherVideo", 31],
+      ].sort((a, b) => Number(b[1]) - Number(a[1]));
     } else if (key === "insightTrafficSourceType") {
       const types = ["SHORTS", "SUBSCRIBER", "RELATED_VIDEO", "YT_SEARCH", "YT_CHANNEL", "EXT_URL", "NO_LINK_OTHER", "PLAYLIST"];
       const searchLed = videoFilter ? value(videoFilter, "lead", 1) > 3 : false;
@@ -323,7 +357,7 @@ export function createMockGoogle(options: MockOptions): { fetch: typeof fetch; u
         access_token: `mock-access-${Date.now()}`, expires_in: 3599, token_type: "Bearer",
         scope: (options.grantedScopes ?? [
           "https://www.googleapis.com/auth/youtube.readonly", "https://www.googleapis.com/auth/yt-analytics.readonly",
-          "https://www.googleapis.com/auth/yt-analytics-monetary.readonly",
+          "https://www.googleapis.com/auth/yt-analytics-monetary.readonly", "https://www.googleapis.com/auth/youtube.force-ssl",
         ]).join(" "),
         ...(body.get("grant_type") === "authorization_code" ? { refresh_token: "mock-refresh-token" } : {}),
       });

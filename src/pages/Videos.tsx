@@ -1,4 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { setVideoTopic } from "../lib/growth.ts";
+import { Tabs, VIDEO_TABS } from "./Growth.tsx";
 import { useMemo, useState } from "react";
 import { BarList } from "../components/Timeline.tsx";
 import { Drawer, ErrorNote, FormatTag, Icon, Loading, Mult, Thumb, useToast } from "../components/ui.tsx";
@@ -90,6 +92,7 @@ export function Videos() {
           {complete ? count(all.length, "upload") : `${whole(all.length)} of ${whole(channel.data?.videos ?? 0)} uploads stored`}
         </span>
       </div>
+      <Tabs label="Videos" base="/videos" current="" tabs={VIDEO_TABS} />
 
       {!complete && all.length ? (
         <div className="notice">
@@ -222,6 +225,7 @@ function VideoDetail({ video: v, checks, complete, onClose }: { video: Video; ch
   const queryClient = useQueryClient();
   const toast = useToast();
   const [saving, setSaving] = useState(false);
+  const [topic, setTopic] = useState(v.topic ?? "");
   const stats: [string, string][] = [
     ["Views", whole(v.views)],
     ["Per day", compact(v.views_per_day)],
@@ -271,6 +275,24 @@ function VideoDetail({ video: v, checks, complete, onClose }: { video: Video; ch
           <div key={k}><div className="k">{k}</div><div className="v fig">{val}</div></div>
         ))}
       </div>
+
+      <form
+        className="row-wrap" style={{ alignItems: "flex-end" }}
+        onSubmit={(e) => {
+          e.preventDefault();
+          void setVideoTopic(v.id, topic).then(
+            () => { toast(topic.trim() ? `Filed under ${topic.trim()}.` : "Game cleared."); void queryClient.invalidateQueries({ queryKey: keys.videos }); },
+            (err) => toast(err instanceof Error ? err.message : "That did not save. Try again.", { error: true }),
+          );
+        }}
+      >
+        <label className="field grow">
+          <span>Game</span>
+          <input className="input" value={topic} onChange={(e) => setTopic(e.target.value)} maxLength={80} placeholder="Elden Ring" />
+        </label>
+        <button type="submit" className="btn" disabled={topic.trim() === (v.topic ?? "")}>Save</button>
+        <a className="btn btn-quiet" href="#/videos/tests">Tests</a>
+      </form>
 
       {complete && v.vs_typical !== null && v.typical_views !== null ? (
         <div className="row" style={{ gap: 12 }}>
