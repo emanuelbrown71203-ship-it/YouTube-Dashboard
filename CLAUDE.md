@@ -185,7 +185,10 @@ npm run typecheck && npm run build
 ```
 
 `npm run dev:local` plus `npm run dev` runs the whole app locally against the
-made-up YouTube; drive it in a browser before calling a screen done.
+made-up YouTube; drive it in a browser before calling a screen done. Type into
+forms one key at a time (`page.keyboard.type`), not by setting the whole value
+at once: that is how a cursor that jumps out of a box after one character got
+through.
 
 ## Shipping changes
 

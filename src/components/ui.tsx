@@ -224,12 +224,16 @@ export function CopyLine({ value, label = "Copy" }: { value: string; label?: str
 
 export function Drawer(props: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
-  const { onClose } = props;
+  // The newest onClose is kept to one side, so the set-up below runs once, when the drawer opens.
+  // Running it again on every redraw would move the cursor out of whatever box is being typed in.
+  const latest = useRef(props.onClose);
+  latest.current = props.onClose;
+  const onClose = useCallback(() => latest.current(), []);
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     ref.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") latest.current();
     };
     document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
@@ -238,7 +242,7 @@ export function Drawer(props: { title: string; onClose: () => void; children: Re
       document.body.style.overflow = "";
       previous?.focus?.();
     };
-  }, [onClose]);
+  }, []);
   return (
     <>
       <div className="scrim" onClick={onClose} />
