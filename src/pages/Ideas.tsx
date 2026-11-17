@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { IDEA_TABS, Tabs } from "./Growth.tsx";
-import { ScoreChips, ScorePanel, TitleHelper, useFound, useIdeaScores } from "./Pulse.tsx";
+import { ResearchStatus, ScoreChips, ScorePanel, TitleHelper, useAutoResearch, useCovered, useFound, useIdeaScores } from "./Pulse.tsx";
 import { scoreIdea } from "../lib/ideaScore.ts";
 import { ImportIdeas, TemplateHint, TemplateScore } from "./Templates.tsx";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
@@ -70,6 +70,20 @@ export function Ideas() {
   const scores = useIdeaScores(ideas.data ?? []);
   const [order, setOrder] = useState<"priority" | "history" | "recommended">("priority");
   const [importing, setImporting] = useState(false);
+  // Games with open ideas and no fresh breakout search: the dashboard searches them itself, most ideas first.
+  const covered = useCovered();
+  const needs = useMemo(() => {
+    if (!covered.data) return [];
+    const counts = new Map<string, { game: string; format: "long" | "short"; n: number }>();
+    for (const idea of ideas.data ?? []) {
+      const game = idea.status === "published" ? null : scores.get(idea.id)?.search;
+      if (!game) continue;
+      const key = `${idea.format}:${game.toLowerCase()}`;
+      counts.set(key, { game, format: idea.format, n: (counts.get(key)?.n ?? 0) + 1 });
+    }
+    return [...counts.values()].sort((a, b) => b.n - a.n).slice(0, 6);
+  }, [ideas.data, scores, covered.data]);
+  const research = useAutoResearch(needs);
   const [view, setView] = useState<"stage" | "game">(() => (remembered("yt-ideas-view") === "stage" ? "stage" : "game"));
   const videos = useVideos();
   // The games offered when filing an idea: the ones the owner is working with now, not every game the
@@ -217,6 +231,7 @@ export function Ideas() {
         </div>
       </form>
 
+      {research.now || research.problem ? <div style={{ marginBottom: 12 }}><ResearchStatus state={research} /></div> : null}
       <div className="row-wrap" style={{ marginBottom: 12, gap: 10 }}>
         <span className="small muted">Group by</span>
         <Segmented

@@ -1,9 +1,9 @@
 // Idea scores, the first 48 hours of an upload, and the weekly note.
 
-import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { type QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useToast } from "../components/ui.tsx";
-import { getFoundVideos, suggestTitles, type TitleIdea } from "../lib/api.ts";
+import { coverGame, getCoveredGames, getFoundVideos, suggestTitles, type TitleIdea } from "../lib/api.ts";
 import { whole } from "../lib/format.ts";
 import { goalProgress, useGoals } from "../lib/growth.ts";
 import { useChannel, useDaily, useIdeas, useVideos } from "../lib/hooks.ts";
@@ -14,15 +14,89 @@ import type { Idea, IdeaDraft, Video } from "../lib/types.ts";
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
 export const useFound = () => useQuery({ queryKey: ["found-videos"], queryFn: getFoundVideos, staleTime: 5 * 60_000 });
+export const useCovered = () => useQuery({ queryKey: ["covered-games"], queryFn: getCoveredGames, staleTime: 5 * 60_000 });
+
+// ---------------------------------------------------------------------------
+// Outlier searches the dashboard runs by itself
+// ---------------------------------------------------------------------------
+//
+// A score that waits for the owner to go and search is not a score. When an idea's game has no fresh
+// breakout search, the dashboard runs one, a game at a time, and the scores fill in when it lands.
+// Each game and format is tried once per visit, so a search that fails is not hammered.
+
+const tried = new Set<string>();
+type Need = { game: string; format: "long" | "short" };
+const waiting: Need[] = [];
+let now = null as Need | null;
+let problem: string | null = null;
+const watchers = new Set<() => void>();
+const tell = () => watchers.forEach((w) => w());
+let snapshot: { now: Need | null; problem: string | null } = { now, problem };
+const refresh = () => { snapshot = { now, problem }; tell(); };
+
+async function work(queryClient: QueryClient) {
+  if (now) return;
+  while (waiting.length) {
+    now = waiting.shift()!;
+    refresh();
+    try {
+      const out = await coverGame(now.game, now.format);
+      if (out.skipped) {
+        // Out of lookups for the day: stop asking until the page is opened again.
+        problem = out.skipped;
+        waiting.length = 0;
+      } else {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["found-videos"] }),
+          queryClient.invalidateQueries({ queryKey: ["covered-games"] }),
+          queryClient.invalidateQueries({ queryKey: ["research-runs"] }),
+          queryClient.invalidateQueries({ queryKey: ["quota"] }),
+        ]);
+      }
+    } catch (err) {
+      problem = err instanceof Error ? err.message : "The check could not run. It will try again later.";
+      waiting.length = 0;
+    }
+  }
+  now = null;
+  refresh();
+}
+
+/** Queues a breakout search for each game that needs one, and says what is being checked right now. */
+export function useAutoResearch(needs: { game: string; format: "long" | "short" }[]) {
+  const queryClient = useQueryClient();
+  const key = needs.map((n) => `${n.format}:${n.game.toLowerCase()}`).join("|");
+  useEffect(() => {
+    for (const need of needs) {
+      const id = `${need.format}:${need.game.toLowerCase()}`;
+      // A handful per visit is plenty; the sync covers the rest in the background.
+      if (tried.has(id) || tried.size >= 8) continue;
+      tried.add(id);
+      waiting.push(need);
+    }
+    void work(queryClient);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, queryClient]);
+  return useSyncExternalStore((w) => { watchers.add(w); return () => void watchers.delete(w); }, () => snapshot);
+}
+
+/** One line saying a check is running, or why it could not. */
+export function ResearchStatus({ state }: { state: { now: { game: string; format: string } | null; problem: string | null } }) {
+  if (state.now) {
+    return <p className="small muted row" style={{ gap: 8, margin: 0 }}><span className="spin" />Checking what YouTube is pushing for {state.now.game} {state.now.format === "short" ? "Shorts" : "videos"}. The scores fill in when it is done.</p>;
+  }
+  return state.problem ? <p className="small muted" style={{ margin: 0 }}>The check on what YouTube is pushing could not run: {state.problem}</p> : null;
+}
 
 /** Scores for every idea on the board, worked out once. */
 export function useIdeaScores(ideas: Pick<Idea, "id" | "title" | "format" | "target_keyword" | "concept" | "hook" | "topic">[]): Map<string, IdeaScores> {
   const videos = useVideos();
   const found = useFound();
+  const covered = useCovered();
   return useMemo(() => {
     const today = todayIso();
-    return new Map(ideas.map((i) => [i.id, scoreIdea(i, videos.data ?? [], found.data ?? [], today)]));
-  }, [ideas, videos.data, found.data]);
+    return new Map(ideas.map((i) => [i.id, scoreIdea(i, videos.data ?? [], found.data ?? [], today, covered.data ?? [])]));
+  }, [ideas, videos.data, found.data, covered.data]);
 }
 
 function tone(value: number | null): string {
@@ -75,10 +149,19 @@ function ScoreBlock({ title, sub, score }: { title: string; sub: string; score: 
 export function ScorePanel({ draft }: { draft: IdeaDraft }) {
   const videos = useVideos();
   const found = useFound();
+  const covered = useCovered();
   const scores = useMemo(
-    () => scoreIdea({ title: draft.title ?? "", format: draft.format ?? "long", target_keyword: draft.target_keyword ?? null, concept: draft.concept ?? null, hook: draft.hook ?? null, topic: draft.topic ?? null }, videos.data ?? [], found.data ?? [], todayIso()),
-    [draft.title, draft.format, draft.target_keyword, draft.concept, draft.hook, draft.topic, videos.data, found.data],
+    () => scoreIdea({ title: draft.title ?? "", format: draft.format ?? "long", target_keyword: draft.target_keyword ?? null, concept: draft.concept ?? null, hook: draft.hook ?? null, topic: draft.topic ?? null }, videos.data ?? [], found.data ?? [], todayIso(), covered.data ?? []),
+    [draft.title, draft.format, draft.target_keyword, draft.concept, draft.hook, draft.topic, videos.data, found.data, covered.data],
   );
+  // The game changes with every letter while a title is being typed; wait until it has settled before searching for it.
+  const want = scores.search && covered.data ? `${draft.format === "short" ? "short" : "long"}\n${scores.search}` : "";
+  const [settled, setSettled] = useState("");
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSettled(want), 1500);
+    return () => window.clearTimeout(timer);
+  }, [want]);
+  const research = useAutoResearch(settled && settled === want ? [{ format: settled.split("\n")[0] as "long" | "short", game: settled.split("\n")[1] }] : []);
   if (!(draft.title ?? "").trim()) return null;
   const kind = draft.format === "short" ? "Shorts" : "long-form videos";
   return (
@@ -89,9 +172,7 @@ export function ScorePanel({ draft }: { draft: IdeaDraft }) {
       </div>
       <ScoreBlock title="Your history" sub="Has this kind of video worked for you before?" score={scores.history} />
       <ScoreBlock title="Recommended" sub="Is YouTube likely to put it in front of new people?" score={scores.recommended} />
-      {scores.search ? (
-        <a className="btn btn-small" href={`#/research?q=${encodeURIComponent(scores.search)}&format=${draft.format === "short" ? "short" : "long"}`}>Search for outliers on {scores.search}</a>
-      ) : null}
+      <ResearchStatus state={research} />
     </div>
   );
 }

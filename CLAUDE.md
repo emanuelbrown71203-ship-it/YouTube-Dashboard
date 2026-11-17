@@ -63,7 +63,8 @@ Things to keep in mind when reading the numbers:
   volumes. Say "estimate" when you quote one.
 
 Do not spend the owner's vidIQ credits unless they ask you to. The research
-tools here exist so that is not needed.
+tools here exist so that is not needed. The dashboard's own YouTube lookups are
+free and the owner has said to use them whenever a score needs them.
 
 ## Changing things for the owner
 
@@ -142,6 +143,12 @@ tools here exist so that is not needed.
   on the game, the share of views YouTube's recommendations brought, the
   title). A part with too little evidence is left out and said so; under
   half the evidence gives no number. They are estimates: say so.
+  The owner never has to search for a score to work: when a game with open
+  ideas has no breakout search newer than 14 days, the dashboard runs one
+  itself (`coverGames` in `research.ts`; the Ideas page asks for it through
+  `/research` action `cover`, and `/sync/extras` does two more after each
+  sync). These spend the day's free lookups like any search, up to the
+  same ceiling, and are stored with `params.auto = true`.
 - `dev/`: a local stand-in for the hosted backend (`server.ts`), a made-up
   YouTube (`mock-youtube.ts`) and a database reset script.
 

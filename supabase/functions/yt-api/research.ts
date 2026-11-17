@@ -223,6 +223,8 @@ export interface OutlierParams {
   max_subs: number | null;
   min_views: number;
   page_token: string | null;
+  /** Run by the dashboard itself to keep idea scores fed, not typed in by the owner. */
+  auto?: boolean;
 }
 
 type Bucket = "short" | "medium" | "long";
@@ -468,6 +470,68 @@ async function keyword(api: Api, input: unknown) {
 }
 
 // ---------------------------------------------------------------------------
+// Keeping idea scores fed: outlier searches the dashboard runs by itself
+// ---------------------------------------------------------------------------
+
+/** A search on a game is fresh enough to score ideas for this long. */
+export const COVER_DAYS = 14;
+
+export interface Cover { game: string; format: Format }
+
+/**
+ * The (game, format) pairs with open ideas whose last breakout search is missing or stale, the ones
+ * with the most ideas first. `only` narrows it to one pair (an idea the owner is looking at now).
+ */
+async function staleCovers(sql: Sql, only: Cover | null): Promise<Cover[]> {
+  const rows = only
+    ? [{ game: only.game, format: only.format }]
+    : await sql`
+        select btrim(topic) as game, format, count(*) as n from public.yt_ideas
+        where trashed_at is null and not archived and status <> 'published' and nullif(btrim(topic), '') is not null
+        group by 1, 2 order by n desc limit 40`;
+  const out: Cover[] = [];
+  // deno-lint-ignore no-explicit-any
+  for (const row of rows as any[]) {
+    const [fresh] = await sql`
+      select 1 from public.yt_research_runs
+      where kind = 'outliers' and lower(query) = lower(${row.game}) and params->>'format' = ${row.format}
+        and coalesce(params->>'mode', 'breakout') = 'breakout'
+        and created_at > now() - make_interval(days => ${COVER_DAYS}) limit 1`;
+    if (!fresh) out.push({ game: row.game, format: row.format === "short" ? "short" : "long" });
+  }
+  return out;
+}
+
+/**
+ * Runs the breakout search for games that have ideas but no fresh search, so "what YouTube is pushing"
+ * can be scored without the owner searching by hand. Uses the day's free lookups like any search and
+ * stops at the same ceiling, which leaves room for the sync.
+ */
+export async function coverGames(deps: Deps, opts: { only?: Cover | null; limit: number; until: number }): Promise<Record<string, unknown>> {
+  const stale = await staleCovers(deps.sql, opts.only ?? null);
+  const done: (Cover & { found: number; breakouts: number })[] = [];
+  let stopped: string | null = null;
+  for (const cover of stale.slice(0, opts.limit)) {
+    if (Date.now() > opts.until) break;
+    const api = await openApi(deps);
+    try {
+      const out = await findOutliers(api, {
+        query: cover.game, mode: "breakout", format: cover.format, window_days: 90, max_subs: null, min_views: 1000, page_token: null, auto: true,
+      });
+      done.push({ ...cover, found: out.items.length, breakouts: out.items.filter((i) => (i.outlier_score ?? 0) >= 3).length });
+    } catch (err) {
+      if (!(err instanceof HttpError)) throw err;
+      // Out of lookups for today, or YouTube said no: say so and leave the rest for the next run.
+      stopped = err.message;
+      break;
+    } finally {
+      await closeApi(api).catch(() => undefined);
+    }
+  }
+  return { searched: done, left: Math.max(0, stale.length - done.length), ...(stopped ? { skipped: stopped } : {}) };
+}
+
+// ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
 
@@ -475,6 +539,12 @@ async function keyword(api: Api, input: unknown) {
 export async function research(deps: Deps, body: any): Promise<unknown> {
   const action = String(body?.action ?? "");
   if (action === "suggest") return suggest(deps, body.seed);
+  if (action === "cover") {
+    // The idea the owner is looking at: search its game now if nothing fresh is stored.
+    const game = String(body.game ?? "").replace(/\s+/g, " ").trim();
+    if (game.length < 2 || game.length > 100) throw new HttpError(400, "bad_request", "That idea has no game to search for.");
+    return await coverGames(deps, { only: { game, format: body.format === "short" ? "short" : "long" }, limit: 1, until: Date.now() + 40_000 });
+  }
   if (!["outliers", "keyword", "channel_lookup", "channel_watch", "channel_refresh", "explain"].includes(action)) {
     throw new HttpError(400, "bad_request", "Unknown research action.");
   }

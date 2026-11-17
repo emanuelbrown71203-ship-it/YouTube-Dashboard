@@ -8,7 +8,7 @@ import {
 import {
   logChanges, nameTopics, readComments, syncComments, syncFeeders, syncFirstDays, syncReach, syncTestDays, syncTopics, tickGoals,
 } from "./growth.ts";
-import { refreshWatched } from "./research.ts";
+import { coverGames, refreshWatched } from "./research.ts";
 import { classifyFormat } from "./scoring.ts";
 
 type Params = Record<string, string | number | undefined>;
@@ -510,6 +510,8 @@ export async function runExtras(deps: Deps, runId: number, hop: number): Promise
 
   await step("games", () => nameTopics(deps, until));
   await step("comments_read", () => readComments(deps, until));
+  // Outlier searches for the games the owner has ideas under, so their scores never wait on a manual search.
+  if (Date.now() < until) await step("idea_research", () => coverGames(deps, { limit: 2, until }));
   let api: Api | null = null;
   if (Date.now() < until) {
     try {
@@ -524,9 +526,9 @@ export async function runExtras(deps: Deps, runId: number, hop: number): Promise
   if (api) await closeApi(api).catch(() => undefined);
 
   const progress = Number(steps.games?.named ?? 0) + Number(steps.comments_read?.read ?? 0) + Number(steps.feeders?.videos ?? 0)
-    + Number(steps.first_days?.videos ?? 0);
+    + Number(steps.first_days?.videos ?? 0) + (Array.isArray(steps.idea_research?.searched) ? steps.idea_research.searched.length : 0);
   const left = Number(steps.games?.left ?? 0) + Number(steps.comments_read?.left ?? 0) + Number(steps.feeders?.left ?? 0)
-    + Number(steps.first_days?.left ?? 0);
+    + Number(steps.first_days?.left ?? 0) + (steps.idea_research?.skipped ? 0 : Number(steps.idea_research?.left ?? 0));
   const more = progress > 0 && left > 0 && hop + 1 < EXTRAS_HOPS;
 
   // Add this turn's results to the run that asked for them, summing the counts across turns.

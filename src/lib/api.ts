@@ -332,6 +332,20 @@ export async function getFoundVideos() {
   return (data ?? []) as unknown as import("./ideaScore.ts").FoundVideo[];
 }
 
+/** Which games the outlier searches have covered lately, and in which format: `game` is the phrase searched. */
+export async function getCoveredGames() {
+  const since = new Date(Date.now() - 120 * 86_400_000).toISOString();
+  const { data, error } = await supabase.from("yt_research_runs").select("query, params, created_at")
+    .eq("kind", "outliers").gte("created_at", since).order("created_at", { ascending: false }).limit(400);
+  fail(error);
+  return ((data ?? []) as unknown as { query: string; params: { format?: string; mode?: string } | null; created_at: string }[])
+    .filter((r) => (r.params?.mode ?? "breakout") === "breakout")
+    .map((r) => ({ game: r.query, format: r.params?.format === "short" ? "short" as const : "long" as const, at: r.created_at }));
+}
+/** Has the dashboard search a game's breakouts now, if it has no fresh search stored. */
+export const coverGame = (game: string, format: "long" | "short") =>
+  callApi<{ searched: { game: string; format: string; found: number; breakouts: number }[]; left: number; skipped?: string }>("/research", { action: "cover", game, format });
+
 export async function saveResearchVideo(id: string, saved: boolean): Promise<void> {
   const { error } = await supabase.rpc("yt_save_research_video", { p_video_id: id, p_saved: saved });
   fail(error);

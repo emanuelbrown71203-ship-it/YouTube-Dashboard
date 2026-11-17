@@ -19,6 +19,11 @@ export interface FoundVideo {
   published_at: string | null;
 }
 
+/** A breakout search that was run on a game: by the owner, or by the dashboard to keep the scores fed. */
+export interface Covered { game: string; format: "long" | "short"; at: string }
+/** How long a search stays good for before the dashboard runs it again. */
+export const COVER_DAYS = 14;
+
 export interface Part {
   label: string;
   /** Points earned and the most this part can give. `null` points = not enough to go on. */
@@ -37,7 +42,7 @@ export interface IdeaScores {
   game: string | null;
   history: Score;
   recommended: Score;
-  /** A search worth running to firm the recommended score up. */
+  /** The game whose breakouts have not been searched lately; the dashboard runs that search by itself. */
   search: string | null;
 }
 
@@ -160,6 +165,7 @@ export function scoreIdea(
   videos: Video[],
   found: FoundVideo[],
   today: string,
+  covered: Covered[] = [],
 ): IdeaScores {
   const format = idea.format === "short" ? "short" : "long";
   const other = format === "long" ? "short" : "long";
@@ -213,10 +219,21 @@ export function scoreIdea(
   const since = Date.parse(today) - 120 * 86_400_000;
   const outside = found.filter((v) => (v.format ?? "long") === format && about(v) && v.published_at && Date.parse(v.published_at) >= since);
   const breakouts = outside.filter((v) => (v.outlier_score ?? 0) >= 3);
+  // The newest search on this game in this format, if there is one.
+  const searches = covered.filter((c) => c.format === format && key && squash(c.game) === key).map((c) => c.at).sort();
+  const searchedAt = searches[searches.length - 1] ?? null;
+  const searchedDaysAgo = searchedAt ? Math.floor((Date.parse(today) - Date.parse(searchedAt.slice(0, 10))) / 86_400_000) : null;
+  const fresh = searchedDaysAgo !== null && searchedDaysAgo <= COVER_DAYS;
   if (!game) {
     recommended.push({ label: "What YouTube is pushing", points: null, max: 40, why: "Name the game in the title and this can check whether videos like it are breaking out right now." });
+  } else if (outside.length === 0 && searchedDaysAgo !== null && searchedDaysAgo <= 45) {
+    // A search that came back empty is an answer too: nothing on this game is travelling right now.
+    recommended.push({
+      label: "What YouTube is pushing", points: 6, max: 40,
+      why: `A search ${searchedDaysAgo <= 1 ? "just now" : `${searchedDaysAgo} days ago`} found no recent ${KINDS[format]} on ${game} with enough views to count. YouTube is not pushing them at the moment.`,
+    });
   } else if (outside.length === 0) {
-    recommended.push({ label: "What YouTube is pushing", points: null, max: 40, why: `No outlier search has covered ${KINDS[format]} on ${game} in the last four months. Run one to see whether YouTube is pushing them.` });
+    recommended.push({ label: "What YouTube is pushing", points: null, max: 40, why: `Recent ${KINDS[format]} on ${game} have not been checked yet. The dashboard is doing that now; this fills in by itself.` });
   } else {
     const top = [...breakouts].sort((a, b) => (b.outlier_score ?? 0) - (a.outlier_score ?? 0))[0];
     const small = breakouts.filter((v) => (v.channel_subscribers ?? Infinity) <= 50_000).length;
@@ -252,7 +269,7 @@ export function scoreIdea(
     game,
     history: { value: total(history), parts: history },
     recommended: { value: total(recommended), parts: recommended },
-    search: game && outside.length === 0 ? game : null,
+    search: game && !fresh ? game : null,
   };
 }
 

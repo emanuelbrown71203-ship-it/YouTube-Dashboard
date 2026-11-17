@@ -546,6 +546,33 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     expect((await call("POST", "/research", { user: OWNER, body: { action: "mystery" } })).status).toBe(400);
   });
 
+  it("searches a game's breakouts by itself when it has ideas and no fresh search", async () => {
+    const owner = (await sql`select user_id from public.yt_owners where revoked_at is null limit 1`)[0]?.user_id;
+    const { call, mock } = setup();
+    await sql`update public.yt_ideas set trashed_at = now() where trashed_at is null`;
+    await sql`insert into public.yt_ideas (title, format, topic) values ('Auto one', 'long', 'Sekiro'), ('Auto two', 'long', 'sekiro'), ('Auto three', 'short', 'Cuphead')`;
+    const searches = () => mock.calls.filter((c) => c.includes("/youtube/v3/search")).length;
+    // The idea being looked at: its game is searched once, and the search is recorded as the dashboard's own.
+    const first = await call("POST", "/research", { user: owner, body: { action: "cover", game: "Sekiro", format: "long" } });
+    expect(first.data.searched).toHaveLength(1);
+    expect(first.data.searched[0]).toMatchObject({ game: "Sekiro", format: "long" });
+    const [run] = await sql`select query, params from public.yt_research_runs where kind = 'outliers' order by created_at desc limit 1`;
+    expect(run).toMatchObject({ query: "Sekiro", params: { format: "long", mode: "breakout", window_days: 90, auto: true } });
+    const spent = searches();
+    expect(spent).toBeGreaterThan(0);
+    // Asked again, nothing is spent: the search is still fresh.
+    expect((await call("POST", "/research", { user: owner, body: { action: "cover", game: "sekiro", format: "long" } })).data.searched).toHaveLength(0);
+    expect(searches()).toBe(spent);
+    expect((await call("POST", "/research", { user: owner, body: { action: "cover", game: "", format: "long" } })).status).toBe(400);
+    // After a sync, the follow-up covers the games that still have none: Cuphead Shorts, not Sekiro again.
+    const [{ value: secret }] = await sql`select value from public.yt_private where key = 'cron_secret'`;
+    const [{ id: runId }] = await sql`select id from public.yt_sync_runs order by id desc limit 1`;
+    const extras = await call("POST", "/sync/extras", { headers: { "x-cron-secret": secret }, body: { run_id: runId, hop: 0 } });
+    expect(extras.data.steps.idea_research.searched.map((x: { game: string; format: string }) => `${x.game}/${x.format}`)).toEqual(["Cuphead/short"]);
+    expect(extras.data.steps.idea_research.left).toBe(0);
+    await sql`update public.yt_ideas set trashed_at = now() where title like 'Auto %'`;
+  });
+
   it("stops research before the daily budget runs out, leaving room for the sync", async () => {
     const [{ day }] = await sql`select public.yt_quota_day() as day`;
     const [{ units: real }] = await sql`select units from public.yt_quota_usage where day = ${day}`;

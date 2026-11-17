@@ -256,9 +256,16 @@ describe("growth", () => {
     const found = (format: string, n: number) => Array.from({ length: n }, (_, i) => ({ id: `${format}${i}`, title: "Baldur's Gate 3 honour mode run", tags: [], format, views: 90000, outlier_score: 8, channel_subscribers: 9000, published_at: "2026-10-20" }));
     const withResearch = scoreIdea(idea, videos, found("long", 4), "2026-11-17");
     expect(withResearch.recommended.value!).toBeGreaterThan(good.recommended.value ?? 0);
-    expect(withResearch.search).toBeNull();
+    expect(withResearch.search).toBe("Baldur's Gate 3");
     expect(scoreIdea(idea, videos, found("short", 4), "2026-11-17").recommended.parts[0].points).toBeNull();
 
+    // A search that ran and found nothing is an answer, not a gap; a stale or missing one asks for a new search.
+    const empty = scoreIdea(idea, videos, [], "2026-11-17", [{ game: "baldur's gate 3", format: "long", at: "2026-11-10T08:00:00Z" }]);
+    expect(empty.recommended.parts[0].points).toBe(6);
+    expect(empty.search).toBeNull();
+    expect(scoreIdea(idea, videos, [], "2026-11-17", [{ game: "Baldur's Gate 3", format: "short", at: "2026-11-10T08:00:00Z" }]).search).toBe("Baldur's Gate 3");
+    expect(scoreIdea(idea, videos, found("long", 4), "2026-11-17", [{ game: "Baldur's Gate 3", format: "long", at: "2026-10-01T08:00:00Z" }]).search).toBe("Baldur's Gate 3");
+    expect(scoreIdea(idea, videos, found("long", 4), "2026-11-17", [{ game: "Baldur's Gate 3", format: "long", at: "2026-11-16T08:00:00Z" }]).search).toBeNull();
     // A long-form idea on a game only ever covered in Shorts gets a hint, not a track record.
     const elden = scoreIdea({ ...idea, title: "Elden Ring but I can only roll" }, videos, [], "2026-11-17");
     expect(elden.history.parts[0].points).toBeNull();
