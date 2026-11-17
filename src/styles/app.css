@@ -583,3 +583,10 @@ h1 { font-weight: 850; font-stretch: 122%; letter-spacing: -0.02em; font-size: 3
 .week-card ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
 .week-card li { line-height: 1.4; color: var(--ink-2); }
 .week-card a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--line-2); text-underline-offset: 3px; }
+
+/* Saved lines */
+.line-note { align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.line-note .line-text { font-size: 16px; line-height: 1.45; overflow-wrap: anywhere; white-space: pre-wrap; padding-left: 12px; border-left: 3px solid var(--spark); }
+
+/* Ideas grouped by game */
+.game-ideas { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }

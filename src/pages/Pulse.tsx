@@ -16,7 +16,7 @@ const todayIso = () => new Date().toISOString().slice(0, 10);
 export const useFound = () => useQuery({ queryKey: ["found-videos"], queryFn: getFoundVideos, staleTime: 5 * 60_000 });
 
 /** Scores for every idea on the board, worked out once. */
-export function useIdeaScores(ideas: Pick<Idea, "id" | "title" | "format" | "target_keyword" | "concept" | "hook">[]): Map<string, IdeaScores> {
+export function useIdeaScores(ideas: Pick<Idea, "id" | "title" | "format" | "target_keyword" | "concept" | "hook" | "topic">[]): Map<string, IdeaScores> {
   const videos = useVideos();
   const found = useFound();
   return useMemo(() => {
@@ -71,8 +71,8 @@ export function ScorePanel({ draft }: { draft: IdeaDraft }) {
   const videos = useVideos();
   const found = useFound();
   const scores = useMemo(
-    () => scoreIdea({ title: draft.title ?? "", format: draft.format ?? "long", target_keyword: draft.target_keyword ?? null, concept: draft.concept ?? null, hook: draft.hook ?? null }, videos.data ?? [], found.data ?? [], todayIso()),
-    [draft.title, draft.format, draft.target_keyword, draft.concept, draft.hook, videos.data, found.data],
+    () => scoreIdea({ title: draft.title ?? "", format: draft.format ?? "long", target_keyword: draft.target_keyword ?? null, concept: draft.concept ?? null, hook: draft.hook ?? null, topic: draft.topic ?? null }, videos.data ?? [], found.data ?? [], todayIso()),
+    [draft.title, draft.format, draft.target_keyword, draft.concept, draft.hook, draft.topic, videos.data, found.data],
   );
   if (!(draft.title ?? "").trim()) return null;
   const kind = draft.format === "short" ? "Shorts" : "long-form videos";

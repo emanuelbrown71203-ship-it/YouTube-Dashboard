@@ -95,6 +95,8 @@ export interface Idea {
   status: IdeaStatus;
   discovery: "recommended" | "search" | null;
   title: string;
+  /** The game or topic the idea sits under, chosen by the owner. */
+  topic: string | null;
   title_options: string[];
   target_keyword: string | null;
   hook: string | null;

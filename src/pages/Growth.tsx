@@ -18,7 +18,10 @@ import type { Video } from "../lib/types.ts";
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const message = (err: unknown) => (err instanceof Error ? err.message : "That did not work. Try again.");
 
-export const HOME_TABS = [{ key: "", label: "Overview" }, { key: "recap", label: "Monthly recap" }, { key: "goals", label: "Goals" }, { key: "comments", label: "Comments" }];
+export const HOME_TABS = [
+  { key: "", label: "Overview" }, { key: "stats", label: "Stats" }, { key: "recap", label: "Monthly recap" }, { key: "goals", label: "Goals" },
+  { key: "comments", label: "Comments" }, { key: "notes", label: "Lines" },
+];
 export const VIDEO_TABS = [{ key: "", label: "All videos" }, { key: "games", label: "By game" }, { key: "funnel", label: "Shorts to long" }, { key: "tests", label: "Tests" }];
 export const IDEA_TABS = [{ key: "", label: "Board" }, { key: "planner", label: "Planner" }];
 

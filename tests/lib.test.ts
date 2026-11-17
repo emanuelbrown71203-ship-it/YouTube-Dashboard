@@ -263,6 +263,9 @@ describe("growth", () => {
     const elden = scoreIdea({ ...idea, title: "Elden Ring but I can only roll" }, videos, [], "2026-11-17");
     expect(elden.history.parts[0].points).toBeNull();
     expect(elden.history.parts.find((p) => p.label.startsWith("A hint"))!.points).toBe(15);
+    // Filing the idea under a game by hand wins over what the wording says.
+    expect(scoreIdea({ ...idea, title: "My next challenge run", topic: "Baldur's Gate 3" }, videos, [], "2026-11-17").game).toBe("Baldur's Gate 3");
+    expect(scoreIdea({ ...idea, topic: "Elden Ring" }, videos, [], "2026-11-17").game).toBe("Elden Ring");
     // No game named: no number at all.
     expect(scoreIdea({ ...idea, title: "My setup tour" }, [], [], "2026-11-17").history.value).toBeNull();
   });

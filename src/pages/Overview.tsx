@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { GoalsStrip, Hub, KindWords, RunBand } from "./Growth.tsx";
+import { GoalsStrip, HOME_TABS, Hub, KindWords, RunBand, Tabs } from "./Growth.tsx";
+import { FrontLines } from "./Notes.tsx";
 import { NewUpload, WeekCard } from "./Pulse.tsx";
 import { BarList, Sparkline, Timeline, type UploadPin } from "../components/Timeline.tsx";
 import { Delta, ErrorNote, FormatTag, Loading, Mult, Segmented, Thumb } from "../components/ui.tsx";
@@ -34,7 +35,12 @@ export const TRAFFIC_LABEL: Record<string, string> = {
 };
 const RECOMMENDED = new Set(["SUBSCRIBER", "RELATED_VIDEO", "SHORTS"]);
 
-export function Overview() {
+/**
+ * The front page (`home`) keeps to what the owner acts on; the charts and breakdowns live on the
+ * Stats tab (`stats`), so the front page is not buried under them.
+ */
+export function Overview({ view }: { view: "home" | "stats" }) {
+  const home = view === "home";
   const [range, setRange] = useState<RangeKey>("28");
   const [metric, setMetric] = useState<Metric>("views");
   const daily = useDaily();
@@ -86,13 +92,11 @@ export function Overview() {
   return (
     <>
       <div className="page-head">
-        <h1>Overview</h1>
-        <Segmented label="Time range" value={range} options={RANGES} onChange={setRange} />
+        <h1>{home ? "Overview" : "Stats"}</h1>
+        {home ? null : <Segmented label="Time range" value={range} options={RANGES} onChange={setRange} />}
       </div>
-      <RunBand />
-      <NewUpload />
-      <WeekCard />
-      <Hub />
+      <Tabs label="Front page" base="" current={home ? "" : "stats"} tabs={HOME_TABS} />
+      {home ? <><RunBand /><NewUpload /><WeekCard /><Hub /></> : null}
 
       {connection.data?.connection_error ? (
         <div className="notice error" role="alert">
@@ -122,12 +126,17 @@ export function Overview() {
         ) : null}
       </div>
 
-      <div style={{ marginBottom: 22 }}>
-        <KindWords />
-        <GoalsStrip />
-      </div>
+      {home ? (
+        <>
+          <FrontLines />
+          <div style={{ marginBottom: 22 }}>
+            <KindWords />
+            <GoalsStrip />
+          </div>
+        </>
+      ) : null}
 
-      <div className={`panel${daily.isFetching ? " fade" : ""}`}>
+      {home ? null : <div className={`panel${daily.isFetching ? " fade" : ""}`}>
         <div className="stat-strip" role="group" aria-label="Choose what the chart shows">
           <button type="button" className="stat" aria-pressed={metric === "views"} onClick={() => setMetric("views")}>
             <span className="label">Views</span>
@@ -160,10 +169,10 @@ export function Overview() {
           YouTube's numbers arrive two to three days late, so the latest days are missing.
           {metric === "engaged" ? " Engaged views leave out people who swiped past in the first moment." : ""}
         </p>
-      </div>
+      </div>}
 
-      <div className="two-col section">
-        <section>
+      <div className={home ? "section" : "two-col section"}>
+        {home ? <section>
           <div className="section-head">
             <h2>Latest uploads</h2>
             <a href="#/videos">All videos</a>
@@ -193,9 +202,10 @@ export function Overview() {
               {whole(videos.data?.length ?? 0)} of {whole(channel.data?.videos ?? 0)} uploads are stored so far. How each one compares with your usual shows once YouTube is connected.
             </p>
           ) : null}
-        </section>
+          <p className="small" style={{ marginTop: 12 }}><a href="#/stats">Open Stats for the charts, where views come from and the split by format</a></p>
+        </section> : null}
 
-        <section>
+        {home ? null : <section>
           <div className="section-head"><h2>Where views come from</h2></div>
           <div className="panel panel-pad">
             {trafficRows.length ? (
@@ -218,7 +228,7 @@ export function Overview() {
             )}
           </div>
           <FormatSplit period={period} formats={formats.data ?? []} />
-        </section>
+        </section>}
       </div>
     </>
   );

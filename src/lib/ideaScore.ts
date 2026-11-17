@@ -156,7 +156,7 @@ function total(parts: Part[]): number | null {
 const fromTimes = (x: number, max: number) => Math.round(clamp(0.5 + Math.log2(Math.max(x, 0.1)) / 4, 0, 1) * max);
 
 export function scoreIdea(
-  idea: Pick<Idea, "title" | "format" | "target_keyword" | "concept" | "hook">,
+  idea: Pick<Idea, "title" | "format" | "target_keyword" | "concept" | "hook"> & { topic?: string | null },
   videos: Video[],
   found: FoundVideo[],
   today: string,
@@ -165,7 +165,8 @@ export function scoreIdea(
   const other = format === "long" ? "short" : "long";
   const mine = videos.filter((v) => v.privacy === "public");
   const games = [...new Set(mine.map((v) => v.topic).filter((t): t is string => Boolean(t)))];
-  const game = ideaGame(idea, games);
+  // The game the owner filed the idea under wins; otherwise it is read from the wording.
+  const game = idea.topic?.trim() || ideaGame(idea, games);
   const lifts = titleLifts(mine, format);
   const sameGame = game ? mine.filter((v) => v.topic === game) : [];
   const here = sameGame.filter((v) => v.content_type === format && v.vs_typical !== null);

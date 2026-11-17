@@ -297,6 +297,7 @@ export type Database = {
           created_at: string;
           updated_at: string;
           trashed_at: string | null;
+          topic: string | null;
         };
         Insert: {
           id?: string;
@@ -325,6 +326,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           trashed_at?: string | null;
+          topic?: string | null;
         };
         Update: {
           id?: string;
@@ -353,6 +355,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           trashed_at?: string | null;
+          topic?: string | null;
         };
         Relationships: [];
       };
@@ -398,6 +401,42 @@ export type Database = {
           saved_at?: string | null;
           analyzed_at?: string;
           created_at?: string;
+        };
+        Relationships: [];
+      };
+      yt_notes: {
+        Row: {
+          id: string;
+          text: string;
+          source: string | null;
+          source_url: string | null;
+          topic: string | null;
+          on_front: boolean;
+          created_at: string;
+          updated_at: string;
+          trashed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          text: string;
+          source?: string | null;
+          source_url?: string | null;
+          topic?: string | null;
+          on_front?: boolean;
+          created_at?: string;
+          updated_at?: string;
+          trashed_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          text?: string;
+          source?: string | null;
+          source_url?: string | null;
+          topic?: string | null;
+          on_front?: boolean;
+          created_at?: string;
+          updated_at?: string;
+          trashed_at?: string | null;
         };
         Relationships: [];
       };
@@ -1086,6 +1125,7 @@ export type Database = {
           video_views: number | null;
           created_at: string | null;
           updated_at: string | null;
+          topic: string | null;
         };
         Relationships: [];
       };

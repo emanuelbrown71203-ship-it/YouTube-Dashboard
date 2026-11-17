@@ -40,6 +40,7 @@ research and the last sync. Every table and view has a comment explaining it;
 | `yt_goals`, `yt_tests`, `yt_video_changes` | The owner's goals, their title and thumbnail tests (what they changed, what they expected, how it went), and every title or thumbnail change the sync noticed. |
 | `yt_video_reach_daily`, `yt_v_video_reach` | Impressions and click-through rate per video, per day and over the newest 28 days. From YouTube's bulk reach report, a day or two behind; empty until the YouTube Reporting API is on in Google Cloud. |
 | `yt_video_pulse` | The live public view count of each upload, noted about once an hour in its first 3 days. With `yt_videos.published_at` it gives views by hours since publishing: the first 48 hours tracker. Only exists for uploads after 2026-11-17; older uploads are compared through their first days in `yt_video_analytics_daily`. |
+| `yt_notes` | Lines the owner wants to remember (from a podcast, a video, anywhere): `text`, `source`, `source_url`, `topic`. `on_front` ones show on the front page. |
 | `yt_comments` | Recent comments with the AI's reading: `sentiment`, `theme`, `is_question`. `pinned` ones sit on the front page. |
 
 `yt_v_videos` also carries `topic` (the game), `estimated_revenue` and `feeders`
@@ -70,7 +71,11 @@ tools here exist so that is not needed.
   `status` (`idea` > `scripting` > `filming` > `editing` > `scheduled` >
   `published`), `discovery` (`recommended` | `search`), `target_keyword`,
   `hook`, `concept`, `outline`, `thumbnail_concept`, `title_options`,
-  `priority` (1 high to 3 low), `target_date`, `notes`.
+  `priority` (1 high to 3 low), `target_date`, `notes`, and `topic`: the
+  game the idea sits under, spelled like `yt_videos.topic` ("Elden Ring").
+  Always set it; the board groups by it.
+- **Save a line for them**: insert into `public.yt_notes` (`text`, and
+  where it came from in `source`). Bin with `trashed_at`.
 - **Never hard-remove rows.** To bin an idea set `trashed_at = now()`. Browsers
   are switched off with `revoked_at`, codes with `used_at`.
 - **Never write the stats tables by hand.** They belong to the sync.
@@ -89,7 +94,7 @@ tools here exist so that is not needed.
 
 - `src/`: Vite + React + TypeScript. Reads go straight to Supabase with the
   publishable key; row level security lets only owners in.
-- `supabase/migrations/`: eleven files, all `yt_` objects. No statement in them
+- `supabase/migrations/`: twelve files, all `yt_` objects. No statement in them
   removes anything.
 - `supabase/functions/yt-api/`: one edge function, deployed with JWT
   verification off because it checks callers itself. Routes: `/auth/setup`,
@@ -142,6 +147,9 @@ tools here exist so that is not needed.
   one allowed bridge is a hint, said as a hint: a Short that beat the other
   Shorts suggests the idea could carry a long video (`shortsWorthAVideo`).
   The same goes when answering the owner's questions from the data.
+- The front page is for what the owner acts on: the new upload, the weekly
+  note, saved lines, pinned comments, goals, latest uploads. Charts and
+  breakdowns go on the Stats tab (`#/stats`), not there.
 - Live streams are many and small. "Latest uploads", the planner and the
   upload markers leave them out; they have their own Streams tab.
 - Thumbnails load only while on or near the screen (`Thumb` in
