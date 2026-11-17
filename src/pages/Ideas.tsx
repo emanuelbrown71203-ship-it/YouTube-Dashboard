@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { IDEA_TABS, Tabs } from "./Growth.tsx";
 import { ScoreChips, ScorePanel, TitleHelper, useFound, useIdeaScores } from "./Pulse.tsx";
 import { scoreIdea } from "../lib/ideaScore.ts";
+import { ImportIdeas, TemplateHint, TemplateScore } from "./Templates.tsx";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { Drawer, ErrorNote, FormatTag, Icon, Loading, Mult, Segmented, useToast } from "../components/ui.tsx";
 import { saveIdea, setIdeaTrashed } from "../lib/api.ts";
@@ -59,6 +60,7 @@ export function Ideas() {
   const reload = () => queryClient.invalidateQueries({ queryKey: keys.ideas });
   const scores = useIdeaScores(ideas.data ?? []);
   const [order, setOrder] = useState<"priority" | "history" | "recommended">("priority");
+  const [importing, setImporting] = useState(false);
   const [view, setView] = useState<"stage" | "game">(() => {
     try { return localStorage.getItem("yt-ideas-view") === "game" ? "game" : "stage"; } catch { return "stage"; }
   });
@@ -108,7 +110,7 @@ export function Ideas() {
                         {idea.title}
                       </button>
                       {idea.hook ? <div className="hook clip2">{idea.hook}</div> : null}
-                      {idea.status !== "published" ? <ScoreChips scores={scores.get(idea.id)} /> : null}
+                      {idea.status !== "published" ? <ScoreChips scores={scores.get(idea.id)} templates={idea.template_check?.score ?? null} /> : null}
                       <div className="foot">
                         <FormatTag format={idea.format} />
                         {withStage ? <span className="tag">{STATUSES.find((x) => x.key === idea.status)?.label}</span> : null}
@@ -180,6 +182,7 @@ export function Ideas() {
         />
         <button type="submit" className="btn btn-primary" disabled={busy || !quick.trim()}><Icon name="plus" />Add idea</button>
         <button type="button" className="btn" onClick={() => setEditing(blank(quickFormat))}>Write one out in full</button>
+        <button type="button" className="btn" onClick={() => setImporting(true)}>Import from Claude</button>
       </form>
 
       {(ideas.data ?? []).length === 0 ? (
@@ -220,6 +223,7 @@ export function Ideas() {
         </div>
       )}
 
+      {importing ? <ImportIdeas onClose={() => setImporting(false)} onAdded={() => void reload()} /> : null}
       {editing ? <IdeaEditor key={editorKey} draft={editing} games={games} onClose={() => setEditing(null)} onChanged={reload} onOpen={setEditing} /> : null}
     </>
   );
@@ -310,6 +314,7 @@ function IdeaEditor(props: { draft: IdeaDraft; games: string[]; onClose: () => v
           {bare.length} characters{bare.length > 70 ? ". YouTube cuts titles off after about 60 to 70, so the end may not show" : ""}
           {hashtags > 3 ? `. ${hashtags} hashtags: only three are shown` : ""}.
         </small>
+        <TemplateHint kind="title" />
       </label>
 
       <label className="field">
@@ -323,6 +328,10 @@ function IdeaEditor(props: { draft: IdeaDraft; games: string[]; onClose: () => v
       </label>
 
       <ScorePanel draft={form} />
+      <TemplateScore
+        idea={form} dirty={dirty}
+        onChecked={(check, at) => { setForm((f) => ({ ...f, template_check: check, template_checked_at: at })); void props.onChanged(); }}
+      />
 
       <div className="field-row">
         <div className="field">
@@ -367,6 +376,7 @@ function IdeaEditor(props: { draft: IdeaDraft; games: string[]; onClose: () => v
       <label className="field">
         <span>Hook</span>
         <textarea className="textarea" style={{ minHeight: 60 }} {...text("hook")} placeholder="The first line, or the first five seconds" />
+        <TemplateHint kind="intro" />
       </label>
       <label className="field">
         <span>What happens</span>
@@ -380,6 +390,7 @@ function IdeaEditor(props: { draft: IdeaDraft; games: string[]; onClose: () => v
         <label className="field">
           <span>Thumbnail idea</span>
           <input className="input" {...text("thumbnail_concept")} placeholder="What the picture shows, and the two or three words on it" />
+          <TemplateHint kind="thumbnail" />
         </label>
       ) : null}
 

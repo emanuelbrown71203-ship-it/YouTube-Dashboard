@@ -30,14 +30,19 @@ function tone(value: number | null): string {
 }
 
 /** Two small figures on an idea card. */
-export function ScoreChips({ scores }: { scores: IdeaScores | undefined }) {
+export function ScoreChips({ scores, templates = null }: { scores: IdeaScores | undefined; templates?: number | null }) {
   if (!scores) return null;
   const chip = (label: string, s: Score) => (
     <span className={`score-chip ${tone(s.value)}`} title={`${label}: ${scoreWord(s.value)}`}>
       <b className="fig">{s.value ?? "–"}</b>{label}
     </span>
   );
-  return <div className="score-chips">{chip("Your history", scores.history)}{chip("Recommended", scores.recommended)}</div>;
+  return (
+    <div className="score-chips">
+      {chip("Your history", scores.history)}{chip("Recommended", scores.recommended)}
+      {templates === null ? null : chip("Your templates", { value: templates, parts: [] })}
+    </div>
+  );
 }
 
 function ScoreBlock({ title, sub, score }: { title: string; sub: string; score: Score }) {

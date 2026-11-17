@@ -162,6 +162,23 @@ export const explainVideo = (video_id: string) =>
 export interface TitleIdea { title: string; why: string }
 export const suggestTitles = (idea: { title: string; concept: string; format: "long" | "short"; game: string | null }) =>
   callApi<{ titles: TitleIdea[] }>("/ai/titles", idea);
+export interface TemplateCheck {
+  score: number;
+  checks: { template_id: string; name: string; kind: string; score: number; met: string[]; missing: string[]; fix: string }[];
+}
+export const checkIdea = (idea_id: string) => callApi<TemplateCheck & { idea_id: string }>("/ai/check", { idea_id });
+export interface PastedIdea {
+  title: string;
+  format: "long" | "short";
+  topic: string | null;
+  hook: string | null;
+  concept: string | null;
+  thumbnail_concept: string | null;
+  title_options: string[];
+}
+export const readPastedIdeas = (text: string) => callApi<{ ideas: PastedIdea[] }>("/ai/import", { text });
+export const connector = (action: "status" | "create" | "remove") =>
+  callApi<{ connected: boolean; url?: string; created_at?: string | null; used_at?: string | null }>("/mcp/setup", { action });
 export const syncNow = () => callApi<{ status: string; message?: string }>("/sync");
 
 export const findOutliers = (search: OutlierSearch, page_token: string | null = null) =>
@@ -247,7 +264,7 @@ export async function getBriefing(): Promise<unknown> {
 // ---------------------------------------------------------------------------
 
 const IDEA_COLUMNS =
-  "id, format, status, discovery, title, title_options, target_keyword, hook, concept, outline, thumbnail_concept, priority, target_date, inspiration_url, inspiration_video_id, notes, video_id, parent_id, sort_order, source, created_at, updated_at, topic";
+  "id, format, status, discovery, title, title_options, target_keyword, hook, concept, outline, thumbnail_concept, priority, target_date, inspiration_url, inspiration_video_id, notes, video_id, parent_id, sort_order, source, created_at, updated_at, topic, template_check, template_checked_at";
 
 export async function getIdeas(): Promise<Idea[]> {
   const { data, error } = await supabase.from("yt_ideas").select(IDEA_COLUMNS)
@@ -257,7 +274,8 @@ export async function getIdeas(): Promise<Idea[]> {
 }
 
 export async function saveIdea(draft: IdeaDraft): Promise<Idea> {
-  const { id, ...fields } = draft;
+  // The AI's reading against the templates is written by the server only, never from here.
+  const { id, template_check: _check, template_checked_at: _checkedAt, ...fields } = draft;
   const clean = { ...fields, title: fields.title.trim() };
   if (!clean.title) throw new ApiError("Give the idea a title first.", "bad_request");
   const query = id

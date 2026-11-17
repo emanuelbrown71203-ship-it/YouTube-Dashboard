@@ -97,6 +97,9 @@ export interface Idea {
   title: string;
   /** The game or topic the idea sits under, chosen by the owner. */
   topic: string | null;
+  /** The AI's reading of the idea against the owner's templates, and when it was made. */
+  template_check: import("./api.ts").TemplateCheck | null;
+  template_checked_at: string | null;
   title_options: string[];
   target_keyword: string | null;
   hook: string | null;

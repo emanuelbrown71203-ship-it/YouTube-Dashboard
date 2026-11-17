@@ -211,6 +211,23 @@ const deps: Deps = {
       const games = ["Elden Ring", "Baldur's Gate 3", "Cuphead", "Dark Souls 3"];
       return { videos: list.map((v) => ({ id: v.id, topic: games.find((g) => v.title.toLowerCase().includes(g.toLowerCase().split(" ")[0])) ?? null })) };
     }
+    if (props.checks) {
+      const sent = JSON.parse(req.prompt) as { idea: { title: string }; templates: { id: string; template: string }[] };
+      return {
+        checks: sent.templates.map((t) => {
+          const points = t.template.split("\n").map((l) => l.trim()).filter(Boolean);
+          const met = points.filter((_, i) => i % 2 === 0), missing = points.filter((_, i) => i % 2 === 1);
+          return { template_id: t.id, score: Math.round((100 * met.length) / Math.max(1, points.length)), met, missing, fix: missing[0] ? `(made-up) Work in: ${missing[0]}.` : "" };
+        }),
+      };
+    }
+    if (props.ideas) {
+      const pasted = (JSON.parse(req.prompt) as { pasted_text: string }).pasted_text;
+      return {
+        ideas: pasted.split("\n").map((l) => l.replace(/^[-*\d.\s]+/, "").trim()).filter((l) => l.length > 8).slice(0, 6)
+          .map((title) => ({ title, format: "long", game: /elden/i.test(title) ? "Elden Ring" : null, hook: null, concept: "(made-up) Read from the pasted text.", thumbnail: null, other_titles: [] })),
+      };
+    }
     if (props.titles) {
       const idea = JSON.parse(req.prompt).idea as { working_title: string; game: string | null };
       const game = idea.game ?? "this game";

@@ -344,6 +344,79 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     await sql`update public.yt_private set value = '' where key = 'anthropic_api_key'`;
   });
 
+  it("lets Claude's connector add ideas, lines and templates, and nothing without the secret address", async () => {
+    const owner = (await sql`select user_id from public.yt_owners where revoked_at is null limit 1`)[0]?.user_id;
+    const { call, deps } = setup();
+    expect((await call("POST", "/mcp/setup", { user: STRANGER, body: { action: "create" } })).status).toBe(403);
+    expect((await call("POST", "/mcp/setup", { user: owner, body: {} })).data.connected).toBe(false);
+    const made = await call("POST", "/mcp/setup", { user: owner, body: { action: "create" } });
+    const path = new URL(made.data.url).pathname.replace(/^.*\/yt-api/, "");
+    expect(path).toMatch(/^\/mcp\/[0-9a-f]{64}$/);
+    // Only the hash is kept.
+    const [{ value: stored }] = await sql`select value from public.yt_private where key = 'mcp_token_hash'`;
+    expect(path).not.toContain(stored);
+    const rpc = (method: string, params: unknown = {}, id: number | undefined = 1, at = path) => call("POST", at, { body: { jsonrpc: "2.0", id, method, params } });
+
+    expect((await rpc("tools/list", {}, 1, `/mcp/${"0".repeat(64)}`)).status).toBe(401);
+    expect((await call("GET", path)).status).toBe(405);
+    const hello = await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } });
+    expect(hello.data.result).toMatchObject({ protocolVersion: "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "youtube-dashboard" } });
+    expect((await rpc("initialize", { protocolVersion: "1999-01-01" })).data.result.protocolVersion).toBe("2025-06-18");
+    expect((await call("POST", path, { body: { jsonrpc: "2.0", method: "notifications/initialized" } })).status).toBe(202);
+    const tools = (await rpc("tools/list")).data.result.tools as { name: string; inputSchema: { type: string } }[];
+    expect(tools.map((t) => t.name)).toEqual(expect.arrayContaining(["get_channel_briefing", "add_ideas", "add_lines", "save_template", "update_idea"]));
+    expect(tools.every((t) => t.inputSchema.type === "object")).toBe(true);
+    expect((await rpc("nope")).data.error.code).toBe(-32601);
+
+    const tool = async (name: string, args: unknown = {}) => {
+      const res = (await rpc("tools/call", { name, arguments: args })).data.result;
+      return { error: res.isError as boolean, out: res.isError ? res.content[0].text : JSON.parse(res.content[0].text) };
+    };
+    expect((await tool("get_channel_briefing")).out.channel).toBeTruthy();
+    expect((await tool("list_games")).out.length).toBeGreaterThan(0);
+    const added = await tool("add_ideas", { ideas: [{ title: "Connector idea", game: "Elden Ring", format: "short", hook: "Open on the fall", other_titles: ["B", "C"] }, { title: "Second one" }] });
+    expect(added.out.added).toHaveLength(2);
+    const [idea] = await sql`select title, format, topic, hook, title_options, source, status from public.yt_ideas where id = ${added.out.added[0].id}`;
+    expect(idea).toMatchObject({ title: "Connector idea", format: "short", topic: "Elden Ring", hook: "Open on the fall", title_options: ["B", "C"], source: "claude", status: "idea" });
+    expect((await tool("add_ideas", { ideas: [{ hook: "no title" }] })).error).toBe(true);
+    // A change leaves what was not mentioned alone; the bin keeps the row.
+    const moved = await tool("update_idea", { id: added.out.added[0].id, stage: "scripting", game: "Cuphead" });
+    expect(moved.out).toMatchObject({ stage: "scripting", game: "Cuphead", in_bin: false });
+    expect((await sql`select hook from public.yt_ideas where id = ${added.out.added[0].id}`)[0].hook).toBe("Open on the fall");
+    expect((await tool("update_idea", { id: added.out.added[1].id, move_to_bin: true })).out.in_bin).toBe(true);
+    expect((await sql`select count(*)::int as n from public.yt_ideas where id = ${added.out.added[1].id} and trashed_at is not null`)[0].n).toBe(1);
+    expect((await tool("list_ideas")).out.map((i: { title: string }) => i.title)).toContain("Connector idea");
+
+    expect((await tool("add_lines", { lines: [{ text: "Start on the best frame.", source: "A podcast", link: "javascript:alert(1)" }] })).out.added).toHaveLength(1);
+    expect((await sql`select source, source_url, on_front from public.yt_notes where text = 'Start on the best frame.'`)[0]).toEqual({ source: "A podcast", source_url: null, on_front: true });
+    const saved = await tool("save_template", { kind: "title", name: "My titles", body: "Ask a question\nName the game\nUnder 60 characters" });
+    expect(saved.out.kind).toBe("title");
+    expect((await tool("save_template", { id: saved.out.id, body: "Ask a question" })).out.name).toBe("My titles");
+    expect((await tool("list_templates")).out[0].body).toBe("Ask a question");
+    expect((await tool("save_template", { name: "No kind", body: "x" })).error).toBe(true);
+    expect((await tool("drop_everything")).error).toBe(true);
+
+    // The idea is read against the active templates and the reading is kept with it.
+    expect((await call("POST", "/ai/check", { user: owner, body: { idea_id: added.out.added[0].id } })).status).toBe(409);
+    await sql`insert into public.yt_private (key, value) values ('anthropic_api_key', 'sk-ant-test') on conflict (key) do update set value = excluded.value`;
+    deps.claude = async (_key, req) => {
+      const sent = JSON.parse(req.prompt);
+      if (sent.templates) return { checks: [{ template_id: sent.templates[0].id, score: 140, met: ["Ask a question"], missing: [], fix: "" }, { template_id: "made-up", score: 1, met: [], missing: [], fix: "" }] };
+      return { ideas: [{ title: "Pasted idea", format: "long", game: "Elden Ring", hook: null, concept: "A run.", thumbnail: null, other_titles: [] }, { title: " ", format: "long", game: null, hook: null, concept: null, thumbnail: null, other_titles: [] }] };
+    };
+    const read = await call("POST", "/ai/check", { user: owner, body: { idea_id: added.out.added[0].id } });
+    expect(read.data).toMatchObject({ score: 100, checks: [{ name: "My titles", kind: "title", score: 100, met: ["Ask a question"] }] });
+    expect((await sql`select template_check->>'score' as score from public.yt_ideas where id = ${added.out.added[0].id}`)[0].score).toBe("100");
+    const pasted = await call("POST", "/ai/import", { user: owner, body: { text: "Here are some ideas from our chat: an Elden Ring run..." } });
+    expect(pasted.data.ideas).toEqual([{ title: "Pasted idea", format: "long", topic: "Elden Ring", hook: null, concept: "A run.", thumbnail_concept: null, title_options: [] }]);
+    expect((await sql`select count(*)::int as n from public.yt_ideas where title = 'Pasted idea'`)[0].n).toBe(0);
+    await sql`update public.yt_private set value = '' where key = 'anthropic_api_key'`;
+
+    // Switching the connector off closes the address.
+    await call("POST", "/mcp/setup", { user: owner, body: { action: "remove" } });
+    expect((await rpc("tools/list")).status).toBe(401);
+  });
+
   it("ticks off a best-video goal when any video gets there", async () => {
     const [{ top }] = await sql`select max(views)::int as top from public.yt_videos where removed_at is null and privacy = 'public'`;
     const [reach] = await sql`insert into public.yt_goals (kind, title, target) values ('video_views', 'reachable', ${top}) returning id`;

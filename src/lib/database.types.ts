@@ -298,6 +298,8 @@ export type Database = {
           updated_at: string;
           trashed_at: string | null;
           topic: string | null;
+          template_check: Json | null;
+          template_checked_at: string | null;
         };
         Insert: {
           id?: string;
@@ -327,6 +329,8 @@ export type Database = {
           updated_at?: string;
           trashed_at?: string | null;
           topic?: string | null;
+          template_check?: Json | null;
+          template_checked_at?: string | null;
         };
         Update: {
           id?: string;
@@ -356,6 +360,8 @@ export type Database = {
           updated_at?: string;
           trashed_at?: string | null;
           topic?: string | null;
+          template_check?: Json | null;
+          template_checked_at?: string | null;
         };
         Relationships: [];
       };
@@ -812,6 +818,39 @@ export type Database = {
           finished_at?: string | null;
           summary?: Json | null;
           error?: string | null;
+        };
+        Relationships: [];
+      };
+      yt_templates: {
+        Row: {
+          id: string;
+          kind: string;
+          name: string;
+          body: string;
+          active: boolean;
+          created_at: string;
+          updated_at: string;
+          trashed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          kind: string;
+          name: string;
+          body: string;
+          active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+          trashed_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          kind?: string;
+          name?: string;
+          body?: string;
+          active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+          trashed_at?: string | null;
         };
         Relationships: [];
       };

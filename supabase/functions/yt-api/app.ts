@@ -11,6 +11,10 @@
 //   POST /sync/extras       the slow follow-up work (AI, feeders); scheduler only
 //   POST /sync/pulse        hourly: spot a new upload, note live view counts; scheduler only
 //   POST /ai/titles         title ideas for a video idea, in the owner's own style
+//   POST /ai/check          how an idea measures up to the owner's templates
+//   POST /ai/import         reads pasted text into ideas to look over
+//   POST /mcp/setup         make or switch off the address of Claude's connector
+//   *    /mcp/<secret>      Claude's connector (Model Context Protocol)
 //   POST /research          owner runs a research action
 //
 // The function is deployed without Supabase's own JWT check because Google's
@@ -19,7 +23,8 @@
 import {
   type Api, closeApi, COMMENTS_SCOPE, type Deps, EARNINGS_SCOPE, exchangeToken, fetchChannels, getConfig, HttpError, SCOPES, setConfig,
 } from "./google.ts";
-import { suggestTitles } from "./growth.ts";
+import { checkTemplates, readIdeas, suggestTitles } from "./growth.ts";
+import { handleMcp, mcpSetup } from "./mcp.ts";
 import { research } from "./research.ts";
 import { runExtras, runPulse, runSync } from "./sync.ts";
 
@@ -281,6 +286,9 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
   try {
     if (req.method === "GET" && route === "/health") return json({ ok: true });
     if (req.method === "GET" && route === "/auth/callback") return await authCallback(url, deps);
+    // Claude's connector: the secret is the last part of the address.
+    const connector = /^\/mcp\/([^/]+)$/.exec(route);
+    if (connector && connector[1] !== "setup") return await handleMcp(req, deps, connector[1]);
     if (req.method !== "POST") throw new HttpError(404, "not_found", "Not found.");
     const body = await req.json().catch(() => ({}));
     switch (route) {
@@ -312,6 +320,15 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
       case "/ai/titles":
         await requireOwner(req, deps);
         return json(await suggestTitles(deps, body ?? {}));
+      case "/ai/check":
+        await requireOwner(req, deps);
+        return json(await checkTemplates(deps, body ?? {}));
+      case "/ai/import":
+        await requireOwner(req, deps);
+        return json(await readIdeas(deps, body ?? {}));
+      case "/mcp/setup":
+        await requireOwner(req, deps);
+        return json(await mcpSetup(deps, body ?? {}));
       case "/research":
         await requireOwner(req, deps);
         return json(await research(deps, body));

@@ -590,3 +590,10 @@ h1 { font-weight: 850; font-stretch: 122%; letter-spacing: -0.02em; font-size: 3
 
 /* Ideas grouped by game */
 .game-ideas { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+
+/* Templates */
+.template-body { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; margin-top: 12px; padding-left: 12px; border-left: 3px solid var(--spark); }
+.template-hint { margin-top: 6px; font-size: 13px; color: var(--ink-2); }
+.template-hint summary { cursor: pointer; color: var(--accent-strong); font-weight: 600; }
+.template-hint .template-body { margin-top: 8px; }
+.secret-url { display: block; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--surface); font-size: 12px; overflow-wrap: anywhere; user-select: all; }

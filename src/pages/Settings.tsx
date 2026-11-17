@@ -1,3 +1,4 @@
+import { ClaudeConnector } from "./Templates.tsx";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { CopyLine, ErrorNote, Loading, Segmented, useTheme, useToast } from "../components/ui.tsx";
@@ -168,6 +169,7 @@ export function Settings({ onSignedOut }: { onSignedOut: () => void }) {
             </p>
           ) : null}
           <AiKey on={Boolean(c.ai)} error={c.ai_error ?? null} onChanged={() => void queryClient.invalidateQueries({ queryKey: keys.connection })} />
+          <ClaudeConnector />
         </div>
       </section>
 

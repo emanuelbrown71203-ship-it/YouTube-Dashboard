@@ -23,7 +23,7 @@ export const HOME_TABS = [
   { key: "comments", label: "Comments" }, { key: "notes", label: "Lines" },
 ];
 export const VIDEO_TABS = [{ key: "", label: "All videos" }, { key: "games", label: "By game" }, { key: "funnel", label: "Shorts to long" }, { key: "tests", label: "Tests" }];
-export const IDEA_TABS = [{ key: "", label: "Board" }, { key: "planner", label: "Planner" }];
+export const IDEA_TABS = [{ key: "", label: "Board" }, { key: "planner", label: "Planner" }, { key: "templates", label: "Templates" }];
 
 export function Tabs(props: { label: string; base: string; current: string; tabs: { key: string; label: string }[] }) {
   return (
