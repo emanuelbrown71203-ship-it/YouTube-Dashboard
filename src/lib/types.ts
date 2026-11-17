@@ -97,6 +97,8 @@ export interface Idea {
   title: string;
   /** The game or topic the idea sits under, chosen by the owner. */
   topic: string | null;
+  /** When the owner decided to make it. Null = still just an idea, kept under its game and off the production board. */
+  picked_at: string | null;
   /** The AI's reading of the idea against the owner's templates, and when it was made. */
   template_check: import("./api.ts").TemplateCheck | null;
   template_checked_at: string | null;

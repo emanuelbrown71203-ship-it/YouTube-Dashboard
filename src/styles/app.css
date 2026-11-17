@@ -613,3 +613,6 @@ button.nav-link { border: 0; background: none; font-family: inherit; font-size: 
   }
   .more-sheet .nav-link { padding: 12px 4px; font-size: 12px; }
 }
+
+/* Adding an idea: title, then its game, then the format, all in one place. */
+.quick-idea { display: flex; flex-direction: column; gap: 10px; margin-bottom: 22px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }

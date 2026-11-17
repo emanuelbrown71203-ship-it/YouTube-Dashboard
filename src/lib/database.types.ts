@@ -300,6 +300,7 @@ export type Database = {
           topic: string | null;
           template_check: Json | null;
           template_checked_at: string | null;
+          picked_at: string | null;
         };
         Insert: {
           id?: string;
@@ -331,6 +332,7 @@ export type Database = {
           topic?: string | null;
           template_check?: Json | null;
           template_checked_at?: string | null;
+          picked_at?: string | null;
         };
         Update: {
           id?: string;
@@ -362,6 +364,7 @@ export type Database = {
           topic?: string | null;
           template_check?: Json | null;
           template_checked_at?: string | null;
+          picked_at?: string | null;
         };
         Relationships: [];
       };
@@ -1165,6 +1168,7 @@ export type Database = {
           created_at: string | null;
           updated_at: string | null;
           topic: string | null;
+          picked_at: string | null;
         };
         Relationships: [];
       };

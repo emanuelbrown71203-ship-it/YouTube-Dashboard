@@ -378,10 +378,19 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     expect(added.out.added).toHaveLength(2);
     const [idea] = await sql`select title, format, topic, hook, title_options, source, status from public.yt_ideas where id = ${added.out.added[0].id}`;
     expect(idea).toMatchObject({ title: "Connector idea", format: "short", topic: "Elden Ring", hook: "Open on the fall", title_options: ["B", "C"], source: "claude", status: "idea" });
+    // A new idea is only an idea. It goes on the production board when the owner decides to make it.
+    expect(added.out.added.map((i: { making_it: boolean }) => i.making_it)).toEqual([false, false]);
+    expect((await tool("list_ideas", { only_making: true })).out.map((i: { title: string }) => i.title)).not.toContain("Connector idea");
+    expect((await tool("update_idea", { id: added.out.added[0].id, make_it: true })).out).toMatchObject({ making_it: true, stage: "idea" });
+    expect((await tool("update_idea", { id: added.out.added[0].id, make_it: false })).out).toMatchObject({ making_it: false, stage: "idea" });
+    const keen = await tool("add_ideas", { ideas: [{ title: "Decided already", make_it: true }] });
+    expect(keen.out.added[0].making_it).toBe(true);
+    await tool("update_idea", { id: keen.out.added[0].id, move_to_bin: true });
     expect((await tool("add_ideas", { ideas: [{ hook: "no title" }] })).error).toBe(true);
     // A change leaves what was not mentioned alone; the bin keeps the row.
     const moved = await tool("update_idea", { id: added.out.added[0].id, stage: "scripting", game: "Cuphead" });
-    expect(moved.out).toMatchObject({ stage: "scripting", game: "Cuphead", in_bin: false });
+    expect(moved.out).toMatchObject({ stage: "scripting", game: "Cuphead", in_bin: false, making_it: true });
+    expect((await tool("list_ideas", { only_making: true })).out.map((i: { title: string }) => i.title)).toContain("Connector idea");
     expect((await sql`select hook from public.yt_ideas where id = ${added.out.added[0].id}`)[0].hook).toBe("Open on the fall");
     expect((await tool("update_idea", { id: added.out.added[1].id, move_to_bin: true })).out.in_bin).toBe(true);
     expect((await sql`select count(*)::int as n from public.yt_ideas where id = ${added.out.added[1].id} and trashed_at is not null`)[0].n).toBe(1);

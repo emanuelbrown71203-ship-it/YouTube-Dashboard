@@ -75,6 +75,11 @@ tools here exist so that is not needed.
   `priority` (1 high to 3 low), `target_date`, `notes`, and `topic`: the
   game the idea sits under, spelled like `yt_videos.topic` ("Elden Ring").
   Always set it; the board groups by it.
+  The owner writes an idea most days, so a new idea is only an idea and sits
+  under its game. Set `picked_at = now()` only when they say they have
+  decided to make it: that puts it on the production board (Group by Stage),
+  where `status` says how far along it is (`idea` = picked, not started).
+  Never set `status` past `idea` without `picked_at`.
 - **Save a template for them**: insert into `public.yt_templates` (`kind`:
   `title` | `thumbnail` | `intro` | `other`, `name`, `body`).
 - **Save a line for them**: insert into `public.yt_notes` (`text`, and
@@ -97,7 +102,7 @@ tools here exist so that is not needed.
 
 - `src/`: Vite + React + TypeScript. Reads go straight to Supabase with the
   publishable key; row level security lets only owners in.
-- `supabase/migrations/`: thirteen files, all `yt_` objects. No statement in them
+- `supabase/migrations/`: fourteen files, all `yt_` objects. No statement in them
   removes anything.
 - `supabase/functions/yt-api/`: one edge function, deployed with JWT
   verification off because it checks callers itself. Routes: `/auth/setup`,

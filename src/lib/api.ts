@@ -264,7 +264,7 @@ export async function getBriefing(): Promise<unknown> {
 // ---------------------------------------------------------------------------
 
 const IDEA_COLUMNS =
-  "id, format, status, discovery, title, title_options, target_keyword, hook, concept, outline, thumbnail_concept, priority, target_date, inspiration_url, inspiration_video_id, notes, video_id, parent_id, sort_order, source, created_at, updated_at, topic, template_check, template_checked_at";
+  "id, format, status, discovery, title, title_options, target_keyword, hook, concept, outline, thumbnail_concept, priority, target_date, inspiration_url, inspiration_video_id, notes, video_id, parent_id, sort_order, source, created_at, updated_at, topic, template_check, template_checked_at, picked_at";
 
 export async function getIdeas(): Promise<Idea[]> {
   const { data, error } = await supabase.from("yt_ideas").select(IDEA_COLUMNS)

@@ -13,6 +13,7 @@ const INSTRUCTIONS =
   "This is the private dashboard of one YouTube gaming channel. Use get_channel_briefing before giving advice, so it rests on the channel's real numbers. " +
   "Shorts, long-form videos and live streams are three separate worlds: never compare or add up their views. " +
   "When the owner settles on video ideas, save them with add_ideas, each filed under its game (use list_games for the spellings in use). " +
+  "The owner writes an idea most days, so a new idea is only an idea: it sits under its game. Set make_it only when they say they have decided to make that video; that puts it on their production board. " +
   "Save a line they want to remember with add_lines, and a title, thumbnail or intro standard with save_template. " +
   "Say what you saved in one short sentence. Write to the owner in plain language: they are a creator, not a developer.";
 
@@ -85,6 +86,7 @@ const IDEA_FIELDS = {
   priority: { type: "integer", enum: [1, 2, 3], description: "1 high, 2 normal, 3 low." },
   target_date: { type: "string", description: "The day to post by, YYYY-MM-DD." },
   notes: { type: "string" },
+  make_it: { type: "boolean", description: "true only when the owner has decided to make this video: it goes on their production board. Leave out for an idea they are just keeping. false takes a not-yet-started idea back off the board." },
 } as const;
 
 const TOOLS = [
@@ -100,8 +102,8 @@ const TOOLS = [
   },
   {
     name: "list_ideas",
-    description: "The ideas on the board that are not in the bin, with their game, stage and how they measured up to the owner's templates.",
-    inputSchema: { type: "object", properties: { stage: { type: "string", enum: [...STATUSES] } }, additionalProperties: false },
+    description: "The ideas that are not in the bin, with their game and how they measured up to the owner's templates. making_it says whether the owner has decided to make it; only then does stage mean anything (idea = picked but not started).",
+    inputSchema: { type: "object", properties: { stage: { type: "string", enum: [...STATUSES] }, only_making: { type: "boolean", description: "true = only the ideas on the production board." } }, additionalProperties: false },
   },
   {
     name: "add_ideas",
@@ -113,7 +115,7 @@ const TOOLS = [
   },
   {
     name: "update_idea",
-    description: "Changes an idea: any of its fields, its stage, or moves it to the bin (it can be brought back in the app).",
+    description: "Changes an idea: any of its fields, whether the owner is making it, its stage on the production board (setting a stage means they are making it), or moves it to the bin (it can be brought back in the app).",
     inputSchema: {
       type: "object", required: ["id"], additionalProperties: false,
       properties: { id: { type: "string" }, ...IDEA_FIELDS, stage: { type: "string", enum: [...STATUSES] }, move_to_bin: { type: "boolean" } },
@@ -168,6 +170,7 @@ function ideaRow(a: Args) {
     concept: text(a.concept, 4000), outline: text(a.outline, 12000), thumbnail_concept: text(a.thumbnail_idea, 400), title_options: options,
     discovery: pick(a.made_for, ["recommended", "search"] as const, null), target_keyword: text(a.search_phrase, 80),
     priority: [1, 2, 3].includes(Number(a.priority)) ? Number(a.priority) : null, target_date: date(a.target_date), notes: text(a.notes, 4000),
+    make_it: typeof a.make_it === "boolean" ? a.make_it : null,
   };
 }
 
@@ -191,9 +194,12 @@ async function callTool(deps: Deps, name: string, a: Args): Promise<unknown> {
       const stage = pick(a.stage, STATUSES, null);
       return await sql`
         select id, title, format, topic as game, status as stage, priority, target_date, hook, concept, thumbnail_concept as thumbnail_idea,
-               title_options as other_titles, (template_check->>'score')::int as template_score, created_at::date as added
-        from public.yt_ideas where trashed_at is null and not archived and (${stage}::text is null or status = ${stage})
-        order by status, priority, created_at desc limit 200`;
+               title_options as other_titles, (template_check->>'score')::int as template_score, created_at::date as added,
+               (picked_at is not null or status <> 'idea') as making_it
+        from public.yt_ideas
+        where trashed_at is null and not archived and (${stage}::text is null or status = ${stage})
+          and (${a.only_making === true} = false or picked_at is not null or status <> 'idea')
+        order by (picked_at is not null or status <> 'idea') desc, status, priority, created_at desc limit 300`;
     }
     case "add_ideas": {
       const rows = list(a.ideas).slice(0, 25).map(ideaRow);
@@ -202,10 +208,10 @@ async function callTool(deps: Deps, name: string, a: Args): Promise<unknown> {
       for (const r of rows) {
         if (!r.title) throw new HttpError(400, "bad_request", "Every idea needs a title.");
         const [row] = await sql`
-          insert into public.yt_ideas (title, format, topic, hook, concept, outline, thumbnail_concept, title_options, discovery, target_keyword, priority, target_date, notes, source)
+          insert into public.yt_ideas (title, format, topic, hook, concept, outline, thumbnail_concept, title_options, discovery, target_keyword, priority, target_date, notes, source, picked_at)
           values (${r.title}, ${r.format ?? "long"}, ${r.topic}, ${r.hook}, ${r.concept}, ${r.outline}, ${r.thumbnail_concept}, ${r.title_options ?? []},
-                  ${r.discovery}, ${r.target_keyword}, ${r.priority ?? 2}, ${r.target_date}, ${r.notes}, 'claude')
-          returning id, title, topic as game, format`;
+                  ${r.discovery}, ${r.target_keyword}, ${r.priority ?? 2}, ${r.target_date}, ${r.notes}, 'claude', case when ${r.make_it === true} then now() end)
+          returning id, title, topic as game, format, picked_at is not null as making_it`;
         added.push(row);
       }
       return { added };
@@ -223,10 +229,15 @@ async function callTool(deps: Deps, name: string, a: Args): Promise<unknown> {
           title_options = coalesce(${r.title_options ?? null}::text[], title_options),
           discovery = coalesce(${r.discovery}, discovery), target_keyword = coalesce(${r.target_keyword}, target_keyword),
           priority = coalesce(${r.priority}, priority), target_date = coalesce(${r.target_date}::date, target_date),
-          notes = coalesce(${r.notes}, notes), status = coalesce(${stage}, status),
+          notes = coalesce(${r.notes}, notes),
+          -- Taking an idea off the board puts it back to the start; giving it a stage puts it on.
+          status = case when ${r.make_it === false} then 'idea' else coalesce(${stage}, status) end,
+          picked_at = case when ${r.make_it === false} then null
+                           when ${r.make_it === true} or ${stage}::text is not null then coalesce(picked_at, now())
+                           else picked_at end,
           trashed_at = case when ${bin} then now() else trashed_at end
         where id = ${id} and trashed_at is null
-        returning id, title, topic as game, format, status as stage, trashed_at is not null as in_bin`;
+        returning id, title, topic as game, format, status as stage, (picked_at is not null or status <> 'idea') as making_it, trashed_at is not null as in_bin`;
       if (!row) throw new HttpError(404, "not_found", "No idea with that id is on the board.");
       return row;
     }

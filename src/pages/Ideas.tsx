@@ -12,8 +12,10 @@ import { keys, useIdeas, useSavedVideos, useVideos } from "../lib/hooks.ts";
 import { navigate, useRoute } from "../lib/router.ts";
 import type { Idea, IdeaDraft, IdeaStatus } from "../lib/types.ts";
 
+// The production board. An idea only gets here once the owner picks it ("Make this one"); until then it
+// lives under its game. "To make" is a picked idea that has not been started.
 const STATUSES: { key: IdeaStatus; label: string }[] = [
-  { key: "idea", label: "Ideas" },
+  { key: "idea", label: "To make" },
   { key: "scripting", label: "Scripting" },
   { key: "filming", label: "Filming" },
   { key: "editing", label: "Editing" },
@@ -21,6 +23,11 @@ const STATUSES: { key: IdeaStatus; label: string }[] = [
   { key: "published", label: "Published" },
 ];
 const next = (status: IdeaStatus) => STATUSES[STATUSES.findIndex((s) => s.key === status) + 1] ?? null;
+
+/** Has the owner decided to make it? Anything past the first stage counts, whatever the flag says. */
+const making = (idea: Pick<IdeaDraft, "picked_at" | "status">) => Boolean(idea.picked_at) || (idea.status ?? "idea") !== "idea";
+const remembered = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };
+const remember = (key: string, value: string) => { try { localStorage.setItem(key, value); } catch { /* private mode */ } };
 
 const blank = (format: "long" | "short"): IdeaDraft => ({ title: "", format, status: "idea", priority: 2, title_options: [], discovery: null });
 
@@ -31,6 +38,8 @@ export function Ideas() {
   const [filter, setFilter] = useState<"all" | "long" | "short">("all");
   const [quick, setQuick] = useState("");
   const [quickFormat, setQuickFormat] = useState<"long" | "short">("long");
+  // The game the next quick idea is filed under. It stays on the last one used: ideas tend to come in runs.
+  const [quickGame, setQuickGame] = useState(() => remembered("yt-ideas-game") ?? "");
   const [editing, setEditingDraft] = useState<IdeaDraft | null>(null);
   const [editorKey, setEditorKey] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -61,9 +70,7 @@ export function Ideas() {
   const scores = useIdeaScores(ideas.data ?? []);
   const [order, setOrder] = useState<"priority" | "history" | "recommended">("priority");
   const [importing, setImporting] = useState(false);
-  const [view, setView] = useState<"stage" | "game">(() => {
-    try { return localStorage.getItem("yt-ideas-view") === "game" ? "game" : "stage"; } catch { return "stage"; }
-  });
+  const [view, setView] = useState<"stage" | "game">(() => (remembered("yt-ideas-view") === "stage" ? "stage" : "game"));
   const videos = useVideos();
   // The games offered when filing an idea: the ones the owner is working with now, not every game the
   // channel ever covered. That is the games open ideas already sit under, then the games uploaded in
@@ -82,13 +89,16 @@ export function Ideas() {
   /** The section an idea sits under: the game it was filed under, else the one its wording points to. */
   const sectionOf = (idea: Idea) => idea.topic?.trim() || scores.get(idea.id)?.game || null;
   const list = useMemo(() => (ideas.data ?? []).filter((i) => filter === "all" || i.format === filter), [ideas.data, filter]);
+  // Only the ideas the owner decided to make go on the production board.
+  const inProduction = useMemo(() => list.filter((i) => making(i)), [list]);
 
   const add = async (e: FormEvent) => {
     e.preventDefault();
     if (!quick.trim()) return;
     setBusy(true);
     try {
-      await saveIdea({ ...blank(quickFormat), title: quick });
+      await saveIdea({ ...blank(quickFormat), title: quick, topic: quickGame.trim() || null });
+      remember("yt-ideas-game", quickGame.trim());
       setQuick("");
       await reload();
     } catch (err) {
@@ -101,16 +111,28 @@ export function Ideas() {
     const to = next(idea.status);
     if (!to) return;
     try {
-      await saveIdea({ id: idea.id, title: idea.title, status: to.key });
+      await saveIdea({ id: idea.id, title: idea.title, status: to.key, picked_at: idea.picked_at ?? new Date().toISOString() });
       await reload();
-      toast(`Moved to ${to.label}.`, { action: { label: "Undo", run: () => void saveIdea({ id: idea.id, title: idea.title, status: idea.status }).then(reload) } });
+      toast(`Moved to ${to.label}.`, { action: { label: "Undo", run: () => void saveIdea({ id: idea.id, title: idea.title, status: idea.status, picked_at: idea.picked_at }).then(reload) } });
     } catch (err) {
       toast(err instanceof Error ? err.message : "Could not move the idea.", { error: true });
     }
   };
 
+  /** Puts an idea on the production board, or takes a not-yet-started one back off it. */
+  const pick = async (idea: Idea, on: boolean) => {
+    try {
+      await saveIdea({ id: idea.id, title: idea.title, picked_at: on ? new Date().toISOString() : null });
+      await reload();
+      toast(on ? "On your production board, under To make." : "Back to just an idea.", { action: { label: "Undo", run: () => void saveIdea({ id: idea.id, title: idea.title, picked_at: idea.picked_at }).then(reload) } });
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Could not change the idea.", { error: true });
+    }
+  };
+
   const card = (idea: Idea, withStage: boolean) => {
     const to = next(idea.status);
+    const picked = making(idea);
     return (
                     <div className="idea" key={idea.id} onClick={() => setEditing(idea)}>
                       <button type="button" className="th-sort title" style={{ color: "var(--ink)", textAlign: "left" }} onClick={(e) => { e.stopPropagation(); setEditing(idea); }}>
@@ -120,18 +142,23 @@ export function Ideas() {
                       {idea.status !== "published" ? <ScoreChips scores={scores.get(idea.id)} templates={idea.template_check?.score ?? null} /> : null}
                       <div className="foot">
                         <FormatTag format={idea.format} />
-                        {withStage ? <span className="tag">{STATUSES.find((x) => x.key === idea.status)?.label}</span> : null}
+                        {withStage && picked ? <span className="tag" style={{ borderColor: "var(--note-line)", background: "var(--note-bg)", color: "var(--note-ink)" }}>Making it: {STATUSES.find((x) => x.key === idea.status)?.label}</span> : null}
                         {!withStage && sectionOf(idea) ? <span className="tag">{sectionOf(idea)}</span> : null}
                         {idea.discovery === "search" ? <span className="tag">For search{idea.target_keyword ? `: ${idea.target_keyword}` : ""}</span> : null}
                         {idea.discovery === "recommended" ? <span className="tag">For the feed</span> : null}
                         {idea.priority === 1 ? <span className="tag" style={{ borderColor: "var(--note-line)", background: "var(--note-bg)", color: "var(--note-ink)" }}>High priority</span> : null}
                         {idea.target_date ? <span className="small muted">Due {day(idea.target_date)}</span> : null}
                       </div>
-                      {to ? (
+                      {!picked ? (
                         <div className="idea-move">
+                          <button type="button" className="btn btn-small" onClick={(e) => { e.stopPropagation(); void pick(idea, true); }}>Make this one</button>
+                        </div>
+                      ) : to ? (
+                        <div className="idea-move row-wrap" style={{ gap: 4 }}>
                           <button type="button" className="btn btn-quiet btn-small" style={{ paddingLeft: 0 }} onClick={(e) => { e.stopPropagation(); void advance(idea); }}>
                             Move to {to.label}
                           </button>
+                          {idea.status === "idea" ? <button type="button" className="btn btn-quiet btn-small" onClick={(e) => { e.stopPropagation(); void pick(idea, false); }}>Not now</button> : null}
                         </div>
                       ) : null}
                     </div>
@@ -144,6 +171,8 @@ export function Ideas() {
   const sections = useMemo(() => {
     const groups = new Map<string, Idea[]>();
     for (const idea of list) {
+      // A finished video is no longer an idea to weigh up; it stays on the production board.
+      if (idea.status === "published") continue;
       const key = sectionOf(idea) ?? "";
       groups.set(key, [...(groups.get(key) ?? []), idea]);
     }
@@ -164,11 +193,35 @@ export function Ideas() {
         />
       </div>
       <Tabs label="Ideas" base="/ideas" current="" tabs={IDEA_TABS} />
+      <form className="quick-idea" onSubmit={add}>
+        <input className="input" value={quick} onChange={(e) => setQuick(e.target.value)} placeholder="A video you could make" aria-label="New idea title" maxLength={200} />
+        <div className="row-wrap" style={{ gap: 6 }} role="group" aria-label="Game for the new idea">
+          {games.map((g) => (
+            <button key={g} type="button" className="chip" aria-pressed={quickGame === g} onClick={() => setQuickGame(quickGame === g ? "" : g)}>{g}</button>
+          ))}
+          <input
+            className="input" style={{ width: 170, flex: "1 1 150px", maxWidth: 260 }} value={games.includes(quickGame) ? "" : quickGame}
+            onChange={(e) => setQuickGame(e.target.value)} placeholder={games.length ? "Another game" : "Game or topic"} aria-label="Another game or topic" maxLength={80}
+          />
+        </div>
+        <div className="row-wrap">
+          <Segmented
+            label="Format of the new idea" value={quickFormat} onChange={setQuickFormat}
+            options={[{ value: "long", label: "Long-form" }, { value: "short", label: "Short" }]}
+          />
+          <button type="submit" className="btn btn-primary" disabled={busy || !quick.trim()}><Icon name="plus" />Add idea{quickGame.trim() ? ` to ${quickGame.trim()}` : ""}</button>
+        </div>
+        <div className="row-wrap">
+          <button type="button" className="btn btn-quiet btn-small" onClick={() => setEditing({ ...blank(quickFormat), title: quick, topic: quickGame.trim() || null })}>Write one out in full</button>
+          <button type="button" className="btn btn-quiet btn-small" onClick={() => setImporting(true)}>Import from Claude</button>
+        </div>
+      </form>
+
       <div className="row-wrap" style={{ marginBottom: 12, gap: 10 }}>
         <span className="small muted">Group by</span>
         <Segmented
-          label="Group ideas by" value={view} onChange={(v) => { setView(v); try { localStorage.setItem("yt-ideas-view", v); } catch { /* private mode */ } }}
-          options={[{ value: "stage", label: "Stage" }, { value: "game", label: "Game" }]}
+          label="Group ideas by" value={view} onChange={(v) => { setView(v); remember("yt-ideas-view", v); }}
+          options={[{ value: "game", label: `Game ${list.filter((i) => i.status !== "published").length}` }, { value: "stage", label: `Stage ${inProduction.length}` }]}
         />
       </div>
       {(ideas.data ?? []).length > 1 ? (
@@ -181,17 +234,6 @@ export function Ideas() {
         </div>
       ) : null}
 
-      <form className="quick-add" onSubmit={add} style={{ marginBottom: 22 }}>
-        <input className="input" value={quick} onChange={(e) => setQuick(e.target.value)} placeholder="A video you could make" aria-label="New idea title" maxLength={200} />
-        <Segmented
-          label="Format of the new idea" value={quickFormat} onChange={setQuickFormat}
-          options={[{ value: "long", label: "Long-form" }, { value: "short", label: "Short" }]}
-        />
-        <button type="submit" className="btn btn-primary" disabled={busy || !quick.trim()}><Icon name="plus" />Add idea</button>
-        <button type="button" className="btn" onClick={() => setEditing(blank(quickFormat))}>Write one out in full</button>
-        <button type="button" className="btn" onClick={() => setImporting(true)}>Import from Claude</button>
-      </form>
-
       {(ideas.data ?? []).length === 0 ? (
         <div className="panel">
           <div className="empty">
@@ -202,6 +244,7 @@ export function Ideas() {
         </div>
       ) : view === "game" ? (
         <div className={`stack${ideas.isFetching ? " fade" : ""}`} style={{ gap: 22 }}>
+          {sections.length === 0 ? <div className="panel"><div className="empty"><h3>No open ideas</h3><p>Everything here has been published. Add the next one above.</p></div></div> : null}
           {sections.map(([game, cards]) => (
             <section key={game || "none"} aria-label={game || "No game yet"}>
               <div className="section-head">
@@ -215,10 +258,17 @@ export function Ideas() {
             </section>
           ))}
         </div>
+      ) : inProduction.length === 0 ? (
+        <div className="panel">
+          <div className="empty">
+            <h3>Nothing in production yet</h3>
+            <p>This board only holds the ideas you have decided to make. Switch to Game, find one you want to do, and tap Make this one.</p>
+          </div>
+        </div>
       ) : (
         <div className={`board${ideas.isFetching ? " fade" : ""}`}>
           {STATUSES.map((status) => {
-            const cards = sorted(list.filter((i) => i.status === status.key));
+            const cards = sorted(inProduction.filter((i) => i.status === status.key));
             return (
               <section className="column" key={status.key} aria-label={status.label}>
                 <div className="column-head"><h3>{status.label}</h3><span className="n">{cards.length}</span></div>
@@ -351,13 +401,26 @@ function IdeaEditor(props: { draft: IdeaDraft; games: string[]; onClose: () => v
           <span>Format</span>
           <Segmented label="Format" value={form.format ?? "long"} onChange={(v) => set("format", v)} options={[{ value: "long", label: "Long-form" }, { value: "short", label: "Short" }]} />
         </div>
+        <div className="field">
+          <span>Am I making it?</span>
+          <Segmented
+            label="Am I making it?" value={making(form) ? "yes" : "no"}
+            onChange={(v) => { setForm((f) => ({ ...f, picked_at: v === "yes" ? f.picked_at ?? new Date().toISOString() : null, status: v === "yes" ? f.status : "idea" })); setDirty(true); }}
+            options={[{ value: "no", label: "Just an idea" }, { value: "yes", label: "Making it" }]}
+          />
+        </div>
+      </div>
+      {making(form) ? (
         <label className="field">
           <span>Stage</span>
-          <select className="select input" value={form.status ?? "idea"} onChange={(e) => set("status", e.target.value as IdeaStatus)}>
+          <select
+            className="select input" value={form.status ?? "idea"}
+            onChange={(e) => { setForm((f) => ({ ...f, status: e.target.value as IdeaStatus, picked_at: f.picked_at ?? new Date().toISOString() })); setDirty(true); }}
+          >
             {STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
           </select>
         </label>
-      </div>
+      ) : null}
 
       <div className="field">
         <span>Made for</span>
