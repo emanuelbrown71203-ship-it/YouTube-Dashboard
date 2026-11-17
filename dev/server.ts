@@ -211,6 +211,15 @@ const deps: Deps = {
       const games = ["Elden Ring", "Baldur's Gate 3", "Cuphead", "Dark Souls 3"];
       return { videos: list.map((v) => ({ id: v.id, topic: games.find((g) => v.title.toLowerCase().includes(g.toLowerCase().split(" ")[0])) ?? null })) };
     }
+    if (props.titles) {
+      const idea = JSON.parse(req.prompt).idea as { working_title: string; game: string | null };
+      const game = idea.game ?? "this game";
+      return {
+        titles: [`Can I Beat ${game} With One Rule?`, `I Tried ${game} With 0 Hours`, `${game} But Every Boss Is Harder`].map((title) => ({
+          title, why: "(made-up) Follows the kind of title that beat your usual video.",
+        })),
+      };
+    }
     if (props.comments) {
       const list = JSON.parse(req.prompt) as { id: string; text: string }[];
       return {

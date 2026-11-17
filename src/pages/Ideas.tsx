@@ -1,5 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { IDEA_TABS, Tabs } from "./Growth.tsx";
+import { ScoreChips, ScorePanel, TitleHelper, useFound, useIdeaScores } from "./Pulse.tsx";
+import { scoreIdea } from "../lib/ideaScore.ts";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { Drawer, ErrorNote, FormatTag, Icon, Loading, Mult, Segmented, useToast } from "../components/ui.tsx";
 import { saveIdea, setIdeaTrashed } from "../lib/api.ts";
@@ -55,6 +57,8 @@ export function Ideas() {
   }, [editId, ideas.data]);
 
   const reload = () => queryClient.invalidateQueries({ queryKey: keys.ideas });
+  const scores = useIdeaScores(ideas.data ?? []);
+  const [order, setOrder] = useState<"priority" | "history" | "recommended">("priority");
   const list = useMemo(() => (ideas.data ?? []).filter((i) => filter === "all" || i.format === filter), [ideas.data, filter]);
 
   const add = async (e: FormEvent) => {
@@ -96,6 +100,15 @@ export function Ideas() {
         />
       </div>
       <Tabs label="Ideas" base="/ideas" current="" tabs={IDEA_TABS} />
+      {(ideas.data ?? []).length > 1 ? (
+        <div className="row-wrap" style={{ marginBottom: 14, gap: 10 }}>
+          <span className="small muted">Order each column by</span>
+          <Segmented
+            label="Order ideas by" value={order} onChange={setOrder}
+            options={[{ value: "priority", label: "My priority" }, { value: "history", label: "Your history" }, { value: "recommended", label: "Recommended" }]}
+          />
+        </div>
+      ) : null}
 
       <form className="quick-add" onSubmit={add} style={{ marginBottom: 22 }}>
         <input className="input" value={quick} onChange={(e) => setQuick(e.target.value)} placeholder="A video you could make" aria-label="New idea title" maxLength={200} />
@@ -118,7 +131,8 @@ export function Ideas() {
       ) : (
         <div className={`board${ideas.isFetching ? " fade" : ""}`}>
           {STATUSES.map((status) => {
-            const cards = list.filter((i) => i.status === status.key).sort((a, b) => a.priority - b.priority || a.sort_order - b.sort_order);
+            const rank = (x: Idea) => (order === "priority" ? 0 : -(scores.get(x.id)?.[order].value ?? -1));
+            const cards = list.filter((i) => i.status === status.key).sort((a, b) => rank(a) - rank(b) || a.priority - b.priority || a.sort_order - b.sort_order);
             return (
               <section className="column" key={status.key} aria-label={status.label}>
                 <div className="column-head"><h3>{status.label}</h3><span className="n">{cards.length}</span></div>
@@ -130,6 +144,7 @@ export function Ideas() {
                         {idea.title}
                       </button>
                       {idea.hook ? <div className="hook clip2">{idea.hook}</div> : null}
+                      {idea.status !== "published" ? <ScoreChips scores={scores.get(idea.id)} /> : null}
                       <div className="foot">
                         <FormatTag format={idea.format} />
                         {idea.discovery === "search" ? <span className="tag">For search{idea.target_keyword ? `: ${idea.target_keyword}` : ""}</span> : null}
@@ -204,6 +219,11 @@ function IdeaEditor(props: { draft: IdeaDraft; onClose: () => void; onChanged: (
   const hashtags = (title.match(/#\S+/g) ?? []).length;
   const inspiration = saved.data?.find((v) => v.id === form.inspiration_video_id);
   const options = form.title_options ?? [];
+  const found = useFound();
+  const game = useMemo(
+    () => scoreIdea({ title, format: form.format ?? "long", target_keyword: form.target_keyword ?? null, concept: form.concept ?? null, hook: form.hook ?? null }, videos.data ?? [], found.data ?? [], "2000-01-01").game,
+    [title, form.format, form.target_keyword, form.concept, form.hook, videos.data, found.data],
+  );
 
   return (
     <Drawer
@@ -235,6 +255,8 @@ function IdeaEditor(props: { draft: IdeaDraft; onClose: () => void; onChanged: (
           {hashtags > 3 ? `. ${hashtags} hashtags: only three are shown` : ""}.
         </small>
       </label>
+
+      <ScorePanel draft={form} />
 
       <div className="field-row">
         <div className="field">
@@ -294,6 +316,12 @@ function IdeaEditor(props: { draft: IdeaDraft; onClose: () => void; onChanged: (
           <input className="input" {...text("thumbnail_concept")} placeholder="What the picture shows, and the two or three words on it" />
         </label>
       ) : null}
+
+      <TitleHelper
+        draft={form} game={game} kept={options}
+        onUse={(t) => { if (title.trim() && !options.includes(title) && options.length < 5) set("title_options", [...options, title]); set("title", t); }}
+        onKeep={(t) => set("title_options", [...options, t])}
+      />
 
       <div className="field">
         <span>Other titles to try</span>

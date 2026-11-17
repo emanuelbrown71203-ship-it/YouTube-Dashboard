@@ -3,9 +3,11 @@
 
 import {
   analytics, type Api, chunk, closeApi, type Deps, EARNINGS_SCOPE, fetchChannels, fetchPlaylistIds, fetchVideos, getConfig,
-  HttpError, mapLimit, openApi, playlistFor, type Report, reportObjects,
+  HttpError, mapLimit, openApi, playlistFor, type Report, reportObjects, setConfig, type Sql,
 } from "./google.ts";
-import { logChanges, nameTopics, readComments, syncComments, syncFeeders, syncReach, syncTestDays, syncTopics, tickGoals } from "./growth.ts";
+import {
+  logChanges, nameTopics, readComments, syncComments, syncFeeders, syncFirstDays, syncReach, syncTestDays, syncTopics, tickGoals,
+} from "./growth.ts";
 import { refreshWatched } from "./research.ts";
 import { classifyFormat } from "./scoring.ts";
 
@@ -433,6 +435,9 @@ export async function runSync(deps: Deps, source: string): Promise<{ status: str
       return { videos: done };
     });
 
+    // 8a. Write down the live view count of uploads in their first days (see runPulse).
+    await step("pulse", async () => ({ videos: await notePulse(sql) }));
+
     // 8b. Quick extras. The slow ones (what feeds the long videos, and everything the AI reads)
     // run afterwards in runExtras, so a sync never runs out of time.
     await step("tests", () => syncTestDays(session, today));
@@ -510,6 +515,7 @@ export async function runExtras(deps: Deps, runId: number, hop: number): Promise
     try {
       api = await openApi(deps);
       const session = api;
+      await step("first_days", () => syncFirstDays(session, until));
       await step("feeders", () => syncFeeders(session, isoDate(deps.now()), EARLIEST, until));
     } catch (err) {
       steps.feeders = { ok: false, error: describe(err) };
@@ -517,8 +523,10 @@ export async function runExtras(deps: Deps, runId: number, hop: number): Promise
   }
   if (api) await closeApi(api).catch(() => undefined);
 
-  const progress = Number(steps.games?.named ?? 0) + Number(steps.comments_read?.read ?? 0) + Number(steps.feeders?.videos ?? 0);
-  const left = Number(steps.games?.left ?? 0) + Number(steps.comments_read?.left ?? 0) + Number(steps.feeders?.left ?? 0);
+  const progress = Number(steps.games?.named ?? 0) + Number(steps.comments_read?.read ?? 0) + Number(steps.feeders?.videos ?? 0)
+    + Number(steps.first_days?.videos ?? 0);
+  const left = Number(steps.games?.left ?? 0) + Number(steps.comments_read?.left ?? 0) + Number(steps.feeders?.left ?? 0)
+    + Number(steps.first_days?.left ?? 0);
   const more = progress > 0 && left > 0 && hop + 1 < EXTRAS_HOPS;
 
   // Add this turn's results to the run that asked for them, summing the counts across turns.
@@ -541,4 +549,59 @@ export async function runExtras(deps: Deps, runId: number, hop: number): Promise
   }
   if (more) await queueExtras(deps, runId, hop + 1);
   return { status: "ok", steps, more };
+}
+
+// ---------------------------------------------------------------------------
+// The hourly pulse: how a new upload is doing right now
+// ---------------------------------------------------------------------------
+
+const PULSE_HOURS = 72;
+
+/** Writes down the stored view count of every upload in its first days. Returns how many. */
+async function notePulse(sql: Sql): Promise<number> {
+  const rows = await sql`
+    insert into public.yt_video_pulse (video_id, captured_at, views, likes, comments)
+    select id, now(), views, likes, comments from public.yt_videos
+    where removed_at is null and views is not null
+      and published_at > now() - make_interval(hours => ${PULSE_HOURS}) and published_at <= now()
+    on conflict do nothing returning video_id`;
+  return rows.length;
+}
+
+/**
+ * Runs every hour. If something new went up, a full sync brings it in. Otherwise it refreshes the
+ * live view count of uploads in their first three days and writes it down. Two lookups at most.
+ */
+export async function runPulse(deps: Deps): Promise<Record<string, unknown>> {
+  const { sql } = deps;
+  const cfg = await getConfig(sql, ["google_refresh_token"]);
+  if (!cfg.google_refresh_token) return { status: "skipped" };
+  const [channel] = await sql`select id, uploads_playlist_id from public.yt_channel order by updated_at desc limit 1`;
+  if (!channel) return { status: "skipped" };
+  const api = await openApi(deps);
+  try {
+    const newest = await fetchPlaylistIds(api, channel.uploads_playlist_id ?? playlistFor(channel.id, "uploads"), 10);
+    const known = await sql`select id from public.yt_videos where id = any(${newest})`;
+    const have = new Set((known as { id: string }[]).map((r) => r.id));
+    const unknown = newest.filter((id) => !have.has(id)).sort().join(",");
+    // An upload a sync could not bring in (deleted in between, say) is only tried once.
+    const { pulse_tried } = await getConfig(sql, ["pulse_tried"]);
+    if (unknown && unknown !== pulse_tried) {
+      await setConfig(sql, { pulse_tried: unknown });
+      await closeApi(api).catch(() => undefined);
+      const run = await runSync(deps, "cron");
+      return { status: "synced", new_upload: true, sync: run.status };
+    }
+    const fresh = await sql`
+      select id from public.yt_videos
+      where removed_at is null and published_at > now() - make_interval(hours => ${PULSE_HOURS}) limit 50`;
+    if (fresh.length === 0) return { status: "ok", videos: 0 };
+    const videos = await fetchVideos(api, (fresh as { id: string }[]).map((r) => r.id));
+    for (const v of videos) {
+      await sql`update public.yt_videos set views = ${v.views}, likes = ${v.likes}, comments = ${v.comments}, stats_updated_at = now() where id = ${v.id}`;
+    }
+    return { status: "ok", videos: await notePulse(sql) };
+  } finally {
+    await closeApi(api).catch(() => undefined);
+  }
 }

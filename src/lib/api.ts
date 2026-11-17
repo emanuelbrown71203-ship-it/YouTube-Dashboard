@@ -159,6 +159,9 @@ export interface Explanation {
 }
 export const explainVideo = (video_id: string) =>
   callApi<{ video_id: string; explanation: Explanation }>("/research", { action: "explain", video_id });
+export interface TitleIdea { title: string; why: string }
+export const suggestTitles = (idea: { title: string; concept: string; format: "long" | "short"; game: string | null }) =>
+  callApi<{ titles: TitleIdea[] }>("/ai/titles", idea);
 export const syncNow = () => callApi<{ status: string; message?: string }>("/sync");
 
 export const findOutliers = (search: OutlierSearch, page_token: string | null = null) =>
@@ -300,6 +303,15 @@ export async function getSavedVideos(): Promise<SavedVideo[]> {
     .eq("saved", true).order("saved_at", { ascending: false }).limit(200);
   fail(error);
   return (data ?? []) as unknown as SavedVideo[];
+}
+
+/** Every video the outlier searches have turned up, light enough to score ideas against. */
+export async function getFoundVideos() {
+  const { data, error } = await supabase.from("yt_research_videos")
+    .select("id, title, tags, format, views, outlier_score, channel_subscribers, published_at")
+    .order("published_at", { ascending: false }).limit(2000);
+  fail(error);
+  return (data ?? []) as unknown as import("./ideaScore.ts").FoundVideo[];
 }
 
 export async function saveResearchVideo(id: string, saved: boolean): Promise<void> {

@@ -9,6 +9,8 @@
 //   POST /ai/setup          owner saves the key for the AI
 //   POST /sync              owner or the scheduler pulls fresh numbers
 //   POST /sync/extras       the slow follow-up work (AI, feeders); scheduler only
+//   POST /sync/pulse        hourly: spot a new upload, note live view counts; scheduler only
+//   POST /ai/titles         title ideas for a video idea, in the owner's own style
 //   POST /research          owner runs a research action
 //
 // The function is deployed without Supabase's own JWT check because Google's
@@ -17,8 +19,9 @@
 import {
   type Api, closeApi, COMMENTS_SCOPE, type Deps, EARNINGS_SCOPE, exchangeToken, fetchChannels, getConfig, HttpError, SCOPES, setConfig,
 } from "./google.ts";
+import { suggestTitles } from "./growth.ts";
 import { research } from "./research.ts";
-import { runExtras, runSync } from "./sync.ts";
+import { runExtras, runPulse, runSync } from "./sync.ts";
 
 /** Makes postgres.js return counts and decimals as plain numbers. */
 export const postgresTypes = {
@@ -303,6 +306,12 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
         // Only the database's own follow-up call gets in here.
         if (!(await isScheduler(req, deps))) throw new HttpError(403, "forbidden", "Not allowed.");
         return json(await runExtras(deps, Number(body?.run_id ?? 0), Number(body?.hop ?? 0)));
+      case "/sync/pulse":
+        if (!(await isScheduler(req, deps))) throw new HttpError(403, "forbidden", "Not allowed.");
+        return json(await runPulse(deps));
+      case "/ai/titles":
+        await requireOwner(req, deps);
+        return json(await suggestTitles(deps, body ?? {}));
       case "/research":
         await requireOwner(req, deps);
         return json(await research(deps, body));

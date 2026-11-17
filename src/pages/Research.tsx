@@ -54,7 +54,7 @@ export function Research() {
         </div>
       ) : null}
 
-      {tab.key === "outliers" ? <ResearchOutliers connected={connected} />
+      {tab.key === "outliers" ? <ResearchOutliers connected={connected} initial={route.query.get("q") ?? ""} initialFormat={route.query.get("format") === "short" ? "short" : "long"} />
         : tab.key === "keywords" ? <ResearchKeywords connected={connected} initial={route.query.get("q") ?? ""} />
         : <ResearchChannels connected={connected} />}
     </>

@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { setVideoTopic, useReach } from "../lib/growth.ts";
+import { First48 } from "./Pulse.tsx";
 import { Tabs, VIDEO_TABS } from "./Growth.tsx";
 import { useMemo, useState } from "react";
 import { BarList } from "../components/Timeline.tsx";
@@ -279,6 +280,8 @@ function VideoDetail({ video: v, checks, complete, onClose }: { video: Video; ch
           </div>
         </div>
       </div>
+
+      <First48 video={v} />
 
       <div className="kv">
         {stats.map(([k, val]) => (

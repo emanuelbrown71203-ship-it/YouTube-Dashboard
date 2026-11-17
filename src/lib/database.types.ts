@@ -905,6 +905,30 @@ export type Database = {
         };
         Relationships: [];
       };
+      yt_video_pulse: {
+        Row: {
+          video_id: string;
+          captured_at: string;
+          views: number;
+          likes: number | null;
+          comments: number | null;
+        };
+        Insert: {
+          video_id: string;
+          captured_at?: string;
+          views: number;
+          likes?: number | null;
+          comments?: number | null;
+        };
+        Update: {
+          video_id?: string;
+          captured_at?: string;
+          views?: number;
+          likes?: number | null;
+          comments?: number | null;
+        };
+        Relationships: [];
+      };
       yt_video_reach_daily: {
         Row: {
           video_id: string;
@@ -959,6 +983,7 @@ export type Database = {
           topic_source: string | null;
           feeders: Json | null;
           feeders_updated_at: string | null;
+          first_days_at: string | null;
         };
         Insert: {
           id: string;
@@ -992,6 +1017,7 @@ export type Database = {
           topic_source?: string | null;
           feeders?: Json | null;
           feeders_updated_at?: string | null;
+          first_days_at?: string | null;
         };
         Update: {
           id?: string;
@@ -1025,6 +1051,7 @@ export type Database = {
           topic_source?: string | null;
           feeders?: Json | null;
           feeders_updated_at?: string | null;
+          first_days_at?: string | null;
         };
         Relationships: [];
       };

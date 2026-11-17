@@ -39,6 +39,7 @@ research and the last sync. Every table and view has a comment explaining it;
 | `yt_sync_runs` | Sync history. Check the newest row before trusting freshness. |
 | `yt_goals`, `yt_tests`, `yt_video_changes` | The owner's goals, their title and thumbnail tests (what they changed, what they expected, how it went), and every title or thumbnail change the sync noticed. |
 | `yt_video_reach_daily`, `yt_v_video_reach` | Impressions and click-through rate per video, per day and over the newest 28 days. From YouTube's bulk reach report, a day or two behind; empty until the YouTube Reporting API is on in Google Cloud. |
+| `yt_video_pulse` | The live public view count of each upload, noted about once an hour in its first 3 days. With `yt_videos.published_at` it gives views by hours since publishing: the first 48 hours tracker. Only exists for uploads after 2026-11-17; older uploads are compared through their first days in `yt_video_analytics_daily`. |
 | `yt_comments` | Recent comments with the AI's reading: `sentiment`, `theme`, `is_question`. `pinned` ones sit on the front page. |
 
 `yt_v_videos` also carries `topic` (the game), `estimated_revenue` and `feeders`
@@ -88,12 +89,15 @@ tools here exist so that is not needed.
 
 - `src/`: Vite + React + TypeScript. Reads go straight to Supabase with the
   publishable key; row level security lets only owners in.
-- `supabase/migrations/`: ten files, all `yt_` objects. No statement in them
+- `supabase/migrations/`: eleven files, all `yt_` objects. No statement in them
   removes anything.
 - `supabase/functions/yt-api/`: one edge function, deployed with JWT
   verification off because it checks callers itself. Routes: `/auth/setup`,
   `/auth/start`, `/auth/callback`, `/auth/finish`, `/auth/disconnect`, `/sync`,
-  `/sync/extras`, `/research`, `/ai/setup`, `/health`. A sync does the quick
+  `/sync/extras`, `/sync/pulse`, `/research`, `/ai/setup`, `/ai/titles`,
+  `/health`. `/sync/pulse` runs every hour (cron job `yt-pulse`, scheduler
+  secret only): it spots a new upload and starts a sync, or notes the live
+  view counts of uploads in their first 3 days; two lookups each time. A sync does the quick
   work, then has the database call `/sync/extras` (scheduler secret only) for
   the slow work: the AI naming games and reading comments, and what feeds the
   long videos. Extras work for under a minute and ask for another turn while
@@ -111,6 +115,13 @@ tools here exist so that is not needed.
   video is about. It only ever sees text, never video, and the screens say so.
   Earnings and comments each need an optional Google permission, recorded in
   `google_scopes`; the sync skips what was not granted.
+- Idea scores (`src/lib/ideaScore.ts`) are worked out in the browser, not
+  stored: "Your history" (the game's track record in that format, which
+  kinds of title have beaten the owner's usual, a hint from the other
+  format, momentum) and "Recommended" (breakouts the outlier searches found
+  on the game, the share of views YouTube's recommendations brought, the
+  title). A part with too little evidence is left out and said so; under
+  half the evidence gives no number. They are estimates: say so.
 - `dev/`: a local stand-in for the hosted backend (`server.ts`), a made-up
   YouTube (`mock-youtube.ts`) and a database reset script.
 

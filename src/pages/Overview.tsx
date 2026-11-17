@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { GoalsStrip, Hub, KindWords, RunBand } from "./Growth.tsx";
+import { NewUpload, WeekCard } from "./Pulse.tsx";
 import { BarList, Sparkline, Timeline, type UploadPin } from "../components/Timeline.tsx";
 import { Delta, ErrorNote, FormatTag, Loading, Mult, Segmented, Thumb } from "../components/ui.tsx";
 import { ago, compact, day, FORMAT_PLURAL, hours, signed, whole } from "../lib/format.ts";
@@ -89,6 +90,8 @@ export function Overview() {
         <Segmented label="Time range" value={range} options={RANGES} onChange={setRange} />
       </div>
       <RunBand />
+      <NewUpload />
+      <WeekCard />
       <Hub />
 
       {connection.data?.connection_error ? (

@@ -15,7 +15,7 @@ type Sort = "outlier" | "views" | "per_day" | "newest";
 const pct = (share: number) => `${Math.round(share * 100)}%`;
 const youtubeUrl = (id: string, format: string | null) => `https://www.youtube.com/${format === "short" ? "shorts/" : "watch?v="}${id}`;
 
-export function ResearchOutliers({ connected }: { connected: boolean }) {
+export function ResearchOutliers({ connected, initial = "", initialFormat = "long" }: { connected: boolean; initial?: string; initialFormat?: "long" | "short" }) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const videos = useVideos();
@@ -25,7 +25,7 @@ export function ResearchOutliers({ connected }: { connected: boolean }) {
   const saved = useSavedVideos();
   const watched = useWatched();
 
-  const [search, setSearch] = useState<OutlierSearch>({ query: "", mode: "breakout", format: "long", window_days: 30, max_subs: null, min_views: 1000 });
+  const [search, setSearch] = useState<OutlierSearch>({ query: initial, mode: "breakout", format: initialFormat, window_days: 30, max_subs: null, min_views: 1000 });
   const [result, setResult] = useState<{ search: OutlierSearch; items: OutlierResult[]; next: string | null; summary: OutlierResponse["summary"] | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);

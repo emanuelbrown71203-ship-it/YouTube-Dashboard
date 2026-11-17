@@ -304,6 +304,46 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     await sql`update public.yt_private set value = '' where key = 'anthropic_api_key'`;
   });
 
+  it("notes live view counts every hour, syncs when something new went up, and suggests titles", async () => {
+    const [{ value: secret }] = await sql`select value from public.yt_private where key = 'cron_secret'`;
+    const { call, deps } = setup();
+    expect((await call("POST", "/sync/pulse", { user: "user:nobody" })).status).toBe(403);
+    // Nothing new: the newest uploads are noted, without a full sync.
+    await sql`update public.yt_videos set published_at = now() - interval '5 hours' where id = (select id from public.yt_videos where privacy = 'public' order by published_at desc limit 1)`;
+    const runsBefore = (await sql`select count(*)::int as n from public.yt_sync_runs`)[0].n;
+    const quiet = await call("POST", "/sync/pulse", { headers: { "x-cron-secret": secret } });
+    expect(quiet.data.status).toBe("ok");
+    expect(quiet.data.videos).toBeGreaterThan(0);
+    expect((await sql`select count(*)::int as n from public.yt_sync_runs`)[0].n).toBe(runsBefore);
+    const [{ n: noted }] = await sql`select count(*)::int as n from public.yt_video_pulse`;
+    expect(noted).toBeGreaterThan(0);
+    // An upload the database has not seen makes the pulse run a full sync, once.
+    const [gone] = await sql`select id from public.yt_videos where privacy = 'public' order by published_at desc limit 1`;
+    await sql`update public.yt_sync_runs set started_at = started_at - interval '10 minutes'`;
+    await sql`update public.yt_videos set id = 'zzzzzzzzzzz' where id = ${gone.id}`;
+    const woke = await call("POST", "/sync/pulse", { headers: { "x-cron-secret": secret } });
+    expect(woke.data).toMatchObject({ status: "synced", new_upload: true });
+    expect((await sql`select count(*)::int as n from public.yt_videos where id = ${gone.id}`)[0].n).toBe(1);
+
+    // Titles need the AI key, and lean on the owner's own titles of the same format only.
+    const owner = (await sql`select user_id from public.yt_owners where revoked_at is null limit 1`)[0]?.user_id;
+    const noKey = await call("POST", "/ai/titles", { user: owner, body: { title: "Elden Ring with one restriction", format: "long" } });
+    expect(noKey.status).toBe(409);
+    await sql`insert into public.yt_private (key, value) values ('anthropic_api_key', 'sk-ant-test') on conflict (key) do update set value = excluded.value`;
+    let seen = "";
+    deps.claude = async (_key, req) => { seen = req.prompt; return { titles: [{ title: "Can I Beat Elden Ring With One Rule?", why: "A clear rule in the title." }, { title: " ", why: "" }] }; };
+    const got = await call("POST", "/ai/titles", { user: owner, body: { title: "Elden Ring with one restriction", format: "long" } });
+    expect(got.data.titles).toEqual([{ title: "Can I Beat Elden Ring With One Rule?", why: "A clear rule in the title." }]);
+    const examples = JSON.parse(seen).their_titles_that_beat_their_usual as { title: string }[];
+    const shortTitles = new Set((await sql`select title from public.yt_videos where content_type = 'short'`).map((r: { title: string }) => r.title));
+    const longTitles = new Set((await sql`select title from public.yt_videos where content_type = 'long'`).map((r: { title: string }) => r.title));
+    expect(examples.length).toBeGreaterThan(0);
+    expect(examples.every((e) => longTitles.has(e.title))).toBe(true);
+    expect(examples.some((e) => shortTitles.has(e.title) && !longTitles.has(e.title))).toBe(false);
+    expect((await call("POST", "/ai/titles", { user: owner, body: {} })).status).toBe(400);
+    await sql`update public.yt_private set value = '' where key = 'anthropic_api_key'`;
+  });
+
   it("ticks off a best-video goal when any video gets there", async () => {
     const [{ top }] = await sql`select max(views)::int as top from public.yt_videos where removed_at is null and privacy = 'public'`;
     const [reach] = await sql`insert into public.yt_goals (kind, title, target) values ('video_views', 'reachable', ${top}) returning id`;

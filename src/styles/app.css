@@ -560,3 +560,26 @@ h1 { font-weight: 850; font-stretch: 122%; letter-spacing: -0.02em; font-size: 3
   .nav-link { border-radius: 13px; }
   .nav-link:active { transform: scale(0.94); }
 }
+
+/* Idea scores */
+.score-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.score-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 3px 4px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; color: var(--ink-2); background: var(--surface); }
+.score-chip b { min-width: 26px; padding: 1px 5px; border-radius: 999px; text-align: center; font-size: 12px; background: var(--surface-2); color: var(--ink); }
+.score-chip.high b, .score-figure.high { background: var(--seq-4); color: var(--seq-ink-4); }
+.score-chip.mid b, .score-figure.mid { background: var(--seq-2); color: var(--seq-ink-1); }
+.score-chip.even b, .score-figure.even { background: var(--seq-1); color: var(--seq-ink-1); }
+.score-panel { border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; background: var(--surface-2); display: flex; flex-direction: column; gap: 12px; }
+.score-block { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-s); padding: 12px; }
+.score-figure { display: inline-block; min-width: 46px; padding: 2px 10px; border-radius: 10px; font-size: 24px; text-align: center; background: var(--surface-2); color: var(--ink); }
+.score-parts { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.score-bar { height: 5px; border-radius: 99px; background: var(--surface-2); margin: 4px 0 5px; overflow: hidden; }
+.score-bar i { display: block; height: 100%; border-radius: 99px; background: var(--seq-3); }
+.title-idea { border: 1px solid var(--line); border-radius: var(--radius-s); padding: 10px 12px; background: var(--surface); }
+
+/* First 48 hours and the weekly note */
+.first48 .curves { display: block; width: 100%; height: auto; max-height: 170px; margin: 4px 0 6px; }
+.week-card { border: 1px solid var(--line); border-left: 4px solid var(--spark); border-radius: var(--radius); background: var(--surface); padding: 14px 18px; margin-bottom: 22px; }
+.week-card h2 { margin: 0 0 8px; font-size: 15px; }
+.week-card ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.week-card li { line-height: 1.4; color: var(--ink-2); }
+.week-card a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--line-2); text-underline-offset: 3px; }

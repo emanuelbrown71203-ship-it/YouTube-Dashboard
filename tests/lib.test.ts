@@ -227,6 +227,71 @@ describe("growth", () => {
     expect(shortsWorthAVideo([...videos, v("l3", "long", 100, { published_at: "2026-10-20" })])[0].covered?.id).toBe("l3");
   });
 
+  it("scores an idea against one format only, and says when there is too little to go on", async () => {
+    const { scoreIdea, ideaGame, titleLifts } = await import("../src/lib/ideaScore.ts");
+    const v = (id: string, content_type: string, title: string, x: number, over: object = {}) =>
+      ({ id, title, content_type, privacy: "public", topic: "Baldur's Gate 3", vs_typical: x, age_days: 60, views: 100, published_at: "2026-09-01", recommended_pct: 90, ...over }) as never;
+    const videos = [
+      // Long-form: questions beat plain playthroughs.
+      ...[4, 5, 6, 3].map((x, i) => v(`q${i}`, "long", `Can I Beat Honour Mode With Rule ${i}?`, x)),
+      ...[0.5, 0.6, 0.4, 0.7].map((x, i) => v(`p${i}`, "long", `Baldur's Gate 3 Playthrough (Pt. ${i})`, x, { topic: "Baldur's Gate 3" })),
+      // Shorts on another game that did brilliantly must not lift a long-form idea on that game.
+      ...[9, 8, 7, 10].map((x, i) => v(`s${i}`, "short", `ELDEN RING BOSS DID WHAT ${i} #shorts`, x, { topic: "Elden Ring" })),
+    ];
+    expect(ideaGame({ title: "bg3 with one rule", target_keyword: null, concept: null, hook: null }, ["Elden Ring", "Baldur's Gate 3"])).toBe("Baldur's Gate 3");
+    expect(ideaGame({ title: "A cooking video", target_keyword: null, concept: null, hook: null }, ["Elden Ring"])).toBeNull();
+    const question = titleLifts(videos, "long").find((l) => l.key === "question")!;
+    expect(question.lift).toBeGreaterThan(5);
+    expect(titleLifts(videos, "short")).toEqual([]);
+
+    const idea = { title: "Can I Beat Baldur's Gate 3 With One Spell?", format: "long" as const, target_keyword: null, concept: null, hook: null };
+    const good = scoreIdea(idea, videos, [], "2026-11-17");
+    const plain = scoreIdea({ ...idea, title: "Baldur's Gate 3 Playthrough (Pt. 9)" }, videos, [], "2026-11-17");
+    expect(good.game).toBe("Baldur's Gate 3");
+    expect(good.history.value!).toBeGreaterThan(plain.history.value!);
+    expect(good.search).toBe("Baldur's Gate 3");
+    expect(good.recommended.parts[0].points).toBeNull();
+
+    // Research that found breakouts on the game, in the same format, lifts the recommended score. Shorts found do not.
+    const found = (format: string, n: number) => Array.from({ length: n }, (_, i) => ({ id: `${format}${i}`, title: "Baldur's Gate 3 honour mode run", tags: [], format, views: 90000, outlier_score: 8, channel_subscribers: 9000, published_at: "2026-10-20" }));
+    const withResearch = scoreIdea(idea, videos, found("long", 4), "2026-11-17");
+    expect(withResearch.recommended.value!).toBeGreaterThan(good.recommended.value ?? 0);
+    expect(withResearch.search).toBeNull();
+    expect(scoreIdea(idea, videos, found("short", 4), "2026-11-17").recommended.parts[0].points).toBeNull();
+
+    // A long-form idea on a game only ever covered in Shorts gets a hint, not a track record.
+    const elden = scoreIdea({ ...idea, title: "Elden Ring but I can only roll" }, videos, [], "2026-11-17");
+    expect(elden.history.parts[0].points).toBeNull();
+    expect(elden.history.parts.find((p) => p.label.startsWith("A hint"))!.points).toBe(15);
+    // No game named: no number at all.
+    expect(scoreIdea({ ...idea, title: "My setup tour" }, [], [], "2026-11-17").history.value).toBeNull();
+  });
+
+  it("reads an upload's first hours against earlier uploads of the same format", async () => {
+    const { first48, curveFromDays, viewsAt, trackedUpload, weekNote } = await import("../src/lib/pulse.ts");
+    const v = (id: string, content_type: string, published_at: string, age_days: number) => ({ id, title: id, content_type, privacy: "public", published_at, age_days, vs_typical: 1 }) as never;
+    // Published at noon Pacific (20:00 UTC in November): half of the first Pacific day is left.
+    const old = ["2026-10-01", "2026-10-08", "2026-10-15"].map((d, i) => v(`o${i}`, "long", `${d}T20:00:00Z`, 30));
+    const days = old.flatMap((o: { id: string; published_at: string }) => [100, 300, 200].map((views, i) => ({ video_id: o.id, date: new Date(Date.parse(o.published_at.slice(0, 10)) + i * 86_400_000).toISOString().slice(0, 10), views, minutes_watched: 0, subs_gained: 0 })));
+    const curve = curveFromDays(old[0], days);
+    expect(curve.map((p) => [Math.round(p.h), p.views])).toEqual([[0, 0], [11, 100], [35, 400], [59, 600]]);
+    expect(Math.round(viewsAt(curve, 23)!)).toBe(250);
+    const fresh = v("new", "long", "2026-11-16T20:00:00Z", 0);
+    const shortHit = v("s", "short", "2026-11-01T20:00:00Z", 16);
+    const pulse = [6, 12, 23].map((h) => ({ video_id: "new", captured_at: new Date(Date.parse("2026-11-16T20:00:00Z") + h * 3_600_000).toISOString(), views: h * 25 }));
+    const read = first48(fresh, [...old, fresh, shortHit], pulse, [...days, { video_id: "s", date: "2026-11-01", views: 90000, minutes_watched: 0, subs_gained: 0 }]);
+    expect(read.from).toBe(3);
+    expect(read.now).toMatchObject({ views: 575, usual: 250, times: 2.3 });
+    expect(read.olderCounting).toBe(false);
+    expect(trackedUpload([...old, fresh], Date.parse("2026-11-17T20:00:00Z"))?.id).toBe("new");
+    expect(trackedUpload([...old, fresh], Date.parse("2026-11-21T20:00:00Z"))).toBeNull();
+
+    const note = weekNote({ videos: [...old, fresh], daily: [], ideas: [], goals: [], today: "2026-11-17", topIdea: { title: "Run", id: "i", score: 71 } });
+    expect(note[0].text).toBe("You posted 1 long-form video in the last 7 days.");
+    expect(note.at(-1)!.text).toContain("71 out of 100");
+    expect(weekNote({ videos: old, daily: [], ideas: [], goals: [], today: "2026-11-17" })[0].text).toContain("Your last one was 33 days ago");
+  });
+
   it("shows only the comments the owner pinned on the front page", async () => {
     const { kindWords } = await import("../src/lib/growth.ts");
     const c = (id: string, over: object) => ({ id, video_id: null, author: null, text: "This video was great fun", likes: 1, published_at: "2026-11-01", sentiment: "positive" as const, theme: null, is_question: false, pinned: false, hidden: false, ...over });
