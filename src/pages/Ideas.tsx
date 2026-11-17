@@ -65,12 +65,19 @@ export function Ideas() {
     try { return localStorage.getItem("yt-ideas-view") === "game" ? "game" : "stage"; } catch { return "stage"; }
   });
   const videos = useVideos();
-  // Every game there is to file an idea under: the ones ideas already use, then the channel's own, most covered first.
+  // The games offered when filing an idea: the ones the owner is working with now, not every game the
+  // channel ever covered. That is the games open ideas already sit under, then the games uploaded in
+  // the last year, newest first. Anything else can still be typed.
   const games = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const v of videos.data ?? []) if (v.topic) counts.set(v.topic, (counts.get(v.topic) ?? 0) + 1);
-    const mine = [...new Set((ideas.data ?? []).map((i) => i.topic).filter((t): t is string => Boolean(t)))];
-    return [...mine, ...[...counts.entries()].sort((a, b) => b[1] - a[1]).map(([g]) => g).filter((g) => !mine.includes(g))];
+    const yearAgo = new Date(Date.now() - 365 * 86_400_000).toISOString();
+    const last = new Map<string, string>();
+    for (const v of videos.data ?? []) {
+      if (!v.topic || v.privacy !== "public" || !v.published_at || v.published_at < yearAgo) continue;
+      if ((last.get(v.topic) ?? "") < v.published_at) last.set(v.topic, v.published_at);
+    }
+    const mine = [...new Set((ideas.data ?? []).filter((i) => i.status !== "published").map((i) => i.topic?.trim()).filter((t): t is string => Boolean(t)))];
+    const recent = [...last.entries()].sort((x, y) => y[1].localeCompare(x[1])).map(([g]) => g).filter((g) => !mine.includes(g));
+    return [...mine, ...recent].slice(0, 8);
   }, [videos.data, ideas.data]);
   /** The section an idea sits under: the game it was filed under, else the one its wording points to. */
   const sectionOf = (idea: Idea) => idea.topic?.trim() || scores.get(idea.id)?.game || null;
@@ -317,15 +324,21 @@ function IdeaEditor(props: { draft: IdeaDraft; games: string[]; onClose: () => v
         <TemplateHint kind="title" />
       </label>
 
-      <label className="field">
+      <div className="field">
         <span>Game or topic</span>
-        <input className="input" list="idea-games" value={form.topic ?? ""} onChange={(e) => set("topic", e.target.value || null)} placeholder="Elden Ring" maxLength={80} />
-        <datalist id="idea-games">{props.games.map((g) => <option key={g} value={g} />)}</datalist>
+        {props.games.length ? (
+          <div className="row-wrap" style={{ gap: 6 }}>
+            {props.games.map((g) => (
+              <button key={g} type="button" className="chip" aria-pressed={form.topic === g} onClick={() => set("topic", form.topic === g ? null : g)}>{g}</button>
+            ))}
+          </div>
+        ) : null}
+        <input className="input" value={form.topic ?? ""} onChange={(e) => set("topic", e.target.value || null)} placeholder="Or type another game or topic" aria-label="Game or topic" maxLength={80} />
         <small>
-          The section this idea sits under on the board. Pick one of your games or type a new one.
+          The section this idea sits under on the board. The buttons are the games you have posted in the last year and the ones your ideas already use.
           {!form.topic && guess ? <> It reads like <button type="button" className="th-sort" style={{ textDecoration: "underline" }} onClick={() => set("topic", guess)}>{guess}</button>: tap to file it there.</> : null}
         </small>
-      </label>
+      </div>
 
       <ScorePanel draft={form} />
       <TemplateScore
