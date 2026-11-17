@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { GoalsStrip, HOME_TABS, Hub, KindWords, RunBand, Tabs } from "./Growth.tsx";
+import { GoalsStrip, Hub, KindWords, RunBand, STATS_TABS, Tabs } from "./Growth.tsx";
 import { FrontLines } from "./Notes.tsx";
 import { NewUpload, WeekCard } from "./Pulse.tsx";
 import { BarList, Sparkline, Timeline, type UploadPin } from "../components/Timeline.tsx";
@@ -92,10 +92,10 @@ export function Overview({ view }: { view: "home" | "stats" }) {
   return (
     <>
       <div className="page-head">
-        <h1>{home ? "Overview" : "Stats"}</h1>
+        <h1>{home ? "Home" : "Stats"}</h1>
         {home ? null : <Segmented label="Time range" value={range} options={RANGES} onChange={setRange} />}
       </div>
-      <Tabs label="Front page" base="" current={home ? "" : "stats"} tabs={HOME_TABS} />
+      {home ? null : <Tabs label="Stats" base="/stats" current="" tabs={STATS_TABS} />}
       {home ? <><RunBand /><NewUpload /><WeekCard /><Hub /></> : null}
 
       {connection.data?.connection_error ? (

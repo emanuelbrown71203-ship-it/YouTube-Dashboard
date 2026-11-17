@@ -4,7 +4,7 @@ import { Icon, Loading, useToast } from "./components/ui.tsx";
 import { ensureSession, finishGoogleSignIn, whoami } from "./lib/api.ts";
 import { keys, useChannel, useSyncRuns } from "./lib/hooks.ts";
 import { navigate, useRoute } from "./lib/router.ts";
-import { Comments, Funnel, Games, Goals, HOME_TABS, IDEA_TABS, Planner, Recap, Tabs, Tests, VIDEO_TABS } from "./pages/Growth.tsx";
+import { Comments, Funnel, Games, Goals, IDEA_TABS, Planner, PLAYBOOK_TABS, Recap, STATS_TABS, Tabs, Tests, VIDEO_TABS } from "./pages/Growth.tsx";
 import { Ideas } from "./pages/Ideas.tsx";
 import { Notes } from "./pages/Notes.tsx";
 import { Overview } from "./pages/Overview.tsx";
@@ -14,13 +14,26 @@ import { type GoogleResult, SignIn } from "./pages/SignIn.tsx";
 import { Templates } from "./pages/Templates.tsx";
 import { Videos } from "./pages/Videos.tsx";
 
+// The sections, in the order they are listed. The first four sit in the phone's bottom bar; the rest
+// open from "More" there. On a wide screen all of them are in the side rail.
 const NAV = [
-  { path: "/", label: "Overview", icon: "overview" },
+  { path: "/", label: "Home", icon: "home" },
   { path: "/videos", label: "Videos", icon: "videos" },
   { path: "/ideas", label: "Ideas", icon: "ideas" },
   { path: "/research", label: "Research", icon: "research" },
+  { path: "/stats", label: "Stats", icon: "overview" },
+  { path: "/goals", label: "Goals", icon: "goals" },
+  { path: "/comments", label: "Comments", icon: "comments" },
+  { path: "/playbook", label: "Playbook", icon: "playbook" },
   { path: "/settings", label: "Settings", icon: "settings" },
 ];
+const DOCK = 4;
+
+// Pages that moved when the sections were sorted out: old links still land in the right place.
+const MOVED: Record<string, string> = {
+  "recap": "/stats/recap", "notes": "/playbook/lines", "videos/games": "/stats/games", "videos/funnel": "/stats/funnel",
+  "ideas/templates": "/playbook",
+};
 
 export function App() {
   const route = useRoute();
@@ -122,12 +135,15 @@ function Shell(props: { google: GoogleResult | null; clearGoogle: () => void; on
     wasRunning.current = running;
   }, [latest?.status, latest?.id, queryClient]);
 
-  const first = route.segments[0] ?? "";
-  // Stats, the recap, goals, comments and saved lines are tabs of the front page.
-  const home = ["recap", "goals", "comments", "notes"].includes(first);
-  const stats = first === "stats";
-  const section = home || stats ? "" : first;
+  const section = route.segments[0] ?? "";
   const sub = route.segments[1] ?? "";
+  const moved = MOVED[sub ? `${section}/${sub}` : section];
+  useEffect(() => {
+    if (moved) navigate(moved, true);
+  }, [moved]);
+  const [more, setMore] = useState(false);
+  useEffect(() => setMore(false), [section, sub]);
+  const inMore = NAV.slice(DOCK).some((item) => item.path === `/${section}`);
   const title = channel.data?.title ?? "My channel";
   return (
     <div className="app">
@@ -141,43 +157,72 @@ function Shell(props: { google: GoogleResult | null; clearGoogle: () => void; on
             <div className="small muted clip">{channel.data?.handle ?? "YouTube dashboard"}</div>
           </div>
         </div>
-        {NAV.map((item) => (
-          <a key={item.path} className="nav-link" href={`#${item.path}`} aria-current={`/${section}` === item.path ? "page" : undefined}>
+        {NAV.map((item, index) => (
+          <a key={item.path} className={`nav-link${index >= DOCK ? " nav-extra" : ""}`} href={`#${item.path}`} aria-current={`/${section}` === item.path ? "page" : undefined}>
             <Icon name={item.icon} />
             <span>{item.label}</span>
           </a>
         ))}
+        <button type="button" className="nav-link nav-more" aria-expanded={more} aria-current={inMore ? "page" : undefined} onClick={() => setMore((m) => !m)}>
+          <Icon name="more" />
+          <span>More</span>
+        </button>
         <div className="rail-foot small muted">
           {latest?.status === "running" ? <span className="row"><span className="spin" />Syncing with YouTube</span> : null}
         </div>
       </nav>
+      {more ? (
+        <>
+          <button type="button" className="more-shade" aria-label="Close the menu" onClick={() => setMore(false)} />
+          <nav className="more-sheet" aria-label="More sections">
+            {NAV.slice(DOCK).map((item) => (
+              <a key={item.path} className="nav-link" href={`#${item.path}`} aria-current={`/${section}` === item.path ? "page" : undefined} onClick={() => setMore(false)}>
+                <Icon name={item.icon} />
+                <span>{item.label}</span>
+              </a>
+            ))}
+          </nav>
+        </>
+      ) : null}
       <main className="main">
-        {home ? (
-          <>
-            <div className="page-head"><h1>{HOME_TABS.find((t) => t.key === first)?.label}</h1></div>
-            <Tabs label="Front page" base="" current={first} tabs={HOME_TABS} />
-            {first === "recap" ? <Recap /> : first === "goals" ? <Goals /> : first === "notes" ? <Notes /> : <Comments />}
-          </>
-        ) : stats ? <Overview view="stats" /> : section === "" ? <Overview view="home" />
-          : section === "videos" && ["games", "funnel", "tests"].includes(sub) ? (
+        {moved ? null
+          : section === "" ? <Overview view="home" />
+          : section === "stats" && sub === "" ? <Overview view="stats" />
+          : section === "stats" && ["recap", "games", "funnel"].includes(sub) ? (
+            <>
+              <div className="page-head"><h1>Stats</h1></div>
+              <Tabs label="Stats" base="/stats" current={sub} tabs={STATS_TABS} />
+              {sub === "recap" ? <Recap /> : sub === "games" ? <Games /> : <Funnel />}
+            </>
+          )
+          : section === "videos" && sub === "tests" ? (
             <>
               <div className="page-head"><h1>Videos</h1></div>
               <Tabs label="Videos" base="/videos" current={sub} tabs={VIDEO_TABS} />
-              {sub === "games" ? <Games /> : sub === "funnel" ? <Funnel /> : <Tests />}
+              <Tests />
             </>
           )
           : section === "videos" ? <Videos />
-          : section === "ideas" && (sub === "planner" || sub === "templates") ? (
+          : section === "ideas" && sub === "planner" ? (
             <>
               <div className="page-head"><h1>Ideas</h1></div>
               <Tabs label="Ideas" base="/ideas" current={sub} tabs={IDEA_TABS} />
-              {sub === "planner" ? <Planner /> : <Templates />}
+              <Planner />
             </>
           )
           : section === "ideas" ? <Ideas />
+          : section === "goals" ? <><div className="page-head"><h1>Goals</h1></div><Goals /></>
+          : section === "comments" ? <><div className="page-head"><h1>Comments</h1></div><Comments /></>
+          : section === "playbook" && (sub === "" || sub === "lines") ? (
+            <>
+              <div className="page-head"><h1>Playbook</h1></div>
+              <Tabs label="Playbook" base="/playbook" current={sub} tabs={PLAYBOOK_TABS} />
+              {sub === "lines" ? <Notes /> : <Templates />}
+            </>
+          )
           : section === "research" ? <Research />
           : section === "settings" ? <Settings onSignedOut={props.onSignedOut} />
-          : <div className="empty"><h3>That page does not exist</h3><p><a href="#/">Go to the overview</a></p></div>}
+          : <div className="empty"><h3>That page does not exist</h3><p><a href="#/">Go to the home page</a></p></div>}
       </main>
     </div>
   );

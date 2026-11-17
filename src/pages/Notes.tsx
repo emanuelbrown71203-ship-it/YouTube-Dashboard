@@ -188,7 +188,7 @@ export function FrontLines() {
         <h2>Lines to remember</h2>
         <span className="row" style={{ gap: 12 }}>
           <button type="button" className="btn btn-quiet btn-small" onClick={() => setAdding((a) => !a)}>{adding ? "Close" : "Add a line"}</button>
-          <a className="small" href="#/notes">All lines</a>
+          <a className="small" href="#/playbook/lines">All lines</a>
         </span>
       </div>
       {adding ? <QuickLine onSaved={() => { reload(); setAdding(false); }} /> : null}
@@ -197,7 +197,7 @@ export function FrontLines() {
       ) : adding ? null : (
         <div className="panel"><p className="small muted" style={{ padding: "14px 18px", margin: 0 }}>Heard a good line in a podcast or a video? Tap Add a line and it stays here where you will see it.</p></div>
       )}
-      {shown.length > 8 ? <p className="small muted" style={{ marginTop: 8 }}>Showing the newest 8 of {shown.length}. <a href="#/notes">See them all</a></p> : null}
+      {shown.length > 8 ? <p className="small muted" style={{ marginTop: 8 }}>Showing the newest 8 of {shown.length}. <a href="#/playbook/lines">See them all</a></p> : null}
     </section>
   );
 }

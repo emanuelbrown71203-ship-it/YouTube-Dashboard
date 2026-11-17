@@ -6,6 +6,11 @@ import { duration, FORMAT_LABEL, multiple, percentChange } from "../lib/format.t
 
 const PATHS: Record<string, string> = {
   overview: "M4 19V10m5.5 9V5M15 19v-6m5.5 6V8",
+  home: "M4 11.5 12 4l8 7.5M6.5 10v9.5h11V10",
+  goals: "M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18zm0-5a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm0-4h.01",
+  comments: "M5 5.5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-5 3.5v-3.5H5a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1z",
+  playbook: "M6 4h11a1 1 0 0 1 1 1v15H7.5A1.5 1.5 0 0 1 6 18.5zM6 18.5A1.5 1.5 0 0 1 7.5 17H18M9.5 8h5M9.5 11.5h5",
+  more: "M5 12h.01M12 12h.01M19 12h.01",
   videos: "M4 6.5A1.5 1.5 0 0 1 5.5 5h13A1.5 1.5 0 0 1 20 6.5v11a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5zM10 9.5v5l4.5-2.5z",
   ideas: "M9 18h6m-5 3h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2v.1h5V16c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z",
   research: "M10.5 17a6.5 6.5 0 1 1 0-13 6.5 6.5 0 0 1 0 13zm5-1.5L20 20",

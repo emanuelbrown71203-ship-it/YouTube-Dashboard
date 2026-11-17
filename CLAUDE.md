@@ -157,9 +157,16 @@ tools here exist so that is not needed.
   one allowed bridge is a hint, said as a hint: a Short that beat the other
   Shorts suggests the idea could carry a long video (`shortsWorthAVideo`).
   The same goes when answering the owner's questions from the data.
+- **Sections** (`NAV` in `src/App.tsx`): Home, Videos (all videos, title
+  and thumbnail tests), Ideas (board, planner), Research, Stats (charts,
+  monthly recap, by game, Shorts to long), Goals, Comments, Playbook
+  (templates, lines to remember), Settings. A phone shows the first four
+  and a More menu. Put a new page in the section it belongs to; when it
+  fits none of them, give it a section of its own. Never tuck it under
+  whichever section is handy.
 - The front page is for what the owner acts on: the new upload, the weekly
   note, saved lines, pinned comments, goals, latest uploads. Charts and
-  breakdowns go on the Stats tab (`#/stats`), not there.
+  breakdowns go in the Stats section (`#/stats`), not there.
 - Live streams are many and small. "Latest uploads", the planner and the
   upload markers leave them out; they have their own Streams tab.
 - Thumbnails load only while on or near the screen (`Thumb` in

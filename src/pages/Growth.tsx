@@ -18,12 +18,12 @@ import type { Video } from "../lib/types.ts";
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const message = (err: unknown) => (err instanceof Error ? err.message : "That did not work. Try again.");
 
-export const HOME_TABS = [
-  { key: "", label: "Overview" }, { key: "stats", label: "Stats" }, { key: "recap", label: "Monthly recap" }, { key: "goals", label: "Goals" },
-  { key: "comments", label: "Comments" }, { key: "notes", label: "Lines" },
-];
-export const VIDEO_TABS = [{ key: "", label: "All videos" }, { key: "games", label: "By game" }, { key: "funnel", label: "Shorts to long" }, { key: "tests", label: "Tests" }];
-export const IDEA_TABS = [{ key: "", label: "Board" }, { key: "planner", label: "Planner" }, { key: "templates", label: "Templates" }];
+// Each section of the app and the pages inside it. A page lives in the section it belongs to; when a
+// new thing does not fit one of these, it gets a section of its own rather than a tab somewhere handy.
+export const STATS_TABS = [{ key: "", label: "Charts" }, { key: "recap", label: "Monthly recap" }, { key: "games", label: "By game" }, { key: "funnel", label: "Shorts to long" }];
+export const VIDEO_TABS = [{ key: "", label: "All videos" }, { key: "tests", label: "Title and thumbnail tests" }];
+export const IDEA_TABS = [{ key: "", label: "Board" }, { key: "planner", label: "Planner" }];
+export const PLAYBOOK_TABS = [{ key: "", label: "Templates" }, { key: "lines", label: "Lines to remember" }];
 
 export function Tabs(props: { label: string; base: string; current: string; tabs: { key: string; label: string }[] }) {
   return (
@@ -1058,16 +1058,16 @@ export function Hub() {
   const ideaCount = (ideas.data ?? []).filter((i) => i.status !== "published").length;
   return (
     <nav className="hub" aria-label="Jump to">
-      <Tile href="#/recap" hue="var(--s-short)" label="Monthly recap" figure={rec ? compact(rec.views) : "–"} line={rec ? `views in ${rec.label.split(" ")[0]}` : "No full month yet"}>
+      <Tile href="#/stats/recap" hue="var(--s-short)" label="Monthly recap" figure={rec ? compact(rec.views) : "–"} line={rec ? `views in ${rec.label.split(" ")[0]}` : "No full month yet"}>
         <Bars values={months.slice(0, 6).reverse().map((m) => (daily.data ?? []).filter((d) => d.date.startsWith(m)).reduce((t, d) => t + d.views, 0))} />
       </Tile>
       <Tile href="#/goals" hue="#c79a00" label="Goals" figure={nearest ? `${Math.round((nearest.p.share ?? 0) * 100)}%` : String(open.length)} line={nearest ? nearest.g.title : open.length ? count(open.length, "open goal") : "Set your first goal"}>
         {nearest ? <Ring share={nearest.p.share ?? 0} /> : null}
       </Tile>
-      <Tile href="#/videos/games" hue="var(--s-long)" label="By game" figure={games[0] ? percent(games[0].retention) : "–"} line={games[0] ? `${games[0].topic} holds viewers best` : "Sorted after the next sync"}>
+      <Tile href="#/stats/games" hue="var(--s-long)" label="By game" figure={games[0] ? percent(games[0].retention) : "–"} line={games[0] ? `${games[0].topic} holds viewers best` : "Sorted after the next sync"}>
         <Bars values={games.slice(0, 6).map((g) => g.retention ?? 0)} />
       </Tile>
-      <Tile href="#/videos/funnel" hue="var(--s-live)" label="Shorts to long" figure={funnel.measured ? compact(funnel.fromShorts) : "–"} line={funnel.measured ? "views sent on by your Shorts" : "Measured after the next sync"} />
+      <Tile href="#/stats/funnel" hue="var(--s-live)" label="Shorts to long" figure={funnel.measured ? compact(funnel.fromShorts) : "–"} line={funnel.measured ? "views sent on by your Shorts" : "Measured after the next sync"} />
       <Tile href="#/videos/tests" hue="#8b5cf6" label="Tests" figure={String(running)} line={running === 1 ? "test running" : running ? "tests running" : "Log your next thumbnail change"} />
       <Tile href="#/comments" hue="#e0528a" label="Comments" figure={kind ? whole(kind) : "–"} line={kind ? "kind comments lately" : "Switch comments on in Settings"} />
       <Tile href="#/ideas/planner" hue="var(--s-short)" label="Planner" figure={planned?.target_date ? day(planned.target_date) : "–"} line={planned ? planned.title : "Nothing planned yet"} />

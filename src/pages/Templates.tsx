@@ -212,7 +212,7 @@ export function TemplateScore(props: { idea: IdeaDraft; dirty: boolean; onChecke
       <div className="score-block">
         <div style={{ fontWeight: 650 }}>Your templates</div>
         <div className="small soft" style={{ marginTop: 4 }}>
-          Write down what your titles, thumbnails and intros should have, and each idea can be scored against it. <a href="#/ideas/templates">Open Templates</a>
+          Write down what your titles, thumbnails and intros should have, and each idea can be scored against it. <a href="#/playbook">Open Templates</a>
         </div>
       </div>
     );
