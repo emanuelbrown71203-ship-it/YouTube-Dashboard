@@ -20,6 +20,8 @@ export interface PublicVideo {
   privacy: string | null;
   /** The language the uploader declared ("en", "es-419"...), when they declared one. */
   language?: string | null;
+  /** YouTube's category id, as the uploader set it: "20" is Gaming. */
+  category?: string | null;
 }
 
 export interface PublicChannel {
@@ -66,6 +68,7 @@ export interface OutlierItem {
   views_per_day: number;
   reach: number | null;
   engagement_pct: number | null;
+  category?: string | null;
 }
 
 const DAY_MS = 86_400_000;
@@ -191,6 +194,7 @@ export function scoreOutlier(
     views_per_day: round(viewsPerDay(video.views, video.published_at, now), 1),
     reach: subs && subs > 0 ? round(video.views / subs, 2) : null,
     engagement_pct: video.views > 0 && video.likes !== null ? round((100 * interactions) / video.views, 2) : null,
+    category: video.category ?? null,
   };
 }
 

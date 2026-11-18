@@ -354,6 +354,7 @@ export function toVideo(item: any): PublicVideo {
     is_live: Boolean(item.liveStreamingDetails) || s.liveBroadcastContent === "live" || s.liveBroadcastContent === "upcoming",
     privacy: item.status?.privacyStatus ?? null,
     language: s.defaultAudioLanguage ?? s.defaultLanguage ?? null,
+    category: s.categoryId ?? null,
   };
 }
 
@@ -372,6 +373,8 @@ export interface VideoSearch {
   publishedAfter?: string;
   publishedBefore?: string;
   videoDuration?: "short" | "medium" | "long";
+  /** YouTube's category, such as "20" for Gaming. */
+  videoCategoryId?: string;
   pageToken?: string;
   maxResults?: number;
 }
@@ -379,7 +382,7 @@ export interface VideoSearch {
 export async function searchVideoIds(api: Api, p: VideoSearch): Promise<{ ids: string[]; nextPageToken: string | null }> {
   const page = await ytGet(api, "search", {
     part: "id", type: "video", q: p.q, order: p.order, maxResults: p.maxResults ?? 50,
-    publishedAfter: p.publishedAfter, publishedBefore: p.publishedBefore, videoDuration: p.videoDuration,
+    publishedAfter: p.publishedAfter, publishedBefore: p.publishedBefore, videoDuration: p.videoDuration, videoCategoryId: p.videoCategoryId,
     pageToken: p.pageToken, safeSearch: "none", regionCode: "US", relevanceLanguage: "en",
   }, SEARCH_COST);
   return {

@@ -378,13 +378,15 @@ export interface FoundThumb {
   views: number | null;
   outlier_score: number | null;
   tags: string[] | null;
+  /** YouTube's category: "20" is Gaming. Null for videos found before it was recorded. */
+  category: string | null;
 }
 
 /** Every long-form video found in the last year that did at least twice its channel's usual. */
 export async function getThumbGallery(): Promise<FoundThumb[]> {
   const since = new Date(Date.now() - 365 * 86_400_000).toISOString();
   const { data, error } = await supabase.from("yt_research_videos")
-    .select("id, channel_id, channel_title, channel_subscribers, title, published_at, views, outlier_score, tags")
+    .select("id, channel_id, channel_title, channel_subscribers, title, published_at, views, outlier_score, tags, category")
     .eq("format", "long").gte("outlier_score", 2).gte("published_at", since)
     .order("outlier_score", { ascending: false }).limit(800);
   fail(error);

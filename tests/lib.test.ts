@@ -388,7 +388,7 @@ describe("growth", () => {
     expect(gameOfThumb({ title: "This run broke me", tags: ["bg3", "honour mode"] }, games)).toBe("Baldur's Gate 3");
     expect(gameOfThumb({ title: "Minecraft But Every Block Is TNT", tags: ["minecraft"] }, games)).toBeNull();
 
-    const row = (id: string, title: string, over: object = {}) => ({ id, title, channel_id: "UCother", channel_title: "c", channel_subscribers: 20_000, published_at: "2026-11-01T00:00:00Z", views: 1000, outlier_score: 5, tags: [], ...over });
+    const row = (id: string, title: string, over: object = {}) => ({ id, title, channel_id: "UCother", channel_title: "c", channel_subscribers: 20_000, published_at: "2026-11-01T00:00:00Z", views: 1000, outlier_score: 5, tags: [], category: "20", ...over });
     const rows = [
       row("a", "Elden Ring But I Can Only Roll", { outlier_score: 9 }),
       row("b", "Cuphead Without Shooting", { outlier_score: 4, published_at: "2026-11-15T00:00:00Z" }),
@@ -396,16 +396,20 @@ describe("growth", () => {
       row("d", "Elden Ring lore explained", { outlier_score: 2.5 }),
       row("e", "Elden Ring at level 1", { published_at: "2026-01-01T00:00:00Z" }),
       row("f", "My own Elden Ring run", { channel_id: "UCme" }),
+      // Outside the niche only gaming counts: a broad search also finds dance videos, and older finds have no category.
+      row("g", "KATSEYE DANCE CHALLENGE", { outlier_score: 600, category: "24" }),
+      row("h", "Using only the wall, day 1", { outlier_score: 200, category: null }),
+      row("i", "Elden Ring castle as Venom Snake", { outlier_score: 40, category: null, published_at: "2026-10-20T00:00:00Z" }),
     ];
     const pick = (over: object) => galleryItems(rows, games, { where: "mine", game: null, days: 90, small: false, sort: "jump", ...over }, "2026-11-18", "UCme").map((r) => r.id);
     // At least 3x the channel's usual, within the time span, never the owner's own video.
-    expect(pick({})).toEqual(["a", "b"]);
+    expect(pick({})).toEqual(["i", "a", "b"]);
     expect(pick({ where: "outside" })).toEqual(["c"]);
-    expect(pick({ where: "all" })).toEqual(["c", "a", "b"]);
+    expect(pick({ where: "all" })).toEqual(["i", "c", "a", "b"]);
     expect(pick({ game: "Cuphead" })).toEqual(["b"]);
-    expect(pick({ sort: "newest" })).toEqual(["b", "a"]);
-    expect(pick({ where: "all", small: true })).toEqual(["a", "b"]);
-    expect(pick({ days: 365 })).toEqual(["a", "e", "b"]);
+    expect(pick({ sort: "newest" })).toEqual(["b", "a", "i"]);
+    expect(pick({ where: "all", small: true })).toEqual(["i", "a", "b"]);
+    expect(pick({ days: 365 })).toEqual(["i", "a", "e", "b"]);
   });
 
   it("reads an upload's first hours against earlier uploads of the same format", async () => {

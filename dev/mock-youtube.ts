@@ -139,12 +139,14 @@ function apiError(status: number, reason: string, message: string): Response {
   return json({ error: { code: status, message, errors: [{ reason, message, domain: "youtube" }] } }, status);
 }
 
-export function createMockGoogle(options: MockOptions): { fetch: typeof fetch; universe: MockChannel[]; calls: string[] } {
+export function createMockGoogle(options: MockOptions): { fetch: typeof fetch; universe: MockChannel[]; calls: string[]; searches: Record<string, string>[] } {
   const universe = buildUniverse(options.now());
   const allVideos = universe.flatMap((c) => c.videos);
   const videoById = new Map(allVideos.map((v) => [v.id, v]));
   const channelById = new Map(universe.map((c) => [c.id, c]));
   const calls: string[] = [];
+  /** The parameters of every search, newest last. */
+  const searches: Record<string, string>[] = [];
   const signedIn = () => options.signedInChannelId ?? MY_CHANNEL_ID;
 
   const channelResource = (c: MockChannel) => ({
@@ -169,7 +171,7 @@ export function createMockGoogle(options: MockOptions): { fetch: typeof fetch; u
     snippet: {
       title: v.title, description: v.kind === "short" ? "#shorts" : "Made-up description for local testing.",
       publishedAt: v.publishedAt, channelId: v.channelId, channelTitle: channelById.get(v.channelId)!.title,
-      tags: v.tags.length ? v.tags : undefined, liveBroadcastContent: "none",
+      tags: v.tags.length ? v.tags : undefined, liveBroadcastContent: "none", categoryId: "20",
       thumbnails: { medium: { url: `https://example.invalid/thumb/${v.id}.jpg` } },
     },
     statistics: { viewCount: String(v.views), likeCount: String(v.likes), commentCount: String(v.comments) },
@@ -209,6 +211,7 @@ export function createMockGoogle(options: MockOptions): { fetch: typeof fetch; u
       return json({ items: ids.map((id) => videoById.get(id)).filter((v): v is MockVideo => Boolean(v)).map(videoResource) });
     }
     if (path === "search") {
+      searches.push(Object.fromEntries(q.entries()));
       const words = (q.get("q") ?? "").toLowerCase().split(/\s+/).filter(Boolean);
       if (q.get("type") === "channel") {
         const hits = universe.filter((c) => words.some((w) => c.title.toLowerCase().includes(w)));
@@ -399,5 +402,5 @@ export function createMockGoogle(options: MockOptions): { fetch: typeof fetch; u
     return new Response("not mocked", { status: 404 });
   };
 
-  return { fetch: mockFetch as typeof fetch, universe, calls };
+  return { fetch: mockFetch as typeof fetch, universe, calls, searches };
 }

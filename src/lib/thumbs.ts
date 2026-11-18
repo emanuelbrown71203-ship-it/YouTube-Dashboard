@@ -34,13 +34,18 @@ export interface GalleryFilter {
 
 export interface GalleryItem extends FoundThumb { game: string | null }
 
-/** The thumbnails to show: videos that did at least 3x their channel's usual, never the owner's own. */
+/**
+ * The thumbnails to show: videos that did at least 3x their channel's usual, never the owner's own.
+ * One outside the owner's games has to be in YouTube's Gaming category: a broad search turns up
+ * dance, fitness and drama videos as well.
+ */
 export function galleryItems(rows: FoundThumb[], games: string[], filter: GalleryFilter, today: string, ownChannel: string | null): GalleryItem[] {
   const since = Date.parse(today) - filter.days * 86_400_000;
   return rows
     .filter((r) => (r.outlier_score ?? 0) >= 3 && r.channel_id !== ownChannel && r.published_at && Date.parse(r.published_at) >= since)
     .filter((r) => !filter.small || (r.channel_subscribers !== null && r.channel_subscribers <= 50_000))
     .map((r) => ({ ...r, game: gameOfThumb(r, games) }))
+    .filter((r) => r.game !== null || r.category === "20")
     .filter((r) => filter.where === "all" || (filter.where === "mine" ? r.game !== null && (!filter.game || r.game === filter.game) : r.game === null))
     .sort((a, b) => (filter.sort === "newest" ? (b.published_at ?? "").localeCompare(a.published_at ?? "") : (b.outlier_score ?? 0) - (a.outlier_score ?? 0)));
 }

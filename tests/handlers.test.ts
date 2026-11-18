@@ -684,6 +684,13 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     expect(searches()).toBeGreaterThan(before);
     const [run] = await sql`select params from public.yt_research_runs where params @> '{"thumbs":true}'::jsonb order by created_at desc limit 1`;
     expect(run.params).toMatchObject({ mode: "breakout", format: "long", window_days: 90, auto: true, thumbs: true });
+    // Limited to YouTube's Gaming category, and what it keeps says so.
+    expect(mock.searches.slice(-2).map((p) => [p.q, p.videoCategoryId])).toEqual([["challenge run", "20"], ["challenge run", "20"]]);
+    const [{ gaming, other }] = await sql`
+      select count(*) filter (where category = '20')::int as gaming, count(*) filter (where category is distinct from '20')::int as other
+      from public.yt_research_videos where id in (select r->>'video_id' from public.yt_research_runs, jsonb_array_elements(results) r where params @> '{"thumbs":true}'::jsonb)`;
+    expect(gaming).toBeGreaterThan(0);
+    expect(other).toBe(0);
     // The follow-up to a sync does more, but never more than three in a day.
     const [{ value: secret }] = await sql`select value from public.yt_private where key = 'cron_secret'`;
     const [{ id: runId }] = await sql`select id from public.yt_sync_runs order by id desc limit 1`;

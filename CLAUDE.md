@@ -112,7 +112,7 @@ free and the owner has said to use them whenever a score needs them.
 
 - `src/`: Vite + React + TypeScript. Reads go straight to Supabase with the
   publishable key; row level security lets only owners in.
-- `supabase/migrations/`: fifteen files, all `yt_` objects. No statement in them
+- `supabase/migrations/`: sixteen files, all `yt_` objects. No statement in them
   removes anything.
 - `supabase/functions/yt-api/`: one edge function, deployed with JWT
   verification off because it checks callers itself. Routes: `/auth/setup`,
@@ -182,7 +182,11 @@ free and the owner has said to use them whenever a score needs them.
   fill in by themselves: the game searches, every idea check (which keeps
   what it found there), and `coverOutside` in `research.ts`, which searches
   challenge formats on any game (`OUTSIDE_QUERIES`, each every 7 days, at
-  most 3 a day; stored with `params.thumbs = true`). A pasted link goes
+  most 3 a day; stored with `params.thumbs = true`). Those searches are
+  limited to YouTube's Gaming category (`videoCategoryId=20`): broad words
+  like "challenge run" otherwise return dance, fitness and drama videos.
+  `yt_research_videos.category` keeps the category, and outside the
+  owner's games only `category = '20'` is shown. A pasted link goes
   through `/research` action `video_lookup`. Shorts are left out on purpose.
 - `dev/`: a local stand-in for the hosted backend (`server.ts`), a made-up
   YouTube (`mock-youtube.ts`) and a database reset script.

@@ -14,6 +14,8 @@ import { aiReady, ask, explainVideo } from "./growth.ts";
 const BASELINE_SIZE = 30;
 const BASELINE_TTL_MS = 7 * 86_400_000;
 const MAX_CHANNELS_PER_RUN = 40;
+/** YouTube's Gaming category. */
+const GAMING = "20";
 export const MAX_WATCHED = 25;
 const DAY_MS = 86_400_000;
 
@@ -272,21 +274,21 @@ export async function storeFound(sql: Sql, scored: OutlierItem[]): Promise<void>
   await sql`
     insert into public.yt_research_videos
       (id, channel_id, channel_title, channel_subscribers, title, thumbnail_url, published_at, duration_s, format,
-       views, likes, comments, tags, typical_views, outlier_score, views_per_day, fetched_at)
+       views, likes, comments, tags, typical_views, outlier_score, views_per_day, category, fetched_at)
     select x.video_id, x.channel_id, x.channel_title, x.channel_subscribers, x.title, x.thumbnail_url, x.published_at,
            x.duration_s, x.format, x.views, x.likes, x.comments,
            coalesce((select array_agg(t) from jsonb_array_elements_text(x.tags) t), '{}'),
-           x.typical_views, x.outlier_score, x.views_per_day, now()
+           x.typical_views, x.outlier_score, x.views_per_day, x.category, now()
     from jsonb_to_recordset(${sql.json(scored)}) as x(
       video_id text, channel_id text, channel_title text, channel_subscribers bigint, title text, thumbnail_url text,
       published_at timestamptz, duration_s integer, format text, views bigint, likes bigint, comments bigint,
-      tags jsonb, typical_views numeric, outlier_score numeric, views_per_day numeric)
+      tags jsonb, typical_views numeric, outlier_score numeric, views_per_day numeric, category text)
     on conflict (id) do update set
       channel_title = excluded.channel_title, channel_subscribers = excluded.channel_subscribers,
       title = excluded.title, thumbnail_url = excluded.thumbnail_url, duration_s = excluded.duration_s,
       format = excluded.format, views = excluded.views, likes = excluded.likes, comments = excluded.comments,
       tags = excluded.tags, typical_views = excluded.typical_views, outlier_score = excluded.outlier_score,
-      views_per_day = excluded.views_per_day, fetched_at = now()`;
+      views_per_day = excluded.views_per_day, category = coalesce(excluded.category, yt_research_videos.category), fetched_at = now()`;
 }
 
 async function findOutliers(api: Api, params: OutlierParams) {
@@ -302,7 +304,11 @@ async function findOutliers(api: Api, params: OutlierParams) {
     : { order: "relevance" as const, publishedBefore: new Date(now.getTime() - 180 * DAY_MS).toISOString() };
 
   const pages = await Promise.all(active.map((bucket) =>
-    searchVideoIds(api, { q: params.query, ...window, videoDuration: bucket, pageToken: tokens[bucket] ?? undefined })));
+    searchVideoIds(api, {
+      q: params.query, ...window, videoDuration: bucket, pageToken: tokens[bucket] ?? undefined,
+      // Searches for thumbnails outside the owner's games are broad words ("challenge run"); without this they turn up dance and fitness videos.
+      ...(params.thumbs ? { videoCategoryId: GAMING } : {}),
+    })));
   const nextTokens: Tokens = {};
   buckets.forEach((b) => (nextTokens[b] = null));
   active.forEach((b, i) => (nextTokens[b] = pages[i].nextPageToken));
@@ -313,7 +319,7 @@ async function findOutliers(api: Api, params: OutlierParams) {
   const rightLength = videos.filter((v) =>
     !v.is_live && (params.format === "short" ? v.duration_s > 0 && v.duration_s <= 180 : v.duration_s > 180));
   const belowMinViews = rightLength.filter((v) => v.views < params.min_views).length;
-  let candidates = rightLength.filter((v) => v.views >= params.min_views).sort((a, b) => b.views - a.views);
+  let candidates = rightLength.filter((v) => v.views >= params.min_views && (!params.thumbs || v.category === GAMING)).sort((a, b) => b.views - a.views);
 
   const channels = candidates.length ? await fetchChannels(api, { ids: candidates.map((v) => v.channel_id) }) : [];
   await upsertChannelStats(sql, channels);

@@ -782,6 +782,7 @@ export type Database = {
           description: string | null;
           explanation: Json | null;
           explained_at: string | null;
+          category: string | null;
         };
         Insert: {
           id: string;
@@ -809,6 +810,7 @@ export type Database = {
           description?: string | null;
           explanation?: Json | null;
           explained_at?: string | null;
+          category?: string | null;
         };
         Update: {
           id?: string;
@@ -836,6 +838,7 @@ export type Database = {
           description?: string | null;
           explanation?: Json | null;
           explained_at?: string | null;
+          category?: string | null;
         };
         Relationships: [];
       };
