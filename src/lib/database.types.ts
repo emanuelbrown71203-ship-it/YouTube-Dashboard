@@ -269,6 +269,51 @@ export type Database = {
         };
         Relationships: [];
       };
+      yt_idea_refs: {
+        Row: {
+          id: string;
+          idea_id: string;
+          video_id: string;
+          title: string | null;
+          channel_title: string | null;
+          channel_subscribers: number | null;
+          views: number | null;
+          outlier_score: number | null;
+          published_at: string | null;
+          note: string | null;
+          created_at: string;
+          trashed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          idea_id: string;
+          video_id: string;
+          title?: string | null;
+          channel_title?: string | null;
+          channel_subscribers?: number | null;
+          views?: number | null;
+          outlier_score?: number | null;
+          published_at?: string | null;
+          note?: string | null;
+          created_at?: string;
+          trashed_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          idea_id?: string;
+          video_id?: string;
+          title?: string | null;
+          channel_title?: string | null;
+          channel_subscribers?: number | null;
+          views?: number | null;
+          outlier_score?: number | null;
+          published_at?: string | null;
+          note?: string | null;
+          created_at?: string;
+          trashed_at?: string | null;
+        };
+        Relationships: [];
+      };
       yt_ideas: {
         Row: {
           id: string;

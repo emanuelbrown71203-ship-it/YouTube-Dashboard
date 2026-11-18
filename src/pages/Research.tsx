@@ -5,11 +5,13 @@ import { useRoute } from "../lib/router.ts";
 import { ResearchChannels } from "./ResearchChannels.tsx";
 import { ResearchKeywords } from "./ResearchKeywords.tsx";
 import { ResearchOutliers } from "./ResearchOutliers.tsx";
+import { Thumbnails } from "./Thumbnails.tsx";
 
 export const DAILY_BUDGET = 10_000;
 
 const TABS = [
   { key: "outliers", label: "Outliers", about: "Videos that beat their own channel's usual by a wide margin. They show what YouTube is recommending in your niche right now." },
+  { key: "thumbnails", label: "Thumbnails", about: "Thumbnails that are working right now, on your games and on others. Open one to keep it with an idea, or start a new idea from it." },
   { key: "keywords", label: "Search phrases", about: "What people type into YouTube search, and how hard each phrase is to rank for at your size." },
   { key: "channels", label: "Channels", about: "Channels you want to keep an eye on, measured the same way as your own." },
 ];
@@ -55,6 +57,7 @@ export function Research() {
       ) : null}
 
       {tab.key === "outliers" ? <ResearchOutliers connected={connected} initial={route.query.get("q") ?? ""} initialFormat={route.query.get("format") === "short" ? "short" : "long"} />
+        : tab.key === "thumbnails" ? <Thumbnails connected={connected} />
         : tab.key === "keywords" ? <ResearchKeywords connected={connected} initial={route.query.get("q") ?? ""} />
         : <ResearchChannels connected={connected} />}
     </>

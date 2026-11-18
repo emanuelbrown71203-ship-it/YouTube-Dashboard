@@ -8,7 +8,7 @@ import {
 import {
   logChanges, nameTopics, readComments, syncComments, syncFeeders, syncFirstDays, syncReach, syncTestDays, syncTopics, tickGoals,
 } from "./growth.ts";
-import { coverGames, coverIdeas, countStaleIdeas, refreshWatched } from "./research.ts";
+import { coverGames, coverIdeas, coverOutside, countStaleIdeas, refreshWatched } from "./research.ts";
 import { classifyFormat } from "./scoring.ts";
 
 type Params = Record<string, string | number | undefined>;
@@ -521,6 +521,8 @@ export async function runExtras(deps: Deps, runId: number, hop: number): Promise
     await step("idea_checks", () => coverIdeas(deps, { limit: 4, until: until - 12_000 }));
     await setConfig(sql, { idea_pass_at: deps.now().toISOString() });
   }
+  // What is working outside the owner's games, for the thumbnail references. A few a day at most.
+  if (Date.now() < until - 15_000) await step("thumb_research", () => coverOutside(deps, { limit: 1, until: until - 15_000 }));
   let api: Api | null = null;
   if (Date.now() < until) {
     try {
@@ -536,10 +538,12 @@ export async function runExtras(deps: Deps, runId: number, hop: number): Promise
 
   const progress = Number(steps.games?.named ?? 0) + Number(steps.comments_read?.read ?? 0) + Number(steps.feeders?.videos ?? 0)
     + Number(steps.first_days?.videos ?? 0) + (Array.isArray(steps.idea_research?.searched) ? steps.idea_research.searched.length : 0)
-    + (Array.isArray(steps.idea_checks?.checked) ? steps.idea_checks.checked.length : 0);
+    + (Array.isArray(steps.idea_checks?.checked) ? steps.idea_checks.checked.length : 0)
+    + (Array.isArray(steps.thumb_research?.searched) ? steps.thumb_research.searched.length : 0);
   const left = Number(steps.games?.left ?? 0) + Number(steps.comments_read?.left ?? 0) + Number(steps.feeders?.left ?? 0)
     + Number(steps.first_days?.left ?? 0) + (steps.idea_research?.skipped ? 0 : Number(steps.idea_research?.left ?? 0))
-    + (steps.idea_checks?.skipped ? 0 : Number(steps.idea_checks?.left ?? 0));
+    + (steps.idea_checks?.skipped ? 0 : Number(steps.idea_checks?.left ?? 0))
+    + (steps.thumb_research?.skipped ? 0 : Number(steps.thumb_research?.left ?? 0));
   const more = progress > 0 && left > 0 && hop + 1 < EXTRAS_HOPS;
 
   // Add this turn's results to the run that asked for them, summing the counts across turns.

@@ -373,6 +373,41 @@ describe("growth", () => {
     expect(toggleMarker("- One\n- Two", 0, 11, "bullet").value).toBe("One\nTwo");
   });
 
+  it("sorts found thumbnails into the owner's games and outside them", async () => {
+    const { currentGames, gameOfThumb, galleryItems } = await import("../src/lib/thumbs.ts");
+    const videos = [
+      { topic: "Cuphead", privacy: "public", published_at: "2026-06-01T00:00:00Z" },
+      { topic: "Poppy Playtime", privacy: "public", published_at: "2024-01-01T00:00:00Z" },
+      { topic: "Sekiro", privacy: "private", published_at: "2026-10-01T00:00:00Z" },
+    ] as never[];
+    const ideas = [{ topic: "Elden Ring", status: "idea" }, { topic: " Baldur's Gate 3 ", status: "filming" }, { topic: "Hollow Knight", status: "published" }] as never[];
+    // The niche is what the owner is working on now: open ideas, then what they posted in the last year.
+    const games = currentGames(videos, ideas, "2026-11-18");
+    expect(games).toEqual(["Elden Ring", "Baldur's Gate 3", "Cuphead"]);
+    expect(gameOfThumb({ title: "I Beat Elden Ring With Only Kicks", tags: [] }, games)).toBe("Elden Ring");
+    expect(gameOfThumb({ title: "This run broke me", tags: ["bg3", "honour mode"] }, games)).toBe("Baldur's Gate 3");
+    expect(gameOfThumb({ title: "Minecraft But Every Block Is TNT", tags: ["minecraft"] }, games)).toBeNull();
+
+    const row = (id: string, title: string, over: object = {}) => ({ id, title, channel_id: "UCother", channel_title: "c", channel_subscribers: 20_000, published_at: "2026-11-01T00:00:00Z", views: 1000, outlier_score: 5, tags: [], ...over });
+    const rows = [
+      row("a", "Elden Ring But I Can Only Roll", { outlier_score: 9 }),
+      row("b", "Cuphead Without Shooting", { outlier_score: 4, published_at: "2026-11-15T00:00:00Z" }),
+      row("c", "Minecraft But Gravity Is Off", { outlier_score: 12, channel_subscribers: 900_000 }),
+      row("d", "Elden Ring lore explained", { outlier_score: 2.5 }),
+      row("e", "Elden Ring at level 1", { published_at: "2026-01-01T00:00:00Z" }),
+      row("f", "My own Elden Ring run", { channel_id: "UCme" }),
+    ];
+    const pick = (over: object) => galleryItems(rows, games, { where: "mine", game: null, days: 90, small: false, sort: "jump", ...over }, "2026-11-18", "UCme").map((r) => r.id);
+    // At least 3x the channel's usual, within the time span, never the owner's own video.
+    expect(pick({})).toEqual(["a", "b"]);
+    expect(pick({ where: "outside" })).toEqual(["c"]);
+    expect(pick({ where: "all" })).toEqual(["c", "a", "b"]);
+    expect(pick({ game: "Cuphead" })).toEqual(["b"]);
+    expect(pick({ sort: "newest" })).toEqual(["b", "a"]);
+    expect(pick({ where: "all", small: true })).toEqual(["a", "b"]);
+    expect(pick({ days: 365 })).toEqual(["a", "e", "b"]);
+  });
+
   it("reads an upload's first hours against earlier uploads of the same format", async () => {
     const { first48, curveFromDays, viewsAt, trackedUpload, weekNote } = await import("../src/lib/pulse.ts");
     const v = (id: string, content_type: string, published_at: string, age_days: number) => ({ id, title: id, content_type, privacy: "public", published_at, age_days, vs_typical: 1 }) as never;

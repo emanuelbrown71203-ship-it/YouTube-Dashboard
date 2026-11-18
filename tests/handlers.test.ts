@@ -494,7 +494,8 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     const [run] = await sql`select kind, query, params, jsonb_array_length(results) as n, quota_units from public.yt_research_runs where id = ${run_id}`;
     expect(run).toMatchObject({ kind: "outliers", query: "elden ring", n: items.length, quota_units: summary.units });
     expect(run.params.page_token).toBeUndefined();
-    const [stored] = await sql`select count(*)::int as n from public.yt_research_videos`;
+    // Every video it showed is kept (earlier background searches may have kept others already).
+    const [stored] = await sql`select count(*)::int as n from public.yt_research_videos where id = any(${items.map((i: { video_id: string }) => i.video_id)})`;
     expect(stored.n).toBe(items.length);
 
     // The same search again reuses the cached channel baselines, so it costs far less.
@@ -610,6 +611,12 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     expect(run.summary.examples[0]).toMatchObject({ match: "same" });
     expect(run.summary.examples[0].title).toContain(thing);
     expect(run.n).toBe(run.summary.same.n + run.summary.close.n);
+    // What the check found is kept, so its thumbnails can be used as references for the idea.
+    const [{ results: found }] = await sql`select results from public.yt_research_runs where params @> ${sql.json({ mode: "idea", idea_id: a.id })}`;
+    const scoredIds = (found as { video_id: string; score: number | null }[]).filter((r) => r.score !== null).map((r) => r.video_id);
+    expect(scoredIds.length).toBeGreaterThan(0);
+    const [{ n: kept }] = await sql`select count(*)::int as n from public.yt_research_videos where id = any(${scoredIds}) and format = 'long' and thumbnail_url is not null and outlier_score is not null`;
+    expect(kept).toBe(scoredIds.length);
     expect(run.quota_units).toBeGreaterThanOrEqual(100);
     expect(run.quota_units).toBeLessThan(200);
     // My own uploads are not evidence of how the idea does for others.
@@ -659,6 +666,51 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     expect((await call("POST", "/ideas/check", { user: OWNER })).data).toMatchObject({ waiting: 1, started: false });
     expect((await call("POST", "/ideas/check", { user: STRANGER })).status).toBe(403);
     await sql`update public.yt_ideas set trashed_at = now() where trashed_at is null`;
+  });
+
+  it("finds thumbnails outside the owner's games by itself, a few a day, and looks up a pasted link", async () => {
+    const { call, mock } = setup();
+    const searches = () => mock.calls.filter((c) => c.includes("/youtube/v3/search")).length;
+    // Earlier tests' syncs already ran some; make those a week old, so today starts fresh.
+    await sql`update public.yt_research_runs set created_at = created_at - interval '8 days' where params @> '{"thumbs":true}'::jsonb`;
+    const outsideRuns = async () => (await sql`
+      select query from public.yt_research_runs where params @> '{"thumbs":true}'::jsonb and created_at > now() - interval '1 hour' order by created_at`).map((r: { query: string }) => r.query);
+    expect(await outsideRuns()).toEqual([]);
+    // The thumbnail page asks for one when it opens.
+    const before = searches();
+    const first = await call("POST", "/research", { user: OWNER, body: { action: "thumbs" } });
+    expect(first.data.searched).toHaveLength(1);
+    expect(first.data.searched[0].query).toBe("challenge run");
+    expect(searches()).toBeGreaterThan(before);
+    const [run] = await sql`select params from public.yt_research_runs where params @> '{"thumbs":true}'::jsonb order by created_at desc limit 1`;
+    expect(run.params).toMatchObject({ mode: "breakout", format: "long", window_days: 90, auto: true, thumbs: true });
+    // The follow-up to a sync does more, but never more than three in a day.
+    const [{ value: secret }] = await sql`select value from public.yt_private where key = 'cron_secret'`;
+    const [{ id: runId }] = await sql`select id from public.yt_sync_runs order by id desc limit 1`;
+    for (let hop = 0; hop < 4; hop++) await call("POST", "/sync/extras", { headers: { "x-cron-secret": secret }, body: { run_id: runId, hop } });
+    expect(await outsideRuns()).toEqual(["challenge run", "but I can only", "using only"]);
+    const capped = await call("POST", "/research", { user: OWNER, body: { action: "thumbs" } });
+    expect(capped.data).toMatchObject({ searched: [], left: 0 });
+
+    // A pasted link: the video is set against its channel's usual and kept with the rest.
+    const theirs = mock.universe.find((c) => c.id !== MY_CHANNEL_ID)!.videos.find((v) => v.kind === "long")!;
+    const looked = await call("POST", "/research", { user: OWNER, body: { action: "video_lookup", url: `https://www.youtube.com/watch?v=${theirs.id}&t=42s` } });
+    expect(looked.status).toBe(200);
+    expect(looked.data.item).toMatchObject({ video_id: theirs.id, title: theirs.title, format: "long" });
+    expect(looked.data.item.outlier_score).toBeGreaterThan(0);
+    expect((await sql`select count(*)::int as n from public.yt_research_videos where id = ${theirs.id}`)[0].n).toBe(1);
+    expect((await call("POST", "/research", { user: OWNER, body: { action: "video_lookup", url: `https://youtu.be/${theirs.id}` } })).data.item.video_id).toBe(theirs.id);
+    expect((await call("POST", "/research", { user: OWNER, body: { action: "video_lookup", url: "not a link" } })).status).toBe(400);
+    expect((await call("POST", "/research", { user: OWNER, body: { action: "video_lookup", url: "https://youtu.be/AAAAAAAAAAA" } })).status).toBe(404);
+
+    // An idea keeps a reference once; taking it off and adding it again works.
+    const [idea] = await sql`insert into public.yt_ideas (title, format, topic) values ('Ref test', 'long', 'Elden Ring') returning id`;
+    await sql`insert into public.yt_idea_refs (idea_id, video_id, title) values (${idea.id}, ${theirs.id}, ${theirs.title})`;
+    await expect(sql`insert into public.yt_idea_refs (idea_id, video_id) values (${idea.id}, ${theirs.id})`).rejects.toThrow();
+    await sql`update public.yt_idea_refs set trashed_at = now() where idea_id = ${idea.id}`;
+    await sql`insert into public.yt_idea_refs (idea_id, video_id) values (${idea.id}, ${theirs.id})`;
+    await expect(sql`insert into public.yt_idea_refs (idea_id, video_id) values (${idea.id}, 'not-an-id')`).rejects.toThrow();
+    await sql`update public.yt_ideas set trashed_at = now() where id = ${idea.id}`;
   });
 
   it("stops research before the daily budget runs out, leaving room for the sync", async () => {

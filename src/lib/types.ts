@@ -121,7 +121,17 @@ export interface Idea {
   updated_at: string;
 }
 
-export type IdeaDraft = Partial<Omit<Idea, "id" | "created_at" | "updated_at">> & { id?: string; title: string };
+/** A thumbnail reference not yet saved with an idea (the idea itself is not saved yet). */
+export interface RefInput {
+  video_id: string;
+  title: string | null;
+  channel_title: string | null;
+  channel_subscribers: number | null;
+  views: number | null;
+  outlier_score: number | null;
+  published_at: string | null;
+}
+export type IdeaDraft = Partial<Omit<Idea, "id" | "created_at" | "updated_at">> & { id?: string; title: string; pending_refs?: RefInput[] };
 
 export interface ReportRow {
   [column: string]: string | number;

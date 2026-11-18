@@ -4,7 +4,7 @@
 import { FUNCTION_URL, supabase, SUPABASE_KEY } from "./supabase.ts";
 import type {
   Channel, Connection, DailyRow, FormatDailyRow, Idea, IdeaDraft, KeywordResponse, KeywordRow, MyFormat,
-  OutlierResponse, OutlierSearch, OwnerRow, Quota, Report, ResearchChannel, ResearchRun, SavedVideo, SyncRun, Video,
+  OutlierResponse, OutlierSearch, OwnerRow, Quota, RefInput, Report, ResearchChannel, ResearchRun, SavedVideo, SyncRun, Video,
 } from "./types.ts";
 
 /** An error whose message is already written for the person using the app. */
@@ -274,8 +274,9 @@ export async function getIdeas(): Promise<Idea[]> {
 }
 
 export async function saveIdea(draft: IdeaDraft): Promise<Idea> {
-  // The AI's reading against the templates is written by the server only, never from here.
-  const { id, template_check: _check, template_checked_at: _checkedAt, ...fields } = draft;
+  // The AI's reading against the templates is written by the server only, never from here, and
+  // references waiting for the idea to be saved go in their own table once it is.
+  const { id, template_check: _check, template_checked_at: _checkedAt, pending_refs: _refs, ...fields } = draft;
   const clean = { ...fields, title: fields.title.trim() };
   if (!clean.title) throw new ApiError("Give the idea a title first.", "bad_request");
   const query = id
@@ -362,6 +363,80 @@ export async function getIdeaChecks() {
   }
   return out;
 }
+// ---------------------------------------------------------------------------
+// Thumbnail references
+// ---------------------------------------------------------------------------
+
+/** A long-form video from another channel that beat its channel's usual, for its thumbnail. */
+export interface FoundThumb {
+  id: string;
+  channel_id: string | null;
+  channel_title: string | null;
+  channel_subscribers: number | null;
+  title: string | null;
+  published_at: string | null;
+  views: number | null;
+  outlier_score: number | null;
+  tags: string[] | null;
+}
+
+/** Every long-form video found in the last year that did at least twice its channel's usual. */
+export async function getThumbGallery(): Promise<FoundThumb[]> {
+  const since = new Date(Date.now() - 365 * 86_400_000).toISOString();
+  const { data, error } = await supabase.from("yt_research_videos")
+    .select("id, channel_id, channel_title, channel_subscribers, title, published_at, views, outlier_score, tags")
+    .eq("format", "long").gte("outlier_score", 2).gte("published_at", since)
+    .order("outlier_score", { ascending: false }).limit(800);
+  fail(error);
+  return (data ?? []) as unknown as FoundThumb[];
+}
+
+export interface IdeaRef extends RefInput {
+  id: string;
+  idea_id: string;
+  note: string | null;
+  created_at: string;
+}
+
+export async function getIdeaRefs(): Promise<IdeaRef[]> {
+  const { data, error } = await supabase.from("yt_idea_refs")
+    .select("id, idea_id, video_id, title, channel_title, channel_subscribers, views, outlier_score, published_at, note, created_at")
+    .is("trashed_at", null).order("created_at").limit(2000);
+  fail(error);
+  return (data ?? []) as unknown as IdeaRef[];
+}
+
+export async function addIdeaRef(ideaId: string, ref: RefInput): Promise<void> {
+  const { error } = await supabase.from("yt_idea_refs").insert({ idea_id: ideaId, ...ref });
+  // Already on this idea: nothing to do.
+  if (error && (error as { code?: string }).code === "23505") return;
+  fail(error);
+}
+
+export async function patchIdeaRef(id: string, fields: { note?: string | null; trashed_at?: string | null }): Promise<void> {
+  const { error } = await supabase.from("yt_idea_refs").update(fields).eq("id", id);
+  fail(error);
+}
+
+/** The videos one idea's check found, with how each did against its channel's usual. */
+export async function getIdeaCheckVideos(ideaId: string) {
+  const { data, error } = await supabase.from("yt_research_runs").select("results, summary")
+    .eq("kind", "outliers").contains("params", { mode: "idea", idea_id: ideaId })
+    .order("created_at", { ascending: false }).limit(1);
+  fail(error);
+  const row = (data ?? [])[0] as unknown as { results: import("./ideaScore.ts").MarketVideo[]; summary: Record<string, unknown> } | undefined;
+  return row && !("pending" in (row.summary ?? {})) ? row.results ?? [] : [];
+}
+
+export interface LookedUp {
+  item: { video_id: string; title: string; channel_title: string; channel_subscribers: number | null; views: number; outlier_score: number | null; published_at: string; format: string };
+}
+/** One video from a pasted link, set against its channel's usual. Costs a few lookups. */
+export const lookupVideo = (url: string) => callApi<LookedUp>("/research", { action: "video_lookup", url });
+/** Has the dashboard search one more kind of video outside the owner's games, for thumbnails. */
+export const findOutsideThumbs = () =>
+  callApi<{ searched: { query: string; found: number; breakouts: number }[]; left: number; skipped?: string }>("/research", { action: "thumbs" });
+
 /** Starts the dashboard checking every idea that has not been set against YouTube yet. */
 export const startIdeaChecks = () => callApi<{ waiting: number; started: boolean; problem: string | null }>("/ideas/check");
 /** Has the dashboard search a game's breakouts now, if it has no fresh search stored. */

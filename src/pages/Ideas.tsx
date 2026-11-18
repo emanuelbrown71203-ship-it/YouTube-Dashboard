@@ -3,6 +3,8 @@ import { IDEA_TABS, Tabs } from "./Growth.tsx";
 import { ResearchStatus, ScoreChips, ScorePanel, TitleHelper, useAutoResearch, useCovered, useFound, useIdeaChecking, useIdeaScores } from "./Pulse.tsx";
 import { scoreIdea } from "../lib/ideaScore.ts";
 import { ImportIdeas, TemplateHint, TemplateScore } from "./Templates.tsx";
+import { IdeaRefs, RefStrip, useIdeaRefs } from "./Thumbnails.tsx";
+import { addIdeaRef } from "../lib/api.ts";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { NotesBox } from "../components/notes.tsx";
 import { Drawer, ErrorNote, FormatTag, Icon, Loading, Mult, Segmented, useToast } from "../components/ui.tsx";
@@ -69,6 +71,12 @@ export function Ideas() {
 
   const reload = () => queryClient.invalidateQueries({ queryKey: keys.ideas });
   const scores = useIdeaScores(ideas.data ?? []);
+  const refs = useIdeaRefs();
+  const refsOf = useMemo(() => {
+    const by = new Map<string, NonNullable<typeof refs.data>>();
+    for (const r of refs.data ?? []) by.set(r.idea_id, [...(by.get(r.idea_id) ?? []), r]);
+    return by;
+  }, [refs.data]);
   const [order, setOrder] = useState<"priority" | "history" | "recommended">("priority");
   const [importing, setImporting] = useState(false);
   // Games with open ideas and no fresh breakout search: the dashboard searches them itself, most ideas first.
@@ -156,6 +164,7 @@ export function Ideas() {
                         {idea.title}
                       </button>
                       {idea.hook ? <div className="hook clip2">{idea.hook}</div> : null}
+                      <RefStrip refs={refsOf.get(idea.id) ?? []} />
                       {idea.status !== "published" ? <ScoreChips scores={scores.get(idea.id)} templates={idea.template_check?.score ?? null} /> : null}
                       <div className="foot">
                         <FormatTag format={idea.format} />
@@ -314,6 +323,7 @@ export function Ideas() {
 
 function IdeaEditor(props: { draft: IdeaDraft; games: string[]; onClose: () => void; onChanged: () => Promise<void>; onOpen: (draft: IdeaDraft) => void }) {
   const toast = useToast();
+  const queryClient = useQueryClient();
   const videos = useVideos();
   const saved = useSavedVideos();
   const [form, setForm] = useState<IdeaDraft>(props.draft);
@@ -333,7 +343,10 @@ function IdeaEditor(props: { draft: IdeaDraft; games: string[]; onClose: () => v
   const save = async () => {
     setSaving(true);
     try {
-      await saveIdea({ ...form, title_options: (form.title_options ?? []).map((t) => t.trim()).filter(Boolean) });
+      const idea = await saveIdea({ ...form, title_options: (form.title_options ?? []).map((t) => t.trim()).filter(Boolean) });
+      // References picked before the idea existed are kept now that it does.
+      for (const ref of form.pending_refs ?? []) await addIdeaRef(idea.id, ref);
+      if (form.pending_refs?.length) await queryClient.invalidateQueries({ queryKey: ["idea-refs"] });
       await props.onChanged();
       toast("Idea saved.");
       props.onClose();
@@ -495,6 +508,7 @@ function IdeaEditor(props: { draft: IdeaDraft; games: string[]; onClose: () => v
           <TemplateHint kind="thumbnail" />
         </label>
       ) : null}
+      <IdeaRefs idea={form} onPending={(refs) => set("pending_refs", refs)} />
 
       <TitleHelper
         draft={form} game={game} kept={options}

@@ -41,6 +41,7 @@ research and the last sync. Every table and view has a comment explaining it;
 | `yt_video_reach_daily`, `yt_v_video_reach` | Impressions and click-through rate per video, per day and over the newest 28 days. From YouTube's bulk reach report, a day or two behind; empty until the YouTube Reporting API is on in Google Cloud. |
 | `yt_video_pulse` | The live public view count of each upload, noted about once an hour in its first 3 days. With `yt_videos.published_at` it gives views by hours since publishing: the first 48 hours tracker. Only exists for uploads after 2026-11-17; older uploads are compared through their first days in `yt_video_analytics_daily`. |
 | `yt_templates` | The owner's own templates: what a title, a thumbnail or an intro of theirs should have (`kind`, `name`, `body`, usually one point per line). `active` ones are what ideas are checked against; the AI's reading is kept in `yt_ideas.template_check`. Follow these when you suggest titles, thumbnails or openings. |
+| `yt_idea_refs` | Thumbnail references kept with an idea: other people's videos (`video_id`, with title, channel, views and `outlier_score` copied in) and the owner's `note` on what to take from each. The picture is `https://i.ytimg.com/vi/<video_id>/mqdefault.jpg`. |
 | `yt_notes` | Lines the owner wants to remember (from a podcast, a video, anywhere): `text`, `source`, `source_url`, `topic`. `on_front` ones show on the front page. |
 | `yt_comments` | Recent comments with the AI's reading: `sentiment`, `theme`, `is_question`. `pinned` ones sit on the front page. |
 
@@ -111,7 +112,7 @@ free and the owner has said to use them whenever a score needs them.
 
 - `src/`: Vite + React + TypeScript. Reads go straight to Supabase with the
   publishable key; row level security lets only owners in.
-- `supabase/migrations/`: fourteen files, all `yt_` objects. No statement in them
+- `supabase/migrations/`: fifteen files, all `yt_` objects. No statement in them
   removes anything.
 - `supabase/functions/yt-api/`: one edge function, deployed with JWT
   verification off because it checks callers itself. Routes: `/auth/setup`,
@@ -174,6 +175,15 @@ free and the owner has said to use them whenever a score needs them.
   (`/sync/extras` does up to four a turn; opening the Ideas page starts a
   pass through `/ideas/check`). These spend the day's free lookups like any
   search, up to the same ceiling, and are stored with `params.auto = true`.
+- Thumbnail references (Research, Thumbnails tab; `src/pages/Thumbnails.tsx`)
+  are long-form videos in `yt_research_videos` from the last year that did
+  at least 3x their channel's usual, split into the owner's games (open
+  ideas plus what they posted in the last year) and everything else. They
+  fill in by themselves: the game searches, every idea check (which keeps
+  what it found there), and `coverOutside` in `research.ts`, which searches
+  challenge formats on any game (`OUTSIDE_QUERIES`, each every 7 days, at
+  most 3 a day; stored with `params.thumbs = true`). A pasted link goes
+  through `/research` action `video_lookup`. Shorts are left out on purpose.
 - `dev/`: a local stand-in for the hosted backend (`server.ts`), a made-up
   YouTube (`mock-youtube.ts`) and a database reset script.
 
@@ -195,7 +205,8 @@ free and the owner has said to use them whenever a score needs them.
   Shorts suggests the idea could carry a long video (`shortsWorthAVideo`).
   The same goes when answering the owner's questions from the data.
 - **Sections** (`NAV` in `src/App.tsx`): Home, Videos (all videos, title
-  and thumbnail tests), Ideas (board, planner), Research, Stats (charts,
+  and thumbnail tests), Ideas (board, planner), Research (outliers,
+  thumbnails, search phrases, channels), Stats (charts,
   monthly recap, by game, Shorts to long), Goals, Comments, Playbook
   (templates, lines to remember), Settings. A phone shows the first four
   and a More menu. Put a new page in the section it belongs to; when it

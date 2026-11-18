@@ -119,6 +119,21 @@ if (typeof window !== "undefined") {
   window.setInterval(() => { if (watched.size) lookSoon(); }, 1000);
 }
 
+/** Whether an element is on or near the screen: pictures are only loaded while it is. */
+export function useNear<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [near, setNear] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const entry = { el, set: setNear };
+    watched.add(entry);
+    lookSoon();
+    return () => void watched.delete(entry);
+  }, []);
+  return [ref, near] as const;
+}
+
 /** The shape each picture turned out to have, so a list does not jump when it is drawn again. */
 const shapes = new Map<string, number>();
 

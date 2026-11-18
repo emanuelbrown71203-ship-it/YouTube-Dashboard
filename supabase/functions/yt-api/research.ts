@@ -225,6 +225,8 @@ export interface OutlierParams {
   page_token: string | null;
   /** Run by the dashboard itself to keep idea scores fed, not typed in by the owner. */
   auto?: boolean;
+  /** One of the searches outside the owner's games, for thumbnail references. */
+  thumbs?: boolean;
 }
 
 type Bucket = "short" | "medium" | "long";
@@ -262,6 +264,29 @@ function readOutlierParams(body: any): OutlierParams {
     min_views: Number.isFinite(minViews) && minViews >= 0 ? minViews : 1000,
     page_token: typeof body.page_token === "string" && body.page_token ? body.page_token : null,
   };
+}
+
+/** Keeps what a search found, so the swipe file, the thumbnail references and idea scores can use it. */
+export async function storeFound(sql: Sql, scored: OutlierItem[]): Promise<void> {
+  if (scored.length === 0) return;
+  await sql`
+    insert into public.yt_research_videos
+      (id, channel_id, channel_title, channel_subscribers, title, thumbnail_url, published_at, duration_s, format,
+       views, likes, comments, tags, typical_views, outlier_score, views_per_day, fetched_at)
+    select x.video_id, x.channel_id, x.channel_title, x.channel_subscribers, x.title, x.thumbnail_url, x.published_at,
+           x.duration_s, x.format, x.views, x.likes, x.comments,
+           coalesce((select array_agg(t) from jsonb_array_elements_text(x.tags) t), '{}'),
+           x.typical_views, x.outlier_score, x.views_per_day, now()
+    from jsonb_to_recordset(${sql.json(scored)}) as x(
+      video_id text, channel_id text, channel_title text, channel_subscribers bigint, title text, thumbnail_url text,
+      published_at timestamptz, duration_s integer, format text, views bigint, likes bigint, comments bigint,
+      tags jsonb, typical_views numeric, outlier_score numeric, views_per_day numeric)
+    on conflict (id) do update set
+      channel_title = excluded.channel_title, channel_subscribers = excluded.channel_subscribers,
+      title = excluded.title, thumbnail_url = excluded.thumbnail_url, duration_s = excluded.duration_s,
+      format = excluded.format, views = excluded.views, likes = excluded.likes, comments = excluded.comments,
+      tags = excluded.tags, typical_views = excluded.typical_views, outlier_score = excluded.outlier_score,
+      views_per_day = excluded.views_per_day, fetched_at = now()`;
 }
 
 async function findOutliers(api: Api, params: OutlierParams) {
@@ -321,26 +346,7 @@ async function findOutliers(api: Api, params: OutlierParams) {
   const scored = sortOutliers(candidates.map((v) =>
     scoreOutlier(v, params.format, channelById.get(v.channel_id), baselines.get(v.channel_id) ?? [], now)));
 
-  if (scored.length) {
-    await sql`
-      insert into public.yt_research_videos
-        (id, channel_id, channel_title, channel_subscribers, title, thumbnail_url, published_at, duration_s, format,
-         views, likes, comments, tags, typical_views, outlier_score, views_per_day, fetched_at)
-      select x.video_id, x.channel_id, x.channel_title, x.channel_subscribers, x.title, x.thumbnail_url, x.published_at,
-             x.duration_s, x.format, x.views, x.likes, x.comments,
-             coalesce((select array_agg(t) from jsonb_array_elements_text(x.tags) t), '{}'),
-             x.typical_views, x.outlier_score, x.views_per_day, now()
-      from jsonb_to_recordset(${sql.json(scored)}) as x(
-        video_id text, channel_id text, channel_title text, channel_subscribers bigint, title text, thumbnail_url text,
-        published_at timestamptz, duration_s integer, format text, views bigint, likes bigint, comments bigint,
-        tags jsonb, typical_views numeric, outlier_score numeric, views_per_day numeric)
-      on conflict (id) do update set
-        channel_title = excluded.channel_title, channel_subscribers = excluded.channel_subscribers,
-        title = excluded.title, thumbnail_url = excluded.thumbnail_url, duration_s = excluded.duration_s,
-        format = excluded.format, views = excluded.views, likes = excluded.likes, comments = excluded.comments,
-        tags = excluded.tags, typical_views = excluded.typical_views, outlier_score = excluded.outlier_score,
-        views_per_day = excluded.views_per_day, fetched_at = now()`;
-  }
+  await storeFound(sql, scored);
   const savedRows = scored.length
     ? await sql`select id from public.yt_research_videos where saved and id in ${sql(scored.map((s) => s.video_id))}`
     : [];
@@ -657,16 +663,18 @@ async function checkIdea(deps: Deps, idea: IdeaRow): Promise<Record<string, unkn
     await upsertChannelStats(sql, channels);
     const channelById = new Map(channels.map((c) => [c.id, c]));
     const baselines = await ensureBaselines(api, channels.map((c) => c.id), idea.format);
-    const judged: MarketVideo[] = kept.map(({ v, match }) => {
+    const items = kept.map(({ v }) => scoreOutlier(v, idea.format, channelById.get(v.channel_id), baselines.get(v.channel_id) ?? [], now));
+    const judged: MarketVideo[] = kept.map(({ v, match }, i) => {
       const c = channelById.get(v.channel_id);
-      const recent = baselines.get(v.channel_id);
       return {
         video_id: v.id, title: v.title.slice(0, 120), channel: c?.title ?? v.channel_title,
         subscribers: c && !c.subscribers_hidden ? c.subscribers : null, views: v.views,
-        score: recent ? scoreOutlier(v, idea.format, c, recent, now).outlier_score : null,
+        score: baselines.has(v.channel_id) ? items[i].outlier_score : null,
         published: v.published_at, match,
       };
     });
+    // What the check found goes in the swipe file too, so its thumbnails can be used as references.
+    await storeFound(sql, items.filter((_, i) => baselines.has(kept[i].v.channel_id)));
     const summary = { ...summariseMarket(candidates.length, judged), judged_by: by, units: api.units };
     await sql`
       update public.yt_research_runs
@@ -707,6 +715,74 @@ export async function coverIdeas(deps: Deps, opts: { only?: string | null; limit
 }
 
 // ---------------------------------------------------------------------------
+// Thumbnail references from outside the owner's games
+// ---------------------------------------------------------------------------
+//
+// The searches on the owner's games and ideas fill in what is working inside the niche. These look
+// at the same kinds of video (challenge runs, restrictions, randomisers) on any game, so the
+// thumbnail references also show what is working outside it.
+
+export const OUTSIDE_QUERIES = [
+  "challenge run", "but I can only", "using only", "can you beat", "randomizer challenge", "no hit run", "every boss", "hardest challenge",
+];
+/** Each is searched again after this long. */
+const OUTSIDE_DAYS = 7;
+/** At most this many in a day, so they never crowd out the owner's own searches. */
+const OUTSIDE_PER_DAY = 3;
+
+export async function coverOutside(deps: Deps, opts: { limit: number; until: number }): Promise<Record<string, unknown>> {
+  const { sql } = deps;
+  const recent = await sql`
+    select lower(query) as query, max(created_at) as at,
+           count(*) filter (where created_at > now() - interval '24 hours')::int as today
+    from public.yt_research_runs
+    where kind = 'outliers' and params @> '{"thumbs":true}'::jsonb and created_at > now() - make_interval(days => ${OUTSIDE_DAYS})
+    group by 1`;
+  // deno-lint-ignore no-explicit-any
+  const done = new Set((recent as any[]).map((r) => r.query as string));
+  // deno-lint-ignore no-explicit-any
+  const today = (recent as any[]).reduce((n, r) => n + Number(r.today), 0);
+  const stale = OUTSIDE_QUERIES.filter((q) => !done.has(q.toLowerCase()));
+  const room = Math.max(0, Math.min(opts.limit, OUTSIDE_PER_DAY - today));
+  const searched: { query: string; found: number; breakouts: number }[] = [];
+  let stopped: string | null = null;
+  for (const query of stale.slice(0, room)) {
+    if (Date.now() > opts.until) break;
+    const api = await openApi(deps);
+    try {
+      const out = await findOutliers(api, {
+        query, mode: "breakout", format: "long", window_days: 90, max_subs: null, min_views: 1000, page_token: null, auto: true, thumbs: true,
+      });
+      searched.push({ query, found: out.items.length, breakouts: out.items.filter((i) => (i.outlier_score ?? 0) >= 3).length });
+    } catch (err) {
+      if (!(err instanceof HttpError)) throw err;
+      stopped = err.message;
+      break;
+    } finally {
+      await closeApi(api).catch(() => undefined);
+    }
+  }
+  // Only what can still be done today counts as left, so a pass does not keep going for nothing.
+  const left = Math.max(0, Math.min(stale.length, OUTSIDE_PER_DAY - today) - searched.length);
+  return { searched, left, ...(stopped ? { skipped: stopped } : {}) };
+}
+
+/** One video from a pasted link, set against its channel's usual, for the owner to keep as a reference. */
+async function lookupVideo(api: Api, input: string) {
+  const id = /(?:v=|youtu\.be\/|shorts\/|live\/|embed\/)([\w-]{11})/.exec(input)?.[1] ?? (/^[\w-]{11}$/.test(input.trim()) ? input.trim() : null);
+  if (!id) throw new HttpError(400, "bad_request", "That does not look like a YouTube video link.");
+  const [video] = await fetchVideos(api, [id]);
+  if (!video) throw new HttpError(404, "not_found", "YouTube could not find that video. It may be private or removed.");
+  const format: Format = video.duration_s > 0 && video.duration_s <= 180 ? "short" : "long";
+  const [channel] = await fetchChannels(api, { ids: [video.channel_id] });
+  if (channel) await upsertChannelStats(api.deps.sql, [channel]);
+  const baselines = channel ? await ensureBaselines(api, [channel.id], format) : new Map<string, RecentUpload[]>();
+  const item = scoreOutlier(video, format, channel, baselines.get(video.channel_id) ?? [], api.deps.now());
+  await storeFound(api.deps.sql, [item]);
+  return { item, quota: { used_today: await closeApi(api), daily_budget: DAILY_BUDGET } };
+}
+
+// ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
 
@@ -720,13 +796,17 @@ export async function research(deps: Deps, body: any): Promise<unknown> {
     if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(id)) throw new HttpError(400, "bad_request", "Save the idea first, then it can be checked.");
     return await coverIdeas(deps, { only: id, limit: 1, until: Date.now() + 40_000 });
   }
+  if (action === "thumbs") {
+    // The thumbnail page is open and has little from outside the owner's games: search one now.
+    return await coverOutside(deps, { limit: 1, until: Date.now() + 40_000 });
+  }
   if (action === "cover") {
     // The idea the owner is looking at: search its game now if nothing fresh is stored.
     const game = String(body.game ?? "").replace(/\s+/g, " ").trim();
     if (game.length < 2 || game.length > 100) throw new HttpError(400, "bad_request", "That idea has no game to search for.");
     return await coverGames(deps, { only: { game, format: body.format === "short" ? "short" : "long" }, limit: 1, until: Date.now() + 40_000 });
   }
-  if (!["outliers", "keyword", "channel_lookup", "channel_watch", "channel_refresh", "explain"].includes(action)) {
+  if (!["outliers", "keyword", "channel_lookup", "channel_watch", "channel_refresh", "explain", "video_lookup"].includes(action)) {
     throw new HttpError(400, "bad_request", "Unknown research action.");
   }
   const api = await openApi(deps);
@@ -740,6 +820,8 @@ export async function research(deps: Deps, body: any): Promise<unknown> {
         return await channelLookup(api, String(body.input ?? ""));
       case "channel_watch":
         return await channelWatch(api, String(body.channel_id ?? ""));
+      case "video_lookup":
+        return await lookupVideo(api, String(body.url ?? ""));
       case "explain": {
         const { google_scopes } = await getConfig(deps.sql, ["google_scopes"]);
         const out = await explainVideo(api, String(body.video_id ?? ""), google_scopes ?? "");
