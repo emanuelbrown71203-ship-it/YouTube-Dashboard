@@ -4,7 +4,7 @@ import { First48 } from "./Pulse.tsx";
 import { Tabs, VIDEO_TABS } from "./Growth.tsx";
 import { useMemo, useState } from "react";
 import { BarList } from "../components/Timeline.tsx";
-import { Drawer, ErrorNote, FormatTag, Icon, Loading, Mult, Thumb, useToast } from "../components/ui.tsx";
+import { Drawer, ErrorNote, Fold, FormatTag, Icon, Loading, Mult, Thumb, useToast } from "../components/ui.tsx";
 import { setVideoType } from "../lib/api.ts";
 import { ago, compact, count, day, duration, FORMAT_LABEL, FORMAT_PLURAL, money, multiple, percent, whole } from "../lib/format.ts";
 import { keys, useChannel, useVideos } from "../lib/hooks.ts";
@@ -111,18 +111,19 @@ export function Videos() {
       ) : null}
 
       {issues.length ? (
-        <section className="panel panel-pad" style={{ marginBottom: 20 }}>
-          <h2>Worth fixing</h2>
-          <p className="soft small" style={{ margin: "2px 0 10px" }}>Quick things to tidy up on your uploads. Pick one to see the videos.</p>
-          <div className="row-wrap">
-            {issues.map(([key, info]) => (
-              <button key={key} type="button" className="chip" aria-pressed={issue === key} onClick={() => { setIssue(issue === key ? null : key); setShown(60); }}>
-                {CHECK_LABEL[key]}
-                <span className="fig">{info.n}</span>
-              </button>
-            ))}
-          </div>
-        </section>
+        <div style={{ marginBottom: 16 }}>
+          <Fold title="Worth fixing" summary={`${issues.reduce((n, [, info]) => n + info.n, 0)} things to tidy up`} open={issue !== null}>
+            <p className="soft small" style={{ margin: 0 }}>Quick things to tidy up on your uploads. Pick one to see the videos.</p>
+            <div className="row-wrap">
+              {issues.map(([key, info]) => (
+                <button key={key} type="button" className="chip" aria-pressed={issue === key} onClick={() => { setIssue(issue === key ? null : key); setShown(60); }}>
+                  {CHECK_LABEL[key]}
+                  <span className="fig">{info.n}</span>
+                </button>
+              ))}
+            </div>
+          </Fold>
+        </div>
       ) : null}
 
       <div className="row-wrap" style={{ marginBottom: 12 }}>
@@ -191,10 +192,9 @@ export function Videos() {
                         </div>
                         <div className="small narrow-only">
                           <span><span className="muted">Retention</span> {percent(v.avg_view_pct)}</span>
-                          <span><span className="muted">Avg view</span> {duration(v.avg_view_duration_s)}</span>
-                          <span><span className="muted">Watch hrs</span> {v.watch_hours === null ? "–" : compact(v.watch_hours)}</span>
-                          {clicks ? <span><span className="muted">Click-through</span> {ctrOf(v.id)}</span> : null}
-                          {earning ? <span><span className="muted">Earned</span> {money(v.estimated_revenue)}</span> : null}
+                          <span><span className="muted">Avg</span> {duration(v.avg_view_duration_s)}</span>
+                          {clicks ? <span><span className="muted">CTR</span> {ctrOf(v.id)}</span> : null}
+                          {earning ? <span>{money(v.estimated_revenue)}</span> : null}
                         </div>
                       </td>
                       <td className="num fig" style={{ fontSize: 16 }}>{compact(v.views)}</td>

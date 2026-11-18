@@ -1,7 +1,7 @@
 import { ClaudeConnector } from "./Templates.tsx";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
-import { CopyLine, ErrorNote, Loading, Segmented, useTheme, useToast } from "../components/ui.tsx";
+import { CopyLine, ErrorNote, Fold, Loading, Segmented, useTheme, useToast } from "../components/ui.tsx";
 import {
   createAccessCode, currentUserId, disconnectYouTube, getBriefing, saveAiKey, saveGoogleClient, signOut, startGoogleSignIn, syncNow,
 } from "../lib/api.ts";
@@ -27,6 +27,7 @@ export function Settings({ onSignedOut }: { onSignedOut: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [code, setCode] = useState<string | null>(null);
   const [editingClient, setEditingClient] = useState(false);
+  const [allDevices, setAllDevices] = useState(false);
 
   const run = async (name: string, work: () => Promise<unknown>, done?: string) => {
     setBusy(name);
@@ -43,6 +44,7 @@ export function Settings({ onSignedOut }: { onSignedOut: () => void }) {
   if (connection.error) return <ErrorNote error={connection.error} retry={() => void connection.refetch()} />;
   const c = connection.data!;
   const latest = runs.data?.[0];
+  const byLastUse = [...(owners.data ?? [])].sort((x, y) => (y.last_seen_at ?? "").localeCompare(x.last_seen_at ?? ""));
 
   return (
     <>
@@ -115,36 +117,71 @@ export function Settings({ onSignedOut }: { onSignedOut: () => void }) {
         </div>
       </section>
 
+      <div className="stack" style={{ gap: 10, marginTop: 14 }}>
+        <Fold title="Recent syncs" summary={latest ? `${latest.status === "ok" ? "Worked" : latest.status === "running" ? "Running" : latest.status === "partial" ? "Partly worked" : "Failed"} ${ago(latest.started_at)}` : "None yet"}>
+          <div className="panel">
+            {(runs.data ?? []).length === 0 ? <div className="empty"><h3>No syncs yet</h3><p>The first one runs as soon as YouTube is connected.</p></div> : null}
+            {(runs.data ?? []).slice(0, 8).map((r) => <SyncRow key={r.id} run={r} />)}
+          </div>
+        </Fold>
+        {c.youtube_connected ? (
+          <Fold title="Earnings and comments" summary={c.earnings && c.comments ? "Both on" : c.earnings ? "Earnings only" : c.comments ? "Comments only" : "Both off"}>
+            <p className="soft" style={{ margin: 0, maxWidth: "70ch" }}>
+              Estimated earnings are <strong>{c.earnings ? "on" : "off"}</strong> and comments are <strong>{c.comments ? "on" : "off"}</strong>.
+              {c.earnings && c.comments ? " Nothing to do." : " To switch one on, press Disconnect above, then sign in with Google again and leave every box ticked."}
+            </p>
+          </Fold>
+        ) : null}
+      </div>
+
       <section className="section">
-        <div className="section-head"><h2>Recent syncs</h2></div>
-        <div className="panel">
-          {(runs.data ?? []).length === 0 ? <div className="empty"><h3>No syncs yet</h3><p>The first one runs as soon as YouTube is connected.</p></div> : null}
-          {(runs.data ?? []).map((r) => <SyncRow key={r.id} run={r} />)}
+        <div className="section-head"><h2>Claude and AI</h2></div>
+        <div className="stack" style={{ gap: 10 }}>
+          <Fold title="AI helper" summary={c.ai ? (c.ai_error ? "On, with a problem" : "On") : "Off"} open={Boolean(c.ai_error)}>
+            <AiKey on={Boolean(c.ai)} error={c.ai_error ?? null} onChanged={() => void queryClient.invalidateQueries({ queryKey: keys.connection })} />
+          </Fold>
+          <Fold title="Claude connector" summary="Claude can add ideas">
+            <ClaudeConnector />
+          </Fold>
+          <Fold title="Copy my numbers" summary="For any chat">
+            <p className="soft" style={{ margin: 0, maxWidth: "70ch" }}>
+              In any Claude chat, paste a snapshot of your numbers, ideas and research, then ask your question.
+            </p>
+            <div>
+              <button
+                type="button" className="btn" disabled={busy !== null}
+                onClick={() => void run("brief", async () => {
+                  const briefing = await getBriefing();
+                  await navigator.clipboard.writeText(`Here is a snapshot of my YouTube channel, ideas and research as JSON. Use it to answer my questions.\n\n${JSON.stringify(briefing)}`);
+                }, "Copied. Paste it into a Claude chat.")}
+              >
+                {busy === "brief" ? "Copying" : "Copy my numbers"}
+              </button>
+            </div>
+          </Fold>
         </div>
       </section>
 
       <section className="section">
-        <div className="section-head"><h2>Signed-in browsers</h2></div>
-        <div className="panel">
-          {(owners.data ?? []).map((o) => (
-            <div className="item" key={o.user_id} style={{ alignItems: "center" }}>
-              <div className="grow">
-                <div className="title">{o.device ?? "A browser"}{o.user_id === me.data ? <span className="tag" style={{ marginLeft: 8 }}>This one</span> : null}</div>
-                <div className="meta">Signed in {o.method === "google" ? "with Google" : "with a code"} {ago(o.created_at)}. Last used {ago(o.last_seen_at)}.</div>
-              </div>
+        <div className="section-head"><h2>Devices</h2></div>
+        <div className="stack" style={{ gap: 10 }}>
+          <Fold title="Signed-in browsers" summary={`${(owners.data ?? []).length} signed in`}>
+            <div className="panel">
+              {byLastUse.slice(0, allDevices ? byLastUse.length : 5).map((o) => (
+                <div className="item" key={o.user_id} style={{ alignItems: "center" }}>
+                  <div className="grow">
+                    <div className="title">{o.device ?? "A browser"}{o.user_id === me.data ? <span className="tag" style={{ marginLeft: 8 }}>This one</span> : null}</div>
+                    <div className="meta">Signed in {o.method === "google" ? "with Google" : "with a code"} {ago(o.created_at)}. Last used {ago(o.last_seen_at)}.</div>
+                  </div>
+                </div>
+              ))}
+              {byLastUse.length > 5 ? (
+                <div className="panel-pad" style={{ borderTop: "1px solid var(--line)" }}>
+                  <button type="button" className="btn btn-quiet btn-small" onClick={() => setAllDevices((a) => !a)}>{allDevices ? "Show fewer" : `Show all ${byLastUse.length}`}</button>
+                </div>
+              ) : null}
             </div>
-          ))}
-          <div className="panel-pad stack" style={{ borderTop: "1px solid var(--line)" }}>
-            {code ? (
-              <div>
-                <p className="soft small" style={{ marginBottom: 6 }}>Open the dashboard on the other device and enter this. It works once, for the next 24 hours.</p>
-                <CopyLine value={code} />
-              </div>
-            ) : null}
             <div className="row-wrap">
-              <button type="button" className="btn" disabled={busy !== null} onClick={() => void run("code", async () => setCode(await createAccessCode()))}>
-                {busy === "code" ? "Making a code" : "Sign in another device"}
-              </button>
               <button type="button" className="btn" disabled={busy !== null} onClick={() => void run("out", async () => { await signOut(false); onSignedOut(); })}>Sign out here</button>
               <button
                 type="button" className="btn btn-danger" disabled={busy !== null}
@@ -155,42 +192,20 @@ export function Settings({ onSignedOut }: { onSignedOut: () => void }) {
                 Sign out everywhere
               </button>
             </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="section">
-        <div className="section-head"><h2>Extras</h2></div>
-        <div className="panel panel-pad stack">
-          {c.youtube_connected ? (
-            <p className="soft" style={{ maxWidth: "70ch" }}>
-              Estimated earnings are <strong>{c.earnings ? "on" : "off"}</strong> and comments are <strong>{c.comments ? "on" : "off"}</strong>.
-              {c.earnings && c.comments ? "" : " To switch one on, press Disconnect above, then sign in with Google again and leave every box ticked."}
-            </p>
-          ) : null}
-          <AiKey on={Boolean(c.ai)} error={c.ai_error ?? null} onChanged={() => void queryClient.invalidateQueries({ queryKey: keys.connection })} />
-          <ClaudeConnector />
-        </div>
-      </section>
-
-      <section className="section">
-        <div className="section-head"><h2>Claude</h2></div>
-        <div className="panel panel-pad stack">
-          <p className="soft" style={{ maxWidth: "70ch" }}>
-            Claude can read everything on this dashboard: your numbers, every upload, your ideas and your research.
-            In a Claude session with this project open, just ask. In any other chat, copy your current numbers and paste them in with your question.
-          </p>
-          <div>
-            <button
-              type="button" className="btn" disabled={busy !== null}
-              onClick={() => void run("brief", async () => {
-                const briefing = await getBriefing();
-                await navigator.clipboard.writeText(`Here is a snapshot of my YouTube channel, ideas and research as JSON. Use it to answer my questions.\n\n${JSON.stringify(briefing)}`);
-              }, "Copied. Paste it into a Claude chat.")}
-            >
-              {busy === "brief" ? "Copying" : "Copy my numbers for Claude"}
-            </button>
-          </div>
+          </Fold>
+          <Fold title="Sign in another device" summary="A one-time code" open={Boolean(code)}>
+            {code ? (
+              <div>
+                <p className="soft small" style={{ marginBottom: 6 }}>Open the dashboard on the other device and enter this. It works once, for the next 24 hours.</p>
+                <CopyLine value={code} />
+              </div>
+            ) : <p className="soft small" style={{ margin: 0 }}>Make a code, then enter it on the other device. It works once, for 24 hours.</p>}
+            <div>
+              <button type="button" className="btn" disabled={busy !== null} onClick={() => void run("code", async () => setCode(await createAccessCode()))}>
+                {busy === "code" ? "Making a code" : code ? "Make another code" : "Make a code"}
+              </button>
+            </div>
+          </Fold>
         </div>
       </section>
 
@@ -334,7 +349,6 @@ function AiKey(props: { on: boolean; error: string | null; onChanged: () => void
   };
   return (
     <form className="stack" onSubmit={(e) => { e.preventDefault(); void save(key.trim()); }}>
-      <h3>AI helper</h3>
       <p className="soft" style={{ maxWidth: "70ch" }}>
         {props.on ? "The AI helper is on. " : ""}
         With a Claude API key, the dashboard can describe in plain English what happens in any outlier video, sort your comments into themes,

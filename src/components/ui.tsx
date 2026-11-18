@@ -346,3 +346,21 @@ export class Safety extends Component<{ children: ReactNode }, { error: Error | 
     );
   }
 }
+
+/**
+ * A section that folds away. Closed, it shows its title and a one-line summary of what is in it, so a
+ * long form reads as a short list until a part is opened.
+ */
+export function Fold(props: { title: string; summary?: string | null; open?: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(Boolean(props.open));
+  return (
+    <section className={`fold${open ? " open" : ""}`}>
+      <button type="button" className="fold-head" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        <span className="fold-title">{props.title}</span>
+        {!open && props.summary ? <span className="fold-sum clip">{props.summary}</span> : <span className="grow" />}
+        <svg className="fold-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      </button>
+      {open ? <div className="fold-body">{props.children}</div> : null}
+    </section>
+  );
+}

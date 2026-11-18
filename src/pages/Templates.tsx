@@ -400,7 +400,6 @@ export function ClaudeConnector() {
   const on = Boolean(state.data?.connected);
   return (
     <div className="stack">
-      <h3>Claude connector</h3>
       <p className="soft" style={{ maxWidth: "70ch" }}>
         Lets you talk to Claude in the Claude app and have it put things straight into this dashboard: video ideas filed under their game, lines to remember, and templates.
         Claude can also read your channel's numbers, so its advice rests on them. It cannot remove anything or see any of your keys.

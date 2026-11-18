@@ -209,13 +209,13 @@ function ScoreBlock({ title, sub, score }: { title: string; sub: string; score: 
   );
 }
 
-/** The full reading of one idea, inside the editor. It follows the title as it is typed. */
-export function ScorePanel({ draft, dirty = false }: { draft: IdeaDraft; dirty?: boolean }) {
+/** The scores for an idea as it is being written. */
+export function useDraftScores(draft: IdeaDraft, dirty = false): IdeaScores {
   const videos = useVideos();
   const found = useFound();
   const covered = useCovered();
   const checks = useIdeaChecks();
-  const scores = useMemo(
+  return useMemo(
     () => scoreIdea(
       { title: draft.title ?? "", format: draft.format ?? "long", target_keyword: draft.target_keyword ?? null, concept: draft.concept ?? null, hook: draft.hook ?? null, topic: draft.topic ?? null },
       // An edit that is not saved yet cannot be checked: the server only knows the idea as it was saved.
@@ -223,6 +223,12 @@ export function ScorePanel({ draft, dirty = false }: { draft: IdeaDraft; dirty?:
     ),
     [draft.id, draft.title, draft.format, draft.target_keyword, draft.concept, draft.hook, draft.topic, dirty, videos.data, found.data, covered.data, checks.data],
   );
+}
+
+/** The full reading of one idea, inside the editor. It follows the title as it is typed. */
+export function ScorePanel({ draft, dirty = false }: { draft: IdeaDraft; dirty?: boolean }) {
+  const covered = useCovered();
+  const scores = useDraftScores(draft, dirty);
   // The game changes with every letter while a title is being typed; wait until it has settled before searching for it.
   const want = scores.search && covered.data ? `${draft.format === "short" ? "short" : "long"}\n${scores.search}` : "";
   const [settled, setSettled] = useState("");

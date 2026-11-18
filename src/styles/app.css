@@ -461,7 +461,7 @@ button.item:hover, a.item:hover { background: var(--surface-2); }
 
 .narrow-only { display: none; }
 @media (max-width: 860px) {
-  .narrow-only { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; margin-top: 8px; }
+  .narrow-only { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 6px; }
   .narrow-only > span { white-space: nowrap; }
   .table .wide { display: none; }
   .table td, .table th { padding-left: 10px; padding-right: 10px; }
@@ -662,3 +662,26 @@ button.nav-link { border: 0; background: none; font-family: inherit; font-size: 
 .ref-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
 .ref-note { padding: 6px 10px; font-size: 13px; }
 .ref-picker { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-2); }
+
+/* Sections that fold away */
+.fold { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.fold-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 14px; border: 0; background: none; font: inherit; color: var(--ink); text-align: left; cursor: pointer; min-height: 48px; }
+.fold-title { font-weight: 650; flex: none; }
+.fold-sum { flex: 1; min-width: 0; font-size: 13px; color: var(--ink-3); text-align: right; }
+.fold-chev { width: 18px; height: 18px; flex: none; color: var(--ink-3); transition: transform 0.15s ease; }
+.fold.open .fold-chev { transform: rotate(180deg); }
+.fold-body { display: flex; flex-direction: column; gap: 16px; padding: 2px 14px 16px; }
+.fold-body > .score-panel { border: 0; padding: 0; background: none; }
+
+/* Ideas board: one row of view controls, compact cards */
+.idea-toolbar, .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.idea-toolbar { margin-bottom: 14px; }
+.idea-toolbar .select, .toolbar .select { width: auto; flex: 1 1 140px; max-width: 220px; }
+.link-button { padding: 0; border: 0; background: none; font: inherit; color: var(--accent-strong); font-weight: 600; cursor: pointer; }
+.link-button:hover { text-decoration: underline; }
+.clip1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.idea .score-chips { margin-top: 6px; }
+.idea .score-chip { padding: 2px 8px 2px 3px; font-size: 11px; }
+.idea .score-chip b { min-width: 22px; font-size: 11px; }
+.idea .foot { margin-top: 6px; }
+.idea .idea-move { margin-top: 6px; }

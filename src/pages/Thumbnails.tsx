@@ -192,25 +192,31 @@ export function Thumbnails({ connected }: { connected: boolean }) {
       <div className="stack" style={{ gap: 10, marginBottom: 16 }}>
         <Segmented
           label="Whose thumbnails" value={filter.where} onChange={(where) => set({ where, game: null })}
-          options={[{ value: "mine", label: "Your games" }, { value: "outside", label: "Outside your games" }, { value: "all", label: "Everything" }]}
+          options={[{ value: "mine", label: "Your games" }, { value: "outside", label: "Other games" }, { value: "all", label: "All" }]}
         />
-        {filter.where === "mine" && games.length > 1 ? (
-          <div className="row-wrap" style={{ gap: 6 }} role="group" aria-label="Game">
-            <button type="button" className="chip" aria-pressed={filter.game === null} onClick={() => set({ game: null })}>All your games</button>
-            {games.map((g) => <button key={g} type="button" className="chip" aria-pressed={filter.game === g} onClick={() => set({ game: g })}>{g}</button>)}
-          </div>
-        ) : null}
-        <div className="row-wrap" style={{ gap: 10 }}>
-          <Segmented label="Posted in the last" value={String(filter.days)} onChange={(d) => set({ days: Number(d) })} options={[{ value: "30", label: "30 days" }, { value: "90", label: "90 days" }, { value: "365", label: "Year" }]} />
-          <Segmented label="Order" value={filter.sort} onChange={(sort) => set({ sort })} options={[{ value: "jump", label: "Biggest jump" }, { value: "newest", label: "Newest" }]} />
+        <div className="toolbar">
+          {filter.where === "mine" && games.length > 1 ? (
+            <select className="select input" value={filter.game ?? ""} onChange={(e) => set({ game: e.target.value || null })} aria-label="Game">
+              <option value="">All your games</option>
+              {games.map((g) => <option key={g} value={g}>{g}</option>)}
+            </select>
+          ) : null}
+          <select className="select input" value={String(filter.days)} onChange={(e) => set({ days: Number(e.target.value) })} aria-label="Posted in the last">
+            <option value="30">Last 30 days</option>
+            <option value="90">Last 90 days</option>
+            <option value="365">Last year</option>
+          </select>
+          <select className="select input" value={filter.sort} onChange={(e) => set({ sort: e.target.value as GalleryFilter["sort"] })} aria-label="Order">
+            <option value="jump">Biggest jump</option>
+            <option value="newest">Newest</option>
+          </select>
           <label className="row small" style={{ gap: 6 }}>
             <input type="checkbox" checked={filter.small} onChange={(e) => set({ small: e.target.checked })} />
             Channels under 50K
           </label>
         </div>
         <p className="small muted" style={{ margin: 0 }}>
-          Long-form videos that did at least 3x their own channel's usual. The dashboard finds them by itself: from searches on your games, the checks on your ideas,
-          and challenge videos on other games. Shorts are left out: their feed shows the video, not a thumbnail.
+          Long-form videos that did at least 3x their channel's usual. The dashboard finds them by itself. Shorts are left out.
         </p>
         {looking ? <p className="small muted row" style={{ gap: 8, margin: 0 }}>{looking.startsWith("Looking") ? <span className="spin" /> : null}{looking}</p> : null}
       </div>

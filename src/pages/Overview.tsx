@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { GoalsStrip, Hub, KindWords, RunBand, STATS_TABS, Tabs } from "./Growth.tsx";
+import { GoalsStrip, KindWords, RunBand, STATS_TABS, Tabs } from "./Growth.tsx";
 import { FrontLines } from "./Notes.tsx";
 import { NewUpload, WeekCard } from "./Pulse.tsx";
 import { BarList, Sparkline, Timeline, type UploadPin } from "../components/Timeline.tsx";
@@ -76,7 +76,7 @@ export function Overview({ view }: { view: "home" | "stats" }) {
 
   const complete = libraryComplete(videos.data ?? [], channel.data?.videos);
   // Streams are left out here: there are many of them and they would push the videos off the list.
-  const latest = (videos.data ?? []).filter((v) => v.privacy === "public" && v.content_type !== "live").slice(0, 6);
+  const latest = (videos.data ?? []).filter((v) => v.privacy === "public" && v.content_type !== "live").slice(0, 4);
   const lastOk = runs.data?.find((r) => r.status === "ok" || r.status === "partial");
   const traffic = reports.data?.traffic_sources_28d;
   const trafficRows = (traffic?.data ?? [])
@@ -96,7 +96,7 @@ export function Overview({ view }: { view: "home" | "stats" }) {
         {home ? null : <Segmented label="Time range" value={range} options={RANGES} onChange={setRange} />}
       </div>
       {home ? null : <Tabs label="Stats" base="/stats" current="" tabs={STATS_TABS} />}
-      {home ? <><RunBand /><NewUpload /><WeekCard /><Hub /></> : null}
+      {home ? <><RunBand /><NewUpload /><WeekCard /></> : null}
 
       {connection.data?.connection_error ? (
         <div className="notice error" role="alert">
@@ -112,7 +112,7 @@ export function Overview({ view }: { view: "home" | "stats" }) {
         </div>
       ) : null}
 
-      <div className="row-wrap between" style={{ alignItems: "flex-end", marginBottom: 22 }}>
+      {home ? null : <div className="row-wrap between" style={{ alignItems: "flex-end", marginBottom: 22 }}>
         <div>
           <p className="lead">{lead.lead}</p>
           {lead.facts.length ? <p className="lead-facts">{lead.facts.join(" ")}</p> : null}
@@ -124,7 +124,7 @@ export function Overview({ view }: { view: "home" | "stats" }) {
             <div><div className="k">Uploads</div><div className="v fig">{whole(channel.data.videos)}</div></div>
           </div>
         ) : null}
-      </div>
+      </div>}
 
       {home ? (
         <>
@@ -202,7 +202,6 @@ export function Overview({ view }: { view: "home" | "stats" }) {
               {whole(videos.data?.length ?? 0)} of {whole(channel.data?.videos ?? 0)} uploads are stored so far. How each one compares with your usual shows once YouTube is connected.
             </p>
           ) : null}
-          <p className="small" style={{ marginTop: 12 }}><a href="#/stats">Open Stats for the charts, where views come from and the split by format</a></p>
         </section> : null}
 
         {home ? null : <section>

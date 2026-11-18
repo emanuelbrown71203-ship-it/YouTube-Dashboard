@@ -11,7 +11,7 @@ export const DAILY_BUDGET = 10_000;
 
 const TABS = [
   { key: "outliers", label: "Outliers", about: "Videos that beat their own channel's usual by a wide margin. They show what YouTube is recommending in your niche right now." },
-  { key: "thumbnails", label: "Thumbnails", about: "Thumbnails that are working right now, on your games and on others. Open one to keep it with an idea, or start a new idea from it." },
+  { key: "thumbnails", label: "Thumbnails", about: "Thumbnails that are working right now. Open one to keep it with an idea." },
   { key: "keywords", label: "Search phrases", about: "What people type into YouTube search, and how hard each phrase is to rank for at your size." },
   { key: "channels", label: "Channels", about: "Channels you want to keep an eye on, measured the same way as your own." },
 ];

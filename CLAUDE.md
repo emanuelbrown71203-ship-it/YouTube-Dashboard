@@ -217,8 +217,17 @@ free and the owner has said to use them whenever a score needs them.
   fits none of them, give it a section of its own. Never tuck it under
   whichever section is handy.
 - The front page is for what the owner acts on: the new upload, the weekly
-  note, saved lines, pinned comments, goals, latest uploads. Charts and
-  breakdowns go in the Stats section (`#/stats`), not there.
+  note, saved lines, pinned comments, goals, latest uploads. Each shows a
+  few and links to the rest (3 lines, 2 goals, 4 uploads); a block with
+  nothing in it is left out. Charts and breakdowns go in the Stats section
+  (`#/stats`), not there.
+- Keep screens short on a phone. Detail that is not needed every time goes
+  in a `Fold` (`src/components/ui.tsx`): a closed heading with a one-line
+  summary. The idea editor keeps title, game, format and "Am I making it?"
+  open and folds scores, script, thumbnail, other titles, plan and notes;
+  Settings folds every part. A game on the Ideas board shows its first 5
+  ideas, plus any added on this visit. Filters are dropdowns, not rows of
+  chips.
 - Live streams are many and small. "Latest uploads", the planner and the
   upload markers leave them out; they have their own Streams tab.
 - Thumbnails load only while on or near the screen (`Thumb` in

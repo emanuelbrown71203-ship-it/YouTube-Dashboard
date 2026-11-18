@@ -724,14 +724,12 @@ function GoalEditor(props: { draft: GoalDraft; videos: Video[]; subscribers: num
 export function GoalsStrip() {
   const goals = useGoals();
   const ctx = useGoalContext();
-  const open = (goals.data ?? []).filter((g) => !goalProgress(g, ctx).done).slice(0, 3);
-  if (goals.isLoading || goals.error) return null;
+  // The subscriber goal already sits at the top of the page, so it is not shown twice.
+  const open = (goals.data ?? []).filter((g) => !goalProgress(g, ctx).done && g.kind !== "subscribers");
+  if (goals.isLoading || goals.error || open.length === 0) return null;
   return (
-    <Section title="Goals" aside={<a className="small" href="#/goals">{open.length ? "All goals" : "Set a goal"}</a>}>
-      <div className="panel">
-        {open.length === 0 ? <div className="empty"><p>No goal set. Pick a subscriber number, a view target for one video, or something of your own.</p></div>
-          : open.map((g) => <GoalRow key={g.id} goal={g} />)}
-      </div>
+    <Section title="Goals" aside={<a className="small" href="#/goals">{open.length > 2 ? `All ${open.length} goals` : "All goals"}</a>}>
+      <div className="panel">{open.slice(0, 2).map((g) => <GoalRow key={g.id} goal={g} />)}</div>
     </Section>
   );
 }
@@ -862,14 +860,8 @@ export function KindWords() {
   const byId = useMemo(() => new Map((videos.data ?? []).map((v) => [v.id, v])), [videos.data]);
   const best = useMemo(() => kindWords(comments.data ?? []), [comments.data]);
   if (comments.isLoading || comments.error) return null;
-  if (best.length === 0) {
-    // Nothing is shown here until the owner picks it.
-    return (comments.data ?? []).length === 0 ? null : (
-      <Section title="Kind words" aside={<a className="small" href="#/comments">All comments</a>}>
-        <div className="panel"><p className="small muted" style={{ padding: "14px 18px", margin: 0 }}>Only comments you pin show here. Open All comments and tap Pin to front page on the ones you want to keep.</p></div>
-      </Section>
-    );
-  }
+  // Nothing shows here until the owner pins a comment in Comments.
+  if (best.length === 0) return null;
   return (
     <Section title="Kind words" aside={<a className="small" href="#/comments">All comments</a>}>
       <div className="panel">

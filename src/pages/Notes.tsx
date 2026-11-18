@@ -211,11 +211,11 @@ export function FrontLines() {
       </div>
       {adding ? <QuickLine onSaved={() => { reload(); setAdding(false); }} /> : null}
       {shown.length ? (
-        <div className="panel">{shown.slice(0, 8).map((note) => <Line key={note.id} note={note} />)}</div>
+        <div className="panel">{shown.slice(0, 3).map((note) => <Line key={note.id} note={note} />)}</div>
       ) : adding ? null : (
         <div className="panel"><p className="small muted" style={{ padding: "14px 18px", margin: 0 }}>Heard a good line in a podcast or a video? Tap Add a line and it stays here where you will see it.</p></div>
       )}
-      {shown.length > 8 ? <p className="small muted" style={{ marginTop: 8 }}>Showing the newest 8 of {shown.length}. <a href="#/playbook/lines">See them all</a></p> : null}
+      {shown.length > 3 ? <p className="small muted" style={{ marginTop: 8 }}><a href="#/playbook/lines">{shown.length - 3} more in Lines to remember</a></p> : null}
     </section>
   );
 }
