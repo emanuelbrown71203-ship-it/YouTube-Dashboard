@@ -109,7 +109,8 @@ free and the owner has said to use them whenever a score needs them.
   verification off because it checks callers itself. Routes: `/auth/setup`,
   `/auth/start`, `/auth/callback`, `/auth/finish`, `/auth/disconnect`, `/sync`,
   `/sync/extras`, `/sync/pulse`, `/research`, `/ai/setup`, `/ai/titles`,
-  `/ai/check`, `/ai/import`, `/mcp/setup`, `/mcp/<secret>`, `/health`. `/sync/pulse` runs every hour (cron job `yt-pulse`, scheduler
+  `/ai/check`, `/ai/import`, `/ideas/check`, `/mcp/setup`, `/mcp/<secret>`,
+  `/health`. `/sync/pulse` runs every hour (cron job `yt-pulse`, scheduler
   secret only): it spots a new upload and starts a sync, or notes the live
   view counts of uploads in their first 3 days; two lookups each time. A sync does the quick
   work, then has the database call `/sync/extras` (scheduler secret only) for
@@ -139,16 +140,32 @@ free and the owner has said to use them whenever a score needs them.
 - Idea scores (`src/lib/ideaScore.ts`) are worked out in the browser, not
   stored: "Your history" (the game's track record in that format, which
   kinds of title have beaten the owner's usual, a hint from the other
-  format, momentum) and "Recommended" (breakouts the outlier searches found
-  on the game, the share of views YouTube's recommendations brought, the
-  title). A part with too little evidence is left out and said so; under
-  half the evidence gives no number. They are estimates: say so.
+  format, momentum) and "Recommended" (how this exact video did for the
+  channels that made it, the game as a whole, the share of views YouTube's
+  recommendations brought, the title). A part with too little evidence is
+  left out and said so; under half the evidence gives no number. They are
+  estimates: say so.
+  The biggest part of "Recommended" is the check on the idea itself
+  (`coverIdeas` in `research.ts`): one YouTube search for the idea
+  ("Elden Ring using only summons"), the results sorted into the same idea,
+  the same kind of video, or neither (by the AI when its key is set, else
+  by the idea's own words), and the ones that count set against their own
+  channel's usual. It is stored as a `yt_research_runs` row of kind
+  `outliers` with `params.mode = 'idea'` and `params.idea_id`; `summary`
+  holds `same` and `close` (`n`, `scored`, `broke_out`, `median`, `newest`)
+  and a few `examples`. A check lasts 30 days or until the idea's title or
+  game changes, costs about 100 to 130 lookups, and identical ideas share
+  one. To tell the owner how an idea looks, read that row. A search on the
+  game alone cannot tell two ideas on the same game apart: it is only a
+  small part of the score.
   The owner never has to search for a score to work: when a game with open
   ideas has no breakout search newer than 14 days, the dashboard runs one
   itself (`coverGames` in `research.ts`; the Ideas page asks for it through
   `/research` action `cover`, and `/sync/extras` does two more after each
-  sync). These spend the day's free lookups like any search, up to the
-  same ceiling, and are stored with `params.auto = true`.
+  sync), and every idea filed under a game gets its own check the same way
+  (`/sync/extras` does up to four a turn; opening the Ideas page starts a
+  pass through `/ideas/check`). These spend the day's free lookups like any
+  search, up to the same ceiling, and are stored with `params.auto = true`.
 - `dev/`: a local stand-in for the hosted backend (`server.ts`), a made-up
   YouTube (`mock-youtube.ts`) and a database reset script.
 

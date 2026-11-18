@@ -250,18 +250,20 @@ describe("growth", () => {
     expect(good.game).toBe("Baldur's Gate 3");
     expect(good.history.value!).toBeGreaterThan(plain.history.value!);
     expect(good.search).toBe("Baldur's Gate 3");
-    expect(good.recommended.parts[0].points).toBeNull();
+    const gamePart = (x: ReturnType<typeof scoreIdea>) => x.recommended.parts.find((p) => p.label === "The game right now")!;
+    expect(gamePart(good).points).toBeNull();
 
-    // Research that found breakouts on the game, in the same format, lifts the recommended score. Shorts found do not.
+    // What the game-wide search found counts for the game as a whole, as a small part of the score. Shorts found do not count for a long video.
     const found = (format: string, n: number) => Array.from({ length: n }, (_, i) => ({ id: `${format}${i}`, title: "Baldur's Gate 3 honour mode run", tags: [], format, views: 90000, outlier_score: 8, channel_subscribers: 9000, published_at: "2026-10-20" }));
     const withResearch = scoreIdea(idea, videos, found("long", 4), "2026-11-17");
-    expect(withResearch.recommended.value!).toBeGreaterThan(good.recommended.value ?? 0);
+    expect(gamePart(withResearch)).toMatchObject({ points: 2, max: 10 });
+    expect(gamePart(scoreIdea(idea, videos, found("long", 30), "2026-11-17")).points).toBe(10);
     expect(withResearch.search).toBe("Baldur's Gate 3");
-    expect(scoreIdea(idea, videos, found("short", 4), "2026-11-17").recommended.parts[0].points).toBeNull();
+    expect(gamePart(scoreIdea(idea, videos, found("short", 4), "2026-11-17")).points).toBeNull();
 
     // A search that ran and found nothing is an answer, not a gap; a stale or missing one asks for a new search.
     const empty = scoreIdea(idea, videos, [], "2026-11-17", [{ game: "baldur's gate 3", format: "long", at: "2026-11-10T08:00:00Z" }]);
-    expect(empty.recommended.parts[0].points).toBe(6);
+    expect(gamePart(empty).points).toBe(1);
     expect(empty.search).toBeNull();
     expect(scoreIdea(idea, videos, [], "2026-11-17", [{ game: "Baldur's Gate 3", format: "short", at: "2026-11-10T08:00:00Z" }]).search).toBe("Baldur's Gate 3");
     expect(scoreIdea(idea, videos, found("long", 4), "2026-11-17", [{ game: "Baldur's Gate 3", format: "long", at: "2026-10-01T08:00:00Z" }]).search).toBe("Baldur's Gate 3");
@@ -275,6 +277,43 @@ describe("growth", () => {
     expect(scoreIdea({ ...idea, topic: "Elden Ring" }, videos, [], "2026-11-17").game).toBe("Elden Ring");
     // No game named: no number at all.
     expect(scoreIdea({ ...idea, title: "My setup tour" }, [], [], "2026-11-17").history.value).toBeNull();
+  });
+
+  it("scores an idea from the check on that exact video, not from the game as a whole", async () => {
+    const { scoreIdea } = await import("../src/lib/ideaScore.ts");
+    const idea = { title: "Elden Ring Using Only Summons", format: "long" as const, target_keyword: null, concept: null, hook: null, topic: "Elden Ring" };
+    const group = (n: number, median: number | null, broke_out = 0) => ({ n, scored: median === null ? 0 : n, broke_out, median, newest: n ? "2026-08-01" : null });
+    const check = (same: ReturnType<typeof group>, close = group(0, null)) => ({
+      searched: 30, same, close, at: "2026-11-17T10:00:00Z",
+      examples: same.n ? [{ video_id: "abc12345678", title: "Only summons", channel: "Someone", subscribers: 9000, views: 1_250_000, score: 6.2, published: "2026-08-01T00:00:00Z", match: "same" as const }] : [],
+    });
+    const part = (market: Parameters<typeof scoreIdea>[5]) => scoreIdea(idea, [], [], "2026-11-17", [], market).recommended.parts[0];
+
+    // Not saved, or not checked yet: nothing is counted, and it says which.
+    expect(part(undefined)).toMatchObject({ label: "This exact video on YouTube", points: null, max: 40 });
+    expect(part(undefined).why).toContain("Save the idea");
+    expect(part(null).points).toBeNull();
+    expect(part(null).why).toContain("searching YouTube");
+    // The same idea did well for the channels that made it: nearly full marks, with a video to open.
+    const hit = part(check(group(5, 6, 4)));
+    expect(hit.points).toBeGreaterThanOrEqual(38);
+    expect(hit.why).toContain("5 videos of this exact idea");
+    expect(hit.examples?.[0]).toMatchObject({ href: "https://www.youtube.com/watch?v=abc12345678", note: "Someone, 1.3M views, 6.2x its channel's usual" });
+    // It was made and fell flat: below even. One lone video moves the score less than a pattern does.
+    expect(part(check(group(5, 0.4))).points!).toBeLessThan(15);
+    expect(part(check(group(1, 6, 1))).points!).toBeLessThan(hit.points!);
+    expect(part(check(group(1, 6, 1))).points!).toBeGreaterThan(20);
+    // Nobody made it, but the same kind of video does well: a weaker lift. Nothing like it at all: even, and untested.
+    const open = part(check(group(0, null), group(6, 5, 4)));
+    expect(open.points!).toBeGreaterThan(20);
+    expect(open.points!).toBeLessThan(hit.points!);
+    expect(open.why).toContain("the idea is open");
+    expect(part(check(group(0, null))).points).toBe(20);
+    expect(part(check(group(0, null))).why).toContain("untested");
+    // Two ideas on the same game now get different scores, which the game-wide search could not do.
+    const a = scoreIdea(idea, [], [], "2026-11-17", [], check(group(5, 6, 4))).recommended.parts[0].points;
+    const b = scoreIdea({ ...idea, title: "Elden Ring Using Only Faith" }, [], [], "2026-11-17", [], check(group(4, 0.5))).recommended.parts[0].points;
+    expect(a).not.toBe(b);
   });
 
   it("reads an upload's first hours against earlier uploads of the same format", async () => {

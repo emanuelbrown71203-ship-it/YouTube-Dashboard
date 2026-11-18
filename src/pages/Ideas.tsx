@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { IDEA_TABS, Tabs } from "./Growth.tsx";
-import { ResearchStatus, ScoreChips, ScorePanel, TitleHelper, useAutoResearch, useCovered, useFound, useIdeaScores } from "./Pulse.tsx";
+import { ResearchStatus, ScoreChips, ScorePanel, TitleHelper, useAutoResearch, useCovered, useFound, useIdeaChecking, useIdeaScores } from "./Pulse.tsx";
 import { scoreIdea } from "../lib/ideaScore.ts";
 import { ImportIdeas, TemplateHint, TemplateScore } from "./Templates.tsx";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
@@ -84,6 +84,8 @@ export function Ideas() {
     return [...counts.values()].sort((a, b) => b.n - a.n).slice(0, 6);
   }, [ideas.data, scores, covered.data]);
   const research = useAutoResearch(needs);
+  // Each idea is also searched for by itself; the server does that a few at a time once it is asked.
+  const checking = useIdeaChecking(ideas.data ?? []);
   const [view, setView] = useState<"stage" | "game">(() => (remembered("yt-ideas-view") === "stage" ? "stage" : "game"));
   const videos = useVideos();
   // The games offered when filing an idea: the ones the owner is working with now, not every game the
@@ -232,6 +234,14 @@ export function Ideas() {
       </form>
 
       {research.now || research.problem ? <div style={{ marginBottom: 12 }}><ResearchStatus state={research} /></div> : null}
+      {checking.waiting > 0 ? (
+        <p className="small muted row" style={{ gap: 8, margin: "0 0 12px" }}>
+          {checking.problem ? null : <span className="spin" />}
+          {checking.problem
+            ? `${checking.waiting} of your ideas have not been checked against YouTube yet: ${checking.problem}`
+            : `Searching YouTube for each idea to see how that exact video has done: ${checking.waiting} to go. Scores fill in as each one lands.`}
+        </p>
+      ) : null}
       <div className="row-wrap" style={{ marginBottom: 12, gap: 10 }}>
         <span className="small muted">Group by</span>
         <Segmented
@@ -405,7 +415,7 @@ function IdeaEditor(props: { draft: IdeaDraft; games: string[]; onClose: () => v
         </small>
       </div>
 
-      <ScorePanel draft={form} />
+      <ScorePanel draft={form} dirty={dirty} />
       <TemplateScore
         idea={form} dirty={dirty}
         onChecked={(check, at) => { setForm((f) => ({ ...f, template_check: check, template_checked_at: at })); void props.onChanged(); }}

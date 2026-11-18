@@ -118,7 +118,8 @@ function where(url: URL, table = ""): string {
     else if (op === "in") {
       const items = value.replace(/^\(|\)$/g, "").split(",").map((v) => v.replace(/^"|"$/g, ""));
       clause = `${column} in (${items.map(literal).join(", ")})`;
-    } else if (OPS[op]) clause = `${column} ${OPS[op]} ${literal(value)}`;
+    } else if (op === "cs") clause = `${column} @> ${literal(value)}::jsonb`;
+    else if (OPS[op]) clause = `${column} ${OPS[op]} ${literal(value)}`;
     else throw Object.assign(new Error(`the local stand-in does not support the "${op}" filter`), { code: "PGRST100" });
     parts.push(negate ? `not (${clause})` : clause);
   }
@@ -206,6 +207,16 @@ const deps: Deps = {
   // A stand-in for the AI: it answers in the right shape without thinking.
   claude: async (_key, req) => {
     const props = (req.schema.properties ?? {}) as Record<string, unknown>;
+    if (JSON.stringify(req.schema).includes('"match"')) {
+      // Sorting search results for one idea: the same idea shares its last word, the same kind is another challenge.
+      const sent = JSON.parse(req.prompt) as { idea: { title: string }; videos: { n: number; title: string }[] };
+      const last = sent.idea.title.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim().split(" ").pop() ?? "";
+      return {
+        videos: sent.videos.map((v) => ({
+          n: v.n, match: last && v.title.toLowerCase().includes(last) ? "same" : /only|without|but|challenge/i.test(v.title) ? "close" : "no",
+        })),
+      };
+    }
     if (props.videos) {
       const list = JSON.parse(req.prompt.slice(req.prompt.indexOf("Videos:") + 7)) as { id: string; title: string }[];
       const games = ["Elden Ring", "Baldur's Gate 3", "Cuphead", "Dark Souls 3"];

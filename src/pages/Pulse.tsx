@@ -3,11 +3,11 @@
 import { type QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useToast } from "../components/ui.tsx";
-import { coverGame, getCoveredGames, getFoundVideos, suggestTitles, type TitleIdea } from "../lib/api.ts";
+import { coverGame, getCoveredGames, getFoundVideos, getIdeaChecks, startIdeaChecks, suggestTitles, type TitleIdea } from "../lib/api.ts";
 import { whole } from "../lib/format.ts";
 import { goalProgress, useGoals } from "../lib/growth.ts";
 import { useChannel, useDaily, useIdeas, useVideos } from "../lib/hooks.ts";
-import { type IdeaScores, type Score, scoreIdea, scoreWord } from "../lib/ideaScore.ts";
+import { type IdeaScores, type Market, type Score, scoreIdea, scoreWord } from "../lib/ideaScore.ts";
 import { first48, type Point, trackedUpload, TRACK_HOURS, useFirstDays, usePulse, weekNote, yardstickVideos } from "../lib/pulse.ts";
 import type { Idea, IdeaDraft, Video } from "../lib/types.ts";
 
@@ -88,15 +88,72 @@ export function ResearchStatus({ state }: { state: { now: { game: string; format
   return state.problem ? <p className="small muted" style={{ margin: 0 }}>The check on what YouTube is pushing could not run: {state.problem}</p> : null;
 }
 
+// ---------------------------------------------------------------------------
+// The check on each idea: has this exact video been made, and how did it do?
+// ---------------------------------------------------------------------------
+
+type ScoredIdea = Pick<Idea, "id" | "title" | "format" | "target_keyword" | "concept" | "hook" | "topic">;
+
+/** The finished checks. While any idea is still waiting on one, they are read again every few seconds. */
+export const useIdeaChecks = (waiting = false) =>
+  useQuery({ queryKey: ["idea-checks"], queryFn: getIdeaChecks, staleTime: 60_000, refetchInterval: waiting ? 12_000 : false });
+
+/**
+ * The check that belongs to an idea as it is written now: `null` when there is none yet (or the
+ * title or game changed since), left out when it cannot be checked at all (not saved, or no game).
+ */
+export function marketFor(
+  idea: { id?: string; title?: string; topic?: string | null }, checks: { idea_id: string; title: string; game: string; market: Market }[] | undefined,
+): Market | null | undefined {
+  const game = idea.topic?.trim();
+  if (!idea.id || !game) return undefined;
+  if (!checks) return null;
+  return checks.find((c) => c.idea_id === idea.id && c.title === idea.title && c.game === game)?.market ?? null;
+}
+
+let lastKick = 0;
+
+/**
+ * Has the dashboard check every idea that is waiting, and says how many are left. The checking runs
+ * on the server, a few ideas a minute; this only starts it and watches the answers arrive.
+ */
+export function useIdeaChecking(ideas: (ScoredIdea & { status?: string })[]) {
+  const first = useIdeaChecks();
+  const waiting = useMemo(
+    () => (first.data ? ideas.filter((i) => i.status !== "published" && marketFor(i, first.data) === null).length : 0),
+    [ideas, first.data],
+  );
+  const checks = useIdeaChecks(waiting > 0);
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => {
+    if (waiting === 0) return;
+    const kick = () => {
+      // The server refuses to start a second pass beside a live one, so asking again is harmless.
+      if (Date.now() - lastKick < 45_000) return;
+      lastKick = Date.now();
+      startIdeaChecks().then(
+        // Nothing left that the server can check right now, yet some ideas have no answer: it says why.
+        (res) => setProblem(res.waiting === 0 && res.problem ? `${res.problem} They are tried again later.` : null),
+        (err) => setProblem(err instanceof Error ? err.message : "The check could not start."),
+      );
+    };
+    kick();
+    const timer = window.setInterval(kick, 50_000);
+    return () => window.clearInterval(timer);
+  }, [waiting]);
+  return { checks: checks.data, waiting, problem };
+}
+
 /** Scores for every idea on the board, worked out once. */
-export function useIdeaScores(ideas: Pick<Idea, "id" | "title" | "format" | "target_keyword" | "concept" | "hook" | "topic">[]): Map<string, IdeaScores> {
+export function useIdeaScores(ideas: ScoredIdea[]): Map<string, IdeaScores> {
   const videos = useVideos();
   const found = useFound();
   const covered = useCovered();
+  const checks = useIdeaChecks();
   return useMemo(() => {
     const today = todayIso();
-    return new Map(ideas.map((i) => [i.id, scoreIdea(i, videos.data ?? [], found.data ?? [], today, covered.data ?? [])]));
-  }, [ideas, videos.data, found.data, covered.data]);
+    return new Map(ideas.map((i) => [i.id, scoreIdea(i, videos.data ?? [], found.data ?? [], today, covered.data ?? [], marketFor(i, checks.data))]));
+  }, [ideas, videos.data, found.data, covered.data, checks.data]);
 }
 
 function tone(value: number | null): string {
@@ -138,6 +195,13 @@ function ScoreBlock({ title, sub, score }: { title: string; sub: string; score: 
             </div>
             <div className="score-bar"><i style={{ width: `${p.points === null ? 0 : (100 * p.points) / p.max}%` }} /></div>
             <div className="small soft">{p.why}</div>
+            {p.examples?.length ? (
+              <ul className="score-examples">
+                {p.examples.map((e) => (
+                  <li key={e.href}><a href={e.href} target="_blank" rel="noreferrer">{e.title}</a><span className="small muted">{e.note}</span></li>
+                ))}
+              </ul>
+            ) : null}
           </li>
         ))}
       </ul>
@@ -146,13 +210,18 @@ function ScoreBlock({ title, sub, score }: { title: string; sub: string; score: 
 }
 
 /** The full reading of one idea, inside the editor. It follows the title as it is typed. */
-export function ScorePanel({ draft }: { draft: IdeaDraft }) {
+export function ScorePanel({ draft, dirty = false }: { draft: IdeaDraft; dirty?: boolean }) {
   const videos = useVideos();
   const found = useFound();
   const covered = useCovered();
+  const checks = useIdeaChecks();
   const scores = useMemo(
-    () => scoreIdea({ title: draft.title ?? "", format: draft.format ?? "long", target_keyword: draft.target_keyword ?? null, concept: draft.concept ?? null, hook: draft.hook ?? null, topic: draft.topic ?? null }, videos.data ?? [], found.data ?? [], todayIso(), covered.data ?? []),
-    [draft.title, draft.format, draft.target_keyword, draft.concept, draft.hook, draft.topic, videos.data, found.data, covered.data],
+    () => scoreIdea(
+      { title: draft.title ?? "", format: draft.format ?? "long", target_keyword: draft.target_keyword ?? null, concept: draft.concept ?? null, hook: draft.hook ?? null, topic: draft.topic ?? null },
+      // An edit that is not saved yet cannot be checked: the server only knows the idea as it was saved.
+      videos.data ?? [], found.data ?? [], todayIso(), covered.data ?? [], marketFor(draft, checks.data) ?? (dirty ? undefined : marketFor(draft, checks.data)),
+    ),
+    [draft.id, draft.title, draft.format, draft.target_keyword, draft.concept, draft.hook, draft.topic, dirty, videos.data, found.data, covered.data, checks.data],
   );
   // The game changes with every letter while a title is being typed; wait until it has settled before searching for it.
   const want = scores.search && covered.data ? `${draft.format === "short" ? "short" : "long"}\n${scores.search}` : "";

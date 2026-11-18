@@ -352,3 +352,119 @@ export function analyzeKeyword(
     verdict: overall >= 65 ? "strong" : overall >= 45 ? "decent" : "tough",
   };
 }
+
+// ---------------------------------------------------------------------------
+// Checking one idea against YouTube: has this exact video been made, and how did it do?
+// ---------------------------------------------------------------------------
+
+const bare = (word: string) => word.toLowerCase().replace(/[^a-z0-9]+/g, "");
+
+/** "Baldur's Gate 3" is also written "BG3"; "Elden Ring" is "ER". */
+export function gameInitials(game: string): string | null {
+  const words = game.replace(/[^A-Za-z0-9 ]+/g, "").split(/\s+/).filter(Boolean);
+  if (words.length < 2) return null;
+  return words.map((w) => (/^\d+$/.test(w) ? w : w[0])).join("").toLowerCase();
+}
+
+/** The idea's own words: its title without hashtags, the game's name or the game's initials. */
+function titleWithoutGame(title: string, game: string): string[] {
+  const gameWords = new Set(game.split(/\s+/).map(bare).filter((w) => w.length >= 3));
+  const short = gameInitials(game);
+  return title.replace(/#\S+/g, " ").split(/\s+/)
+    .map((word) => word.replace(/[^\p{L}\p{N}'’-]+/gu, ""))
+    .filter((word) => {
+      const b = bare(word);
+      return b.length > 0 && !gameWords.has(b) && !gameWords.has(b.replace(/s$/, "")) && b !== short;
+    });
+}
+
+/** What to type into YouTube to find videos of this idea: the game's full name, then the rest of the title. */
+export function ideaQuery(title: string, game: string): string {
+  return `${game.trim()} ${titleWithoutGame(title, game).join(" ")}`.replace(/\s+/g, " ").trim().slice(0, 100);
+}
+
+// Words that say what kind of video it is, not what it is about. They are in nearly every challenge
+// title, so sharing them says nothing about two videos being the same idea.
+const FILLER = new Set([
+  "the", "a", "an", "and", "or", "but", "of", "to", "in", "on", "for", "with", "without", "is", "are", "was", "be", "it", "its", "this",
+  "that", "i", "im", "ive", "me", "my", "we", "our", "you", "your", "can", "could", "will", "would", "do", "does", "did", "how", "what",
+  "why", "when", "who", "not", "no", "so", "if", "than", "as", "at", "by", "from", "into", "up", "out", "only", "using", "use", "used",
+  "every", "all", "any", "more", "most", "very", "really", "ever", "never", "still", "just", "beat", "beating", "beaten", "made", "make",
+  "making", "turned", "accidentally", "have", "has", "had", "there", "them", "they", "vs", "video", "game", "games", "run", "challenge",
+  "full", "new", "time", "times", "then", "while", "until", "after", "before", "get", "got", "playing", "play", "played", "win",
+]);
+const stem = (word: string) => (word.length > 4 ? word.replace(/(ies)$/, "y").replace(/(es|s)$/, "") : word);
+
+/** The words that make the idea this idea: "Elden Ring Using Only Chest Items" is about chest and item. */
+export function ideaAngle(title: string, game: string): string[] {
+  const words = titleWithoutGame(title, game).map(bare).filter((w) => w.length >= 2 && !FILLER.has(w) && !/^\d+$/.test(w)).map(stem);
+  return [...new Set(words)];
+}
+
+export type Match = "same" | "close" | "no";
+const CHALLENGE = /\b(only|without|but|can (you|i|we) beat|challenge|no[- ]hit|no damage|randomi[sz]|every time|impossible|hardest)\b/i;
+
+/**
+ * Without the AI: a video is the same idea when its title has every one of the idea's own words, and
+ * the same kind of video when it is a challenge on the same game. Rough, and English only.
+ */
+export function judgeByWords(idea: { title: string; game: string }, videoTitle: string): Match {
+  const key = bare(idea.game), short = gameInitials(idea.game);
+  const flat = bare(videoTitle);
+  const words = new Set(videoTitle.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).map(stem));
+  const onGame = flat.includes(key) || Boolean(short && words.has(short));
+  if (!onGame) return "no";
+  const angle = ideaAngle(idea.title, idea.game);
+  if (angle.length && angle.every((w) => words.has(w))) return "same";
+  const shared = angle.filter((w) => words.has(w)).length;
+  return (angle.length >= 2 && shared >= Math.ceil(angle.length / 2)) || CHALLENGE.test(videoTitle) ? "close" : "no";
+}
+
+export interface MarketVideo {
+  video_id: string;
+  title: string;
+  channel: string;
+  subscribers: number | null;
+  views: number;
+  /** Views against the channel's usual video, when that could be worked out. */
+  score: number | null;
+  published: string;
+  match: Match;
+}
+
+export interface MarketGroup {
+  n: number;
+  /** How many of them could be set against their channel's usual. */
+  scored: number;
+  /** How many did 3x their channel's usual or more. */
+  broke_out: number;
+  /** The middle one, against its channel's usual. A tiny channel's freak 900x counts as 20x here. */
+  median: number | null;
+  newest: string | null;
+}
+
+export interface MarketSummary {
+  searched: number;
+  same: MarketGroup;
+  close: MarketGroup;
+  examples: MarketVideo[];
+}
+
+const SCORE_CAP = 20;
+function group(videos: MarketVideo[]): MarketGroup {
+  const scores = videos.map((v) => v.score).filter((s): s is number => s !== null).map((s) => Math.min(s, SCORE_CAP)).sort((a, b) => a - b);
+  const mid = Math.floor(scores.length / 2);
+  const median = scores.length === 0 ? null : scores.length % 2 ? scores[mid] : (scores[mid - 1] + scores[mid]) / 2;
+  return {
+    n: videos.length, scored: scores.length, broke_out: scores.filter((s) => s >= 3).length,
+    median: median === null ? null : Math.round(median * 10) / 10,
+    newest: videos.map((v) => v.published.slice(0, 10)).sort().at(-1) ?? null,
+  };
+}
+
+/** What the search for one idea found, boiled down: the same idea, the same kind of video, and a few to look at. */
+export function summariseMarket(searched: number, judged: MarketVideo[]): MarketSummary {
+  const same = judged.filter((v) => v.match === "same"), close = judged.filter((v) => v.match === "close");
+  const best = (list: MarketVideo[]) => [...list].sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || b.views - a.views);
+  return { searched, same: group(same), close: group(close), examples: [...best(same), ...best(close)].slice(0, 4) };
+}

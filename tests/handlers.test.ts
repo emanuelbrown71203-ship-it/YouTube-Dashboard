@@ -573,6 +573,88 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     await sql`update public.yt_ideas set trashed_at = now() where title like 'Auto %'`;
   });
 
+  it("checks each idea against YouTube by itself: the same idea, the same kind of video, and how they did", async () => {
+    const { call, mock, deps } = setup();
+    // An idea someone on the made-up YouTube has really made, so there is a "same" to find.
+    const theirs = mock.universe.filter((c) => c.id !== MY_CHANNEL_ID).flatMap((c) => c.videos)
+      .map((v) => /^Can You Beat (.+) With Only (.+)\?$/.exec(v.title)).find(Boolean)!;
+    const [game, thing] = [theirs[1], theirs[2]];
+    const short = game.split(" ").length > 1 ? game.replace(/[^A-Za-z0-9 ]/g, "").split(" ").map((w) => (/^\d+$/.test(w) ? w : w[0])).join("") : game;
+    await sql`update public.yt_ideas set trashed_at = now() where trashed_at is null`;
+    const [a] = await sql`insert into public.yt_ideas (title, format, topic) values (${`${short} Using Only ${thing}`}, 'long', ${game}) returning id::text as id, title`;
+    const [twin] = await sql`insert into public.yt_ideas (title, format, topic) values (${a.title}, 'long', ${game}) returning id::text as id`;
+    const [loose] = await sql`insert into public.yt_ideas (title, format) values ('A thought with no game', 'long') returning id::text as id`;
+    const searches = () => mock.calls.filter((c) => c.includes("/youtube/v3/search")).length;
+    const checkOf = async (id: string) => (await sql`
+      select query, params, summary, jsonb_array_length(results) as n, quota_units from public.yt_research_runs
+      where params @> ${sql.json({ mode: "idea", idea_id: id })} order by created_at desc limit 1`)[0];
+
+    // The idea the owner has open is checked on the spot. With the AI off, the idea's own words do the sorting.
+    const before = searches();
+    const first = await call("POST", "/research", { user: OWNER, body: { action: "idea_check", idea_id: a.id } });
+    expect(first.data.checked).toHaveLength(1);
+    expect(first.data.checked[0]).toMatchObject({ idea_id: a.id, judged_by: "words" });
+    expect(searches()).toBe(before + 1);
+    const run = await checkOf(a.id);
+    expect(run.query).toBe(`${game} Using Only ${thing}`);
+    expect(run.params).toMatchObject({ mode: "idea", format: "long", title: a.title, game, auto: true });
+    expect(run.summary.same.n).toBeGreaterThan(0);
+    expect(run.summary.same.scored).toBeGreaterThan(0);
+    expect(run.summary.same.median).toBeGreaterThan(0);
+    expect(run.summary.examples[0]).toMatchObject({ match: "same" });
+    expect(run.summary.examples[0].title).toContain(thing);
+    expect(run.n).toBe(run.summary.same.n + run.summary.close.n);
+    expect(run.quota_units).toBeGreaterThanOrEqual(100);
+    expect(run.quota_units).toBeLessThan(200);
+    // My own uploads are not evidence of how the idea does for others.
+    const mine = new Set(mock.universe.find((c) => c.id === MY_CHANNEL_ID)!.videos.map((v) => v.id));
+    const [{ results }] = await sql`select results from public.yt_research_runs where params @> ${sql.json({ mode: "idea", idea_id: a.id })}`;
+    expect((results as { video_id: string }[]).some((r) => mine.has(r.video_id))).toBe(false);
+
+    // Asked again, nothing is spent. The same idea written down twice reuses the answer. An idea with no game is left alone.
+    expect((await call("POST", "/research", { user: OWNER, body: { action: "idea_check", idea_id: a.id } })).data.checked).toHaveLength(0);
+    const again = await call("POST", "/research", { user: OWNER, body: { action: "idea_check", idea_id: twin.id } });
+    expect(again.data.checked[0]).toMatchObject({ idea_id: twin.id, reused: true });
+    expect((await checkOf(twin.id)).quota_units).toBe(0);
+    expect((await call("POST", "/research", { user: OWNER, body: { action: "idea_check", idea_id: loose.id } })).data.checked).toHaveLength(0);
+    expect(searches()).toBe(before + 1);
+    expect((await call("POST", "/research", { user: OWNER, body: { action: "idea_check", idea_id: "nope" } })).status).toBe(400);
+
+    // These checks are not searches to browse, and they do not count as having searched the game.
+    const history = await sql`select count(*)::int as n from public.yt_research_runs where kind = 'outliers' and not (params @> '{"mode":"idea"}'::jsonb) and query = ${run.query}`;
+    expect(history[0].n).toBe(0);
+
+    // A new title is a new idea: the follow-up to a sync checks it, with the AI doing the sorting when it is on.
+    await sql`update public.yt_ideas set title = ${`${game} But I Can Only Use ${thing}`} where id = ${a.id}`;
+    await sql`insert into public.yt_private (key, value) values ('anthropic_api_key', 'sk-ant-test') on conflict (key) do update set value = excluded.value`;
+    let asked = 0;
+    deps.claude = async (_key, req) => {
+      const sent = JSON.parse(req.prompt) as { idea?: { title: string }; videos?: { n: number; title: string }[] };
+      if (!sent.videos || !sent.idea) return { videos: [] };
+      asked++;
+      return { videos: sent.videos.map((v) => ({ n: v.n, match: v.n === 1 ? "same" : v.n <= 3 ? "close" : "no" })) };
+    };
+    const [{ value: secret }] = await sql`select value from public.yt_private where key = 'cron_secret'`;
+    const [{ id: runId }] = await sql`select id from public.yt_sync_runs order by id desc limit 1`;
+    const extras = await call("POST", "/sync/extras", { headers: { "x-cron-secret": secret }, body: { run_id: runId, hop: 0 } });
+    expect(extras.data.steps.idea_checks.checked.map((c: { idea_id: string }) => c.idea_id)).toEqual([a.id]);
+    expect(extras.data.steps.idea_checks.left).toBe(0);
+    expect(asked).toBe(1);
+    const retitled = await checkOf(a.id);
+    expect(retitled.summary).toMatchObject({ judged_by: "ai", same: { n: 1 }, close: { n: 2 } });
+    await sql`update public.yt_private set value = '' where key = 'anthropic_api_key'`;
+
+    // Opening the Ideas page asks for the waiting ideas to be checked; with none waiting, nothing starts.
+    expect((await call("POST", "/ideas/check", { user: OWNER })).data).toMatchObject({ waiting: 0, started: false });
+    await sql`insert into public.yt_ideas (title, format, topic) values ('Auto idea on a fresh game', 'long', 'Stardew Valley')`;
+    await sql`update public.yt_private set value = '' where key = 'idea_pass_at'`;
+    expect((await call("POST", "/ideas/check", { user: OWNER })).data).toMatchObject({ waiting: 1, started: true });
+    // A pass that reported in a moment ago is not doubled up.
+    expect((await call("POST", "/ideas/check", { user: OWNER })).data).toMatchObject({ waiting: 1, started: false });
+    expect((await call("POST", "/ideas/check", { user: STRANGER })).status).toBe(403);
+    await sql`update public.yt_ideas set trashed_at = now() where trashed_at is null`;
+  });
+
   it("stops research before the daily budget runs out, leaving room for the sync", async () => {
     const [{ day }] = await sql`select public.yt_quota_day() as day`;
     const [{ units: real }] = await sql`select units from public.yt_quota_usage where day = ${day}`;

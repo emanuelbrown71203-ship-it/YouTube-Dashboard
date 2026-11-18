@@ -196,3 +196,42 @@ describe("isEnglish", () => {
     expect(isEnglish({ title: "100% 🔥🔥" })).toBe(true);
   });
 });
+
+describe("checking one idea against YouTube", () => {
+  it("builds the search from the game's full name and the rest of the title", async () => {
+    const { ideaQuery, ideaAngle } = await import("../supabase/functions/yt-api/scoring.ts");
+    expect(ideaQuery("Can You Beat ER Using Only Chest Items", "Elden Ring")).toBe("Elden Ring Can You Beat Using Only Chest Items");
+    expect(ideaQuery("Baldur’s Gate Using Only Reactions", "Baldur's Gate 3")).toBe("Baldur's Gate 3 Using Only Reactions");
+    expect(ideaQuery("Baldur’s But With Only 1 HP", "Baldur's Gate 3")).toBe("Baldur's Gate 3 But With Only 1 HP");
+    expect(ideaQuery("Beat ___ Using Only A Torch", "Valheim")).toBe("Valheim Beat Using Only A Torch");
+    expect(ideaQuery("BG3 With Only 3 Spells #shorts", "Baldur's Gate 3")).toBe("Baldur's Gate 3 With Only 3 Spells");
+    expect(ideaQuery("Cuphead's Isle 2 With Only The Peashooter?", "Cuphead")).toBe("Cuphead Isle 2 With Only The Peashooter");
+    // The words that make the idea this idea, not the ones every challenge title has.
+    expect(ideaAngle("Can You Beat ER Using Only Chest Items", "Elden Ring")).toEqual(["chest", "item"]);
+    expect(ideaAngle("Elden Ring But Using Only Summons", "Elden Ring")).toEqual(["summon"]);
+    expect(ideaAngle("Beat Maliketh Using Only Sorceries", "Elden Ring")).toEqual(["maliketh", "sorcery"]);
+  });
+
+  it("tells the same idea from the same kind of video and from neither, by its words", async () => {
+    const { judgeByWords } = await import("../supabase/functions/yt-api/scoring.ts");
+    const idea = { title: "ER Using Only Kicks", game: "Elden Ring" };
+    expect(judgeByWords(idea, "Can You Beat Elden Ring With Only Kicks?")).toBe("same");
+    expect(judgeByWords(idea, "Can You Beat Elden Ring With Only Magic?")).toBe("close");
+    expect(judgeByWords(idea, "Elden Ring But Every Boss Is Randomised")).toBe("close");
+    expect(judgeByWords(idea, "How I Broke Elden Ring In 37 Minutes")).toBe("no");
+    expect(judgeByWords(idea, "Can You Beat Cuphead With Only Kicks?")).toBe("no");
+    expect(judgeByWords({ title: "Bosses using only chest items", game: "Elden Ring" }, "ER lore: every chest item explained")).toBe("close");
+  });
+
+  it("boils a check down to how the same idea and the same kind of video did", async () => {
+    const { summariseMarket } = await import("../supabase/functions/yt-api/scoring.ts");
+    const v = (id: string, match: "same" | "close", score: number | null, published = "2026-05-01T00:00:00Z") =>
+      ({ video_id: id, title: id, channel: "c", subscribers: 900, views: 1000, score, published, match });
+    const out = summariseMarket(30, [v("a", "same", 900), v("b", "same", 2), v("c", "same", 5, "2026-09-09T00:00:00Z"), v("d", "same", null), v("e", "close", 1), v("f", "close", 4)]);
+    // A tiny channel's 900x counts as 20x, so one freak does not carry the middle.
+    expect(out.same).toEqual({ n: 4, scored: 3, broke_out: 2, median: 5, newest: "2026-09-09" });
+    expect(out.close).toMatchObject({ n: 2, scored: 2, broke_out: 1, median: 2.5 });
+    expect(out.examples.map((e) => e.video_id)).toEqual(["a", "c", "b", "d"]);
+    expect(summariseMarket(12, []).same).toEqual({ n: 0, scored: 0, broke_out: 0, median: null, newest: null });
+  });
+});

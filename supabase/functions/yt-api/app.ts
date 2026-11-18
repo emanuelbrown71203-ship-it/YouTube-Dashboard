@@ -11,6 +11,7 @@
 //   POST /sync/extras       the slow follow-up work (AI, feeders); scheduler only
 //   POST /sync/pulse        hourly: spot a new upload, note live view counts; scheduler only
 //   POST /ai/titles         title ideas for a video idea, in the owner's own style
+//   POST /ideas/check       start checking the ideas that have not been set against YouTube yet
 //   POST /ai/check          how an idea measures up to the owner's templates
 //   POST /ai/import         reads pasted text into ideas to look over
 //   POST /mcp/setup         make or switch off the address of Claude's connector
@@ -26,7 +27,7 @@ import {
 import { checkTemplates, readIdeas, suggestTitles } from "./growth.ts";
 import { handleMcp, mcpSetup } from "./mcp.ts";
 import { research } from "./research.ts";
-import { runExtras, runPulse, runSync } from "./sync.ts";
+import { runExtras, runPulse, runSync, startIdeaChecks } from "./sync.ts";
 
 /** Makes postgres.js return counts and decimals as plain numbers. */
 export const postgresTypes = {
@@ -320,6 +321,9 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
       case "/ai/titles":
         await requireOwner(req, deps);
         return json(await suggestTitles(deps, body ?? {}));
+      case "/ideas/check":
+        await requireOwner(req, deps);
+        return json(await startIdeaChecks(deps));
       case "/ai/check":
         await requireOwner(req, deps);
         return json(await checkTemplates(deps, body ?? {}));

@@ -310,7 +310,8 @@ export async function getQuotaUsed(): Promise<number> {
 export async function getResearchRuns<T>(kind: ResearchRun["kind"], limit = 8): Promise<ResearchRun<T>[]> {
   const { data, error } = await supabase.from("yt_research_runs")
     .select("id, kind, query, params, results, summary, created_at")
-    .eq("kind", kind).order("created_at", { ascending: false }).limit(limit);
+    // The checks the dashboard runs on each idea are kept in the same table; they are not searches to browse.
+    .eq("kind", kind).not("params", "cs", '{"mode":"idea"}').order("created_at", { ascending: false }).limit(limit);
   fail(error);
   return (data ?? []) as unknown as ResearchRun<T>[];
 }
@@ -342,6 +343,27 @@ export async function getCoveredGames() {
     .filter((r) => (r.params?.mode ?? "breakout") === "breakout")
     .map((r) => ({ game: r.query, format: r.params?.format === "short" ? "short" as const : "long" as const, at: r.created_at }));
 }
+/** The newest finished check on each idea: what a YouTube search for that exact video found. */
+export async function getIdeaChecks() {
+  const since = new Date(Date.now() - 60 * 86_400_000).toISOString();
+  const { data, error } = await supabase.from("yt_research_runs").select("params, summary, created_at")
+    .eq("kind", "outliers").contains("params", { mode: "idea" }).gte("created_at", since)
+    .order("created_at", { ascending: false }).limit(600);
+  fail(error);
+  type Row = { params: { idea_id?: string; title?: string; game?: string }; summary: Record<string, unknown>; created_at: string };
+  const out: { idea_id: string; title: string; game: string; market: import("./ideaScore.ts").Market }[] = [];
+  const seen = new Set<string>();
+  for (const row of (data ?? []) as unknown as Row[]) {
+    const id = row.params?.idea_id;
+    // A check still running, or one that failed, is not an answer.
+    if (!id || seen.has(id) || !row.summary || "pending" in row.summary || "failed" in row.summary || !row.summary.same) continue;
+    seen.add(id);
+    out.push({ idea_id: id, title: row.params.title ?? "", game: row.params.game ?? "", market: { ...(row.summary as unknown as import("./ideaScore.ts").Market), at: row.created_at } });
+  }
+  return out;
+}
+/** Starts the dashboard checking every idea that has not been set against YouTube yet. */
+export const startIdeaChecks = () => callApi<{ waiting: number; started: boolean; problem: string | null }>("/ideas/check");
 /** Has the dashboard search a game's breakouts now, if it has no fresh search stored. */
 export const coverGame = (game: string, format: "long" | "short") =>
   callApi<{ searched: { game: string; format: string; found: number; breakouts: number }[]; left: number; skipped?: string }>("/research", { action: "cover", game, format });

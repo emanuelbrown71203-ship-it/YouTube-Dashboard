@@ -24,12 +24,46 @@ export interface Covered { game: string; format: "long" | "short"; at: string }
 /** How long a search stays good for before the dashboard runs it again. */
 export const COVER_DAYS = 14;
 
+/** One group of videos a check on an idea found: the same idea, or the same kind of video. */
+export interface MarketGroup {
+  n: number;
+  /** How many could be set against their channel's usual video. */
+  scored: number;
+  /** How many did 3x their channel's usual or better. */
+  broke_out: number;
+  /** The middle one against its channel's usual. A tiny channel's freak result counts as 20x at most. */
+  median: number | null;
+  newest: string | null;
+}
+export interface MarketVideo {
+  video_id: string;
+  title: string;
+  channel: string;
+  subscribers: number | null;
+  views: number;
+  score: number | null;
+  published: string;
+  match: "same" | "close" | "no";
+}
+/** What a YouTube search for one idea found. Made by the dashboard itself, one search per idea. */
+export interface Market {
+  searched: number;
+  same: MarketGroup;
+  close: MarketGroup;
+  examples: MarketVideo[];
+  /** Who sorted the results into same, close and neither: the AI, or the idea's own words when the AI is off. */
+  judged_by?: "ai" | "words";
+  at: string;
+}
+
 export interface Part {
   label: string;
   /** Points earned and the most this part can give. `null` points = not enough to go on. */
   points: number | null;
   max: number;
   why: string;
+  /** Videos behind the reading, to open and look at. */
+  examples?: { href: string; title: string; note: string }[];
 }
 
 export interface Score {
@@ -160,12 +194,62 @@ function total(parts: Part[]): number | null {
 /** Maps "times the usual" onto points: 1x is half marks, 4x or more is full marks. */
 const fromTimes = (x: number, max: number) => Math.round(clamp(0.5 + Math.log2(Math.max(x, 0.1)) / 4, 0, 1) * max);
 
+const compactViews = (n: number) => (n >= 1e6 ? `${Math.round(n / 1e5) / 10}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : String(n));
+const monthOf = (date: string) => new Date(`${date.slice(0, 10)}T00:00:00Z`).toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+
+/**
+ * Has this exact video been made, and how did it do for the channels that made it? The one part of
+ * the score that is about this idea and no other. Each video is measured against its own channel's
+ * usual, so a big channel's big number does not count for more than a small channel's.
+ */
+function marketPart(market: Market | null | undefined, game: string | null, filed: boolean, format: "long" | "short"): Part {
+  const label = "This exact video on YouTube", max = 40, even = max / 2;
+  // The search is run for ideas filed under a game; one that only reads like a game has to be filed first.
+  if (!game || !filed) return { label, points: null, max, why: `File the idea under ${game ?? "a game"} and the dashboard searches YouTube for this exact video.` };
+  if (market === undefined) return { label, points: null, max, why: "Save the idea and the dashboard searches YouTube for this exact video. It takes a minute or two." };
+  if (market === null) return { label, points: null, max, why: "The dashboard is searching YouTube for this exact video. This fills in by itself in a few minutes." };
+  const examples = market.examples.slice(0, 3).map((v) => ({
+    href: `https://www.youtube.com/watch?v=${v.video_id}`, title: v.title,
+    note: `${v.channel}, ${compactViews(v.views)} views${v.score === null ? "" : `, ${times(v.score)} its channel's usual`}${v.match === "close" ? " (same kind of video)" : ""}`,
+  }));
+  const { same, close } = market;
+  if (same.n > 0 && same.median !== null) {
+    // One video proves little; three or more is a pattern.
+    const points = Math.round(even + (fromTimes(same.median, max) - even) * Math.min(1, same.scored / 3));
+    return {
+      label, points, max, examples,
+      why: `${same.n === 1 ? "One video" : `${same.n} videos`} of this exact idea turned up. ${
+        same.broke_out ? `${same.broke_out === same.scored && same.scored > 1 ? "All of them" : same.broke_out} did 3x ${same.broke_out === 1 ? "its" : "their"} channel's usual or better` : `None stood out from ${same.n === 1 ? "its" : "their"} channel's usual`
+      }${same.scored > 1 ? `; the middle one did ${times(same.median)}` : `, at ${times(same.median)}`}.${same.newest ? ` The newest is from ${monthOf(same.newest)}.` : ""}`,
+    };
+  }
+  if (same.n > 0) {
+    return { label, points: null, max, examples, why: `${same.n === 1 ? "One video" : `${same.n} videos`} of this exact idea turned up, but how ${same.n === 1 ? "it" : "they"} did against ${same.n === 1 ? "its channel's" : "their channels'"} usual could not be worked out.` };
+  }
+  if (close.scored >= 2 && close.median !== null) {
+    // The same kind of video doing well is a weaker sign than this very idea doing well.
+    const points = Math.round(even + (fromTimes(close.median, max) - even) * 0.6 * Math.min(1, close.scored / 4));
+    return {
+      label, points, max, examples,
+      why: `Nobody in YouTube's top results has made this exact ${KIND[format]}, so the idea is open. ${close.n} of the same kind on ${game} turned up: ${
+        close.broke_out ? `${close.broke_out} did 3x their channel's usual or better` : "none stood out from their channel's usual"
+      }, and the middle one did ${times(close.median)}.`,
+    };
+  }
+  return {
+    label, points: even, max, examples,
+    why: `Nothing like this idea turned up in YouTube's top results for it. It is untested: that can be an opening, but there is no proof yet that people want it.`,
+  };
+}
+
 export function scoreIdea(
   idea: Pick<Idea, "title" | "format" | "target_keyword" | "concept" | "hook"> & { topic?: string | null },
   videos: Video[],
   found: FoundVideo[],
   today: string,
   covered: Covered[] = [],
+  /** The check on this idea: `null` = not run yet; left out = cannot be run (a draft that is not saved). */
+  market?: Market | null,
 ): IdeaScores {
   const format = idea.format === "short" ? "short" : "long";
   const other = format === "long" ? "short" : "long";
@@ -224,25 +308,28 @@ export function scoreIdea(
   const searchedAt = searches[searches.length - 1] ?? null;
   const searchedDaysAgo = searchedAt ? Math.floor((Date.parse(today) - Date.parse(searchedAt.slice(0, 10))) / 86_400_000) : null;
   const fresh = searchedDaysAgo !== null && searchedDaysAgo <= COVER_DAYS;
+  recommended.push(marketPart(market, game, Boolean(idea.topic?.trim()), format));
+
+  // The game as a whole, as a small part: it is the same for every idea on the game, so it cannot
+  // tell two ideas apart. What counts is small channels getting through, since this is one.
+  const small = breakouts.filter((v) => (v.channel_subscribers ?? Infinity) <= 50_000).length;
   if (!game) {
-    recommended.push({ label: "What YouTube is pushing", points: null, max: 40, why: "Name the game in the title and this can check whether videos like it are breaking out right now." });
+    recommended.push({ label: "The game right now", points: null, max: 10, why: "File the idea under a game and this can say whether the game is travelling on YouTube." });
   } else if (outside.length === 0 && searchedDaysAgo !== null && searchedDaysAgo <= 45) {
-    // A search that came back empty is an answer too: nothing on this game is travelling right now.
     recommended.push({
-      label: "What YouTube is pushing", points: 6, max: 40,
-      why: `A search ${searchedDaysAgo <= 1 ? "just now" : `${searchedDaysAgo} days ago`} found no recent ${KINDS[format]} on ${game} with enough views to count. YouTube is not pushing them at the moment.`,
+      label: "The game right now", points: 1, max: 10,
+      why: `A search ${searchedDaysAgo <= 1 ? "just now" : `${searchedDaysAgo} days ago`} found no recent ${KINDS[format]} on ${game} with enough views to count.`,
     });
   } else if (outside.length === 0) {
-    recommended.push({ label: "What YouTube is pushing", points: null, max: 40, why: `Recent ${KINDS[format]} on ${game} have not been checked yet. The dashboard is doing that now; this fills in by itself.` });
+    recommended.push({ label: "The game right now", points: null, max: 10, why: `Recent ${KINDS[format]} on ${game} have not been looked at yet. The dashboard does that by itself; this fills in shortly.` });
   } else {
-    const top = [...breakouts].sort((a, b) => (b.outlier_score ?? 0) - (a.outlier_score ?? 0))[0];
-    const small = breakouts.filter((v) => (v.channel_subscribers ?? Infinity) <= 50_000).length;
-    const points = clamp(Math.round(8 + breakouts.length * 5 + small * 3 + (top ? Math.min(10, Math.log2(top.outlier_score ?? 1) * 2.5) : 0)), 0, 40);
     recommended.push({
-      label: "What YouTube is pushing", points, max: 40,
-      why: breakouts.length === 0
-        ? `Your research found ${outside.length} recent ${KINDS[format]} on ${game}, and none broke out from its channel's usual.`
-        : `Your research found ${breakouts.length} recent ${breakouts.length === 1 ? KIND[format] : KINDS[format]} on ${game} that broke out${small ? `, ${small} from ${small === 1 ? "a channel" : "channels"} under 50,000 subscribers` : ""}. The strongest did ${times(top.outlier_score ?? 1)} its channel's usual.`,
+      label: "The game right now", points: clamp(Math.round(small / 2), breakouts.length ? 2 : 0, 10), max: 10,
+      why: small
+        ? `Among the most-viewed recent ${KINDS[format]} on ${game}, ${small} came from ${small === 1 ? "a channel" : "channels"} under 50,000 subscribers and did 3x that channel's usual or better. Small channels are getting through.`
+        : breakouts.length
+          ? `Among the most-viewed recent ${KINDS[format]} on ${game}, ${breakouts.length} broke out, all from larger channels.`
+          : `None of the ${outside.length} most-viewed recent ${KINDS[format]} on ${game} broke out from its channel's usual.`,
     });
   }
   const fed = here.filter((v) => v.recommended_pct !== null);
@@ -251,13 +338,13 @@ export function scoreIdea(
     const usual = median(here.map((v) => v.vs_typical!))!;
     // A big share only counts if the videos also travelled.
     recommended.push({
-      label: "Your reach on this game", points: clamp(Math.round((share / 100) * 15 + fromTimes(usual, 15)), 0, 30), max: 30,
+      label: "Your reach on this game", points: clamp(Math.round((share / 100) * 12 + fromTimes(usual, 13)), 0, 25), max: 25,
       why: `${Math.round(share)}% of the views on your ${KINDS[format]} about ${game} came from YouTube recommending them, and they typically did ${times(usual)} your usual.`,
     });
   } else if (game) {
-    recommended.push({ label: "Your reach on this game", points: null, max: 30, why: `YouTube has not had a ${KIND[format]} of yours on ${game} to recommend yet.` });
+    recommended.push({ label: "Your reach on this game", points: null, max: 25, why: `YouTube has not had a ${KIND[format]} of yours on ${game} to recommend yet.` });
   }
-  const title = titlePart(idea.title, lifts, format, 30);
+  const title = titlePart(idea.title, lifts, format, 25);
   const bare = idea.title.replace(/\s*#\S+/g, "").trim();
   if (title.points !== null && bare.length > 70) {
     title.points = Math.max(0, title.points - 6);

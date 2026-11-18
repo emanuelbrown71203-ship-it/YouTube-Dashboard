@@ -8,7 +8,7 @@ import {
 import {
   logChanges, nameTopics, readComments, syncComments, syncFeeders, syncFirstDays, syncReach, syncTestDays, syncTopics, tickGoals,
 } from "./growth.ts";
-import { coverGames, refreshWatched } from "./research.ts";
+import { coverGames, coverIdeas, countStaleIdeas, refreshWatched } from "./research.ts";
 import { classifyFormat } from "./scoring.ts";
 
 type Params = Record<string, string | number | undefined>;
@@ -470,7 +470,9 @@ export async function runSync(deps: Deps, source: string): Promise<{ status: str
 // ---------------------------------------------------------------------------
 
 const EXTRAS_MS = 45_000;
-const EXTRAS_HOPS = 14;
+const EXTRAS_HOPS = 40;
+/** While a pass over the ideas reports in this often, a second one is not started beside it. */
+const IDEA_PASS_ALIVE_MS = 150_000;
 
 /** Asks the database to call /sync/extras, so the work gets a fresh request with its own time limit. */
 async function queueExtras(deps: Deps, runId: number, hop: number): Promise<void> {
@@ -512,6 +514,13 @@ export async function runExtras(deps: Deps, runId: number, hop: number): Promise
   await step("comments_read", () => readComments(deps, until));
   // Outlier searches for the games the owner has ideas under, so their scores never wait on a manual search.
   if (Date.now() < until) await step("idea_research", () => coverGames(deps, { limit: 2, until }));
+  // Then each idea by itself: has this exact video been made, and how did it do? A check takes a
+  // while (a search, the AI, a few channels), so none is started in the last seconds of the turn.
+  if (Date.now() < until - 12_000) {
+    await setConfig(sql, { idea_pass_at: deps.now().toISOString() });
+    await step("idea_checks", () => coverIdeas(deps, { limit: 4, until: until - 12_000 }));
+    await setConfig(sql, { idea_pass_at: deps.now().toISOString() });
+  }
   let api: Api | null = null;
   if (Date.now() < until) {
     try {
@@ -526,9 +535,11 @@ export async function runExtras(deps: Deps, runId: number, hop: number): Promise
   if (api) await closeApi(api).catch(() => undefined);
 
   const progress = Number(steps.games?.named ?? 0) + Number(steps.comments_read?.read ?? 0) + Number(steps.feeders?.videos ?? 0)
-    + Number(steps.first_days?.videos ?? 0) + (Array.isArray(steps.idea_research?.searched) ? steps.idea_research.searched.length : 0);
+    + Number(steps.first_days?.videos ?? 0) + (Array.isArray(steps.idea_research?.searched) ? steps.idea_research.searched.length : 0)
+    + (Array.isArray(steps.idea_checks?.checked) ? steps.idea_checks.checked.length : 0);
   const left = Number(steps.games?.left ?? 0) + Number(steps.comments_read?.left ?? 0) + Number(steps.feeders?.left ?? 0)
-    + Number(steps.first_days?.left ?? 0) + (steps.idea_research?.skipped ? 0 : Number(steps.idea_research?.left ?? 0));
+    + Number(steps.first_days?.left ?? 0) + (steps.idea_research?.skipped ? 0 : Number(steps.idea_research?.left ?? 0))
+    + (steps.idea_checks?.skipped ? 0 : Number(steps.idea_checks?.left ?? 0));
   const more = progress > 0 && left > 0 && hop + 1 < EXTRAS_HOPS;
 
   // Add this turn's results to the run that asked for them, summing the counts across turns.
@@ -551,6 +562,29 @@ export async function runExtras(deps: Deps, runId: number, hop: number): Promise
   }
   if (more) await queueExtras(deps, runId, hop + 1);
   return { status: "ok", steps, more };
+}
+
+/**
+ * The owner opened their ideas and some have no check yet: start a pass over them now, without waiting
+ * for the next sync. One pass at a time, because two would search the same ideas twice.
+ */
+export async function startIdeaChecks(deps: Deps): Promise<{ waiting: number; started: boolean; problem: string | null }> {
+  const { sql } = deps;
+  const waiting = await countStaleIdeas(sql);
+  // Ideas whose check failed a moment ago are left alone for a while; say why, so the page is not left guessing.
+  const [failed] = await sql`
+    select summary->>'failed' as why from public.yt_research_runs
+    where kind = 'outliers' and params @> '{"mode":"idea"}'::jsonb and summary ? 'failed' and created_at > now() - interval '6 hours'
+    order by created_at desc limit 1`;
+  const problem = (failed?.why as string | undefined) ?? null;
+  if (waiting === 0) return { waiting, started: false, problem };
+  const { idea_pass_at } = await getConfig(sql, ["idea_pass_at"]);
+  if (idea_pass_at && deps.now().getTime() - Date.parse(idea_pass_at) < IDEA_PASS_ALIVE_MS) return { waiting, started: false, problem };
+  const [run] = await sql`select id from public.yt_sync_runs order by id desc limit 1`;
+  if (!run) return { waiting, started: false, problem };
+  await setConfig(sql, { idea_pass_at: deps.now().toISOString() });
+  await queueExtras(deps, Number(run.id), 0);
+  return { waiting, started: true, problem };
 }
 
 // ---------------------------------------------------------------------------
