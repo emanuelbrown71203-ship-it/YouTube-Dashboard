@@ -398,22 +398,28 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
 
     expect((await tool("add_lines", { lines: [{ text: "Start on the best frame.", source: "A podcast", link: "javascript:alert(1)" }] })).out.added).toHaveLength(1);
     expect((await sql`select source, source_url, on_front from public.yt_notes where text = 'Start on the best frame.'`)[0]).toEqual({ source: "A podcast", source_url: null, on_front: true });
-    const saved = await tool("save_template", { kind: "title", name: "My titles", body: "Ask a question\nName the game\nUnder 60 characters" });
+    const saved = await tool("save_template", { kind: "title", name: "My titles", body: "- [x] Ask a question\n- [ ] Name the game\n- Under 60 characters" });
     expect(saved.out.kind).toBe("title");
-    expect((await tool("save_template", { id: saved.out.id, body: "Ask a question" })).out.name).toBe("My titles");
-    expect((await tool("list_templates")).out[0].body).toBe("Ask a question");
+    expect((await tool("save_template", { id: saved.out.id, body: "- [x] Ask a question\n- Name the game" })).out.name).toBe("My titles");
+    expect((await tool("list_templates")).out[0].body).toBe("- [x] Ask a question\n- Name the game");
     expect((await tool("save_template", { name: "No kind", body: "x" })).error).toBe(true);
     expect((await tool("drop_everything")).error).toBe(true);
 
     // The idea is read against the active templates and the reading is kept with it.
     expect((await call("POST", "/ai/check", { user: owner, body: { idea_id: added.out.added[0].id } })).status).toBe(409);
     await sql`insert into public.yt_private (key, value) values ('anthropic_api_key', 'sk-ant-test') on conflict (key) do update set value = excluded.value`;
+    let seenTemplate = "";
     deps.claude = async (_key, req) => {
       const sent = JSON.parse(req.prompt);
-      if (sent.templates) return { checks: [{ template_id: sent.templates[0].id, score: 140, met: ["Ask a question"], missing: [], fix: "" }, { template_id: "made-up", score: 1, met: [], missing: [], fix: "" }] };
+      if (sent.templates) {
+        // The AI is handed the template's points, not the owner's bullets and ticks.
+        seenTemplate = sent.templates[0].template;
+        return { checks: [{ template_id: sent.templates[0].id, score: 140, met: ["Ask a question"], missing: [], fix: "" }, { template_id: "made-up", score: 1, met: [], missing: [], fix: "" }] };
+      }
       return { ideas: [{ title: "Pasted idea", format: "long", game: "Elden Ring", hook: null, concept: "A run.", thumbnail: null, other_titles: [] }, { title: " ", format: "long", game: null, hook: null, concept: null, thumbnail: null, other_titles: [] }] };
     };
     const read = await call("POST", "/ai/check", { user: owner, body: { idea_id: added.out.added[0].id } });
+    expect(seenTemplate).toBe("Ask a question\nName the game");
     expect(read.data).toMatchObject({ score: 100, checks: [{ name: "My titles", kind: "title", score: 100, met: ["Ask a question"] }] });
     expect((await sql`select template_check->>'score' as score from public.yt_ideas where id = ${added.out.added[0].id}`)[0].score).toBe("100");
     const pasted = await call("POST", "/ai/import", { user: owner, body: { text: "Here are some ideas from our chat: an Elden Ring run..." } });

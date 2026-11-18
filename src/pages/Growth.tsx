@@ -3,6 +3,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useMemo, useState } from "react";
+import { NotesBox, RichNote } from "../components/notes.tsx";
 import { Drawer, ErrorNote, FormatTag, Loading, Segmented, Thumb, useToast } from "../components/ui.tsx";
 import { saveIdea } from "../lib/api.ts";
 import { ago, compact, count, day, duration, money, multiple, percent, whole } from "../lib/format.ts";
@@ -12,6 +13,7 @@ import {
   testCtr, useChanges, useComments, useGoals, useReachDays, useTests, useVideoDays,
 } from "../lib/growth.ts";
 import { keys, useChannel, useConnection, useDaily, useIdeas, useVideos } from "../lib/hooks.ts";
+import { bareNote, hasList } from "../lib/notes.ts";
 import { navigate } from "../lib/router.ts";
 import type { Video } from "../lib/types.ts";
 
@@ -313,7 +315,9 @@ export function Tests() {
                 </table>
               )}
               {r.after.days > 0 && r.after.days < 7 ? <div className="small muted">Only {count(r.after.days, "day")} of results so far. Give it at least a week before deciding.</div> : null}
-              {t.learned ? <div className="small"><span className="muted">What I learned:</span> {t.learned}</div> : null}
+              {t.learned ? (hasList(t.learned)
+                ? <div className="small"><div className="muted" style={{ marginBottom: 4 }}>What I learned:</div><RichNote text={t.learned} /></div>
+                : <div className="small"><span className="muted">What I learned:</span> {t.learned}</div>) : null}
             </div>
           );
         })}
@@ -434,10 +438,10 @@ function TestEditor(props: { draft: TestDraft; videos: Video[]; onClose: () => v
           options={[{ value: "none", label: "Not decided" }, { value: "better", label: "Worked" }, { value: "same", label: "No difference" }, { value: "worse", label: "Worse" }]}
         />
       </div>
-      <label className="field">
+      <div className="field">
         <span>What you learned</span>
-        <textarea className="input" rows={3} value={form.learned ?? ""} maxLength={1000} onChange={(e) => set("learned", e.target.value || null)} />
-      </label>
+        <NotesBox label="What you learned" value={form.learned ?? ""} onChange={(v) => set("learned", v || null)} minHeight={80} maxLength={1000} />
+      </div>
     </Drawer>
   );
 }
@@ -519,6 +523,16 @@ function GoalRow({ goal, onEdit }: { goal: Goal; onEdit?: () => void }) {
   const p = goalProgress(goal, ctx);
   const video = goal.video_id ? ctx.videos.find((v) => v.id === goal.video_id) : undefined;
   const best = goal.kind === "video_views" && !goal.video_id ? bestVideo(ctx.videos, goal.format) : undefined;
+  const retick = async (notes: string) => {
+    const before = queryClient.getQueryData<Goal[]>(growthKeys.goals);
+    queryClient.setQueryData<Goal[]>(growthKeys.goals, (list) => (list ?? []).map((x) => (x.id === goal.id ? { ...x, notes } : x)));
+    try {
+      await patchGoal(goal.id, { notes });
+    } catch (err) {
+      queryClient.setQueryData(growthKeys.goals, before);
+      toast(message(err), { error: true });
+    }
+  };
   const anyOf = goal.format === "long" ? "Any long-form video" : goal.format === "short" ? "Any Short" : goal.format === "live" ? "Any stream" : "Any video";
   const tick = async () => {
     try {
@@ -534,7 +548,7 @@ function GoalRow({ goal, onEdit }: { goal: Goal; onEdit?: () => void }) {
         <div className="grow" style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 600, lineHeight: 1.3 }}>{p.done ? "Reached: " : ""}{goal.title}</div>
           <div className="small muted clip">
-            {goal.kind === "video_views" ? (video ? video.title : best ? `${anyOf}. Closest so far: ${best.title}` : anyOf) : goal.kind === "subscribers" ? "Channel subscribers" : goal.notes ?? "A goal of your own"}
+            {goal.kind === "video_views" ? (video ? video.title : best ? `${anyOf}. Closest so far: ${best.title}` : anyOf) : goal.kind === "subscribers" ? "Channel subscribers" : goal.notes && !hasList(goal.notes) ? goal.notes : "A goal of your own"}
             {goal.due_on ? `. By ${day(goal.due_on)}` : ""}
           </div>
         </div>
@@ -543,6 +557,10 @@ function GoalRow({ goal, onEdit }: { goal: Goal; onEdit?: () => void }) {
           {onEdit ? <button type="button" className="btn btn-small" onClick={onEdit}>Edit</button> : null}
         </div>
       </div>
+      {goal.notes && hasList(goal.notes) ? (
+        // Steps written as a list show in full, and its boxes can be ticked right here.
+        <div className="small" style={{ width: "100%" }}><RichNote text={goal.notes} onChange={(notes) => void retick(notes)} /></div>
+      ) : goal.notes && goal.kind !== "personal" ? <div className="small soft clip" style={{ width: "100%" }}>{bareNote(goal.notes)}</div> : null}
       {p.share !== null && goal.target !== null ? (
         <>
           <div className="run-track small" role="img" aria-label={`${Math.round(p.share * 100)}% of the way`}>
@@ -694,10 +712,10 @@ function GoalEditor(props: { draft: GoalDraft; videos: Video[]; subscribers: num
         <span>By when (optional)</span>
         <input className="input" type="date" value={form.due_on ?? ""} onChange={(e) => set("due_on", e.target.value || null)} />
       </label>
-      <label className="field">
+      <div className="field">
         <span>Notes</span>
-        <textarea className="input" rows={3} value={form.notes ?? ""} maxLength={1000} onChange={(e) => set("notes", e.target.value || null)} />
-      </label>
+        <NotesBox label="Notes" value={form.notes ?? ""} onChange={(v) => set("notes", v || null)} minHeight={80} maxLength={1000} placeholder="Steps to get there work well as checkboxes" />
+      </div>
     </Drawer>
   );
 }

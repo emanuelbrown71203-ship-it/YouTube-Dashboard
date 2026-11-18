@@ -3,9 +3,11 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { NotesBox, RichNote } from "../components/notes.tsx";
 import { Drawer, ErrorNote, Icon, Loading, Segmented, useToast } from "../components/ui.tsx";
 import { ApiError, checkIdea, connector, fail, type PastedIdea, readPastedIdeas, saveIdea, type TemplateCheck } from "../lib/api.ts";
 import { ago } from "../lib/format.ts";
+import { checkCount, plainNote, untickAll } from "../lib/notes.ts";
 import { supabase } from "../lib/supabase.ts";
 import type { IdeaDraft } from "../lib/types.ts";
 
@@ -47,7 +49,7 @@ async function saveTemplate(draft: TemplateDraft): Promise<void> {
   fail(error);
 }
 
-async function patchTemplate(id: string, fields: { active?: boolean; trashed_at?: string | null }): Promise<void> {
+async function patchTemplate(id: string, fields: { active?: boolean; trashed_at?: string | null; body?: string }): Promise<void> {
   const { error } = await supabase.from("yt_templates").update(fields).eq("id", id);
   fail(error);
 }
@@ -56,7 +58,7 @@ export const useTemplates = () => useQuery({ queryKey: templatesKey, queryFn: ge
 
 /** A template as plain text, ready to send to someone. */
 export function templateText(list: Template[]): string {
-  return list.map((t) => `${t.name} (${kindOf(t.kind).label.toLowerCase()} template)\n\n${t.body}`).join("\n\n\n");
+  return list.map((t) => `${t.name} (${kindOf(t.kind).label.toLowerCase()} template)\n\n${plainNote(t.body)}`).join("\n\n\n");
 }
 
 /** Hands text to the phone's share sheet, or copies it where there is none. */
@@ -108,11 +110,14 @@ function TemplateEditor({ draft, onClose, onSaved }: { draft: TemplateDraft; onC
         <span>Name</span>
         <input className="input" value={form.name} onChange={(e) => set("name", e.target.value)} placeholder={`My ${kindOf(form.kind).label.toLowerCase()} template`} maxLength={120} />
       </label>
-      <label className="field">
+      <div className="field">
         <span>The template</span>
-        <textarea className="textarea" style={{ minHeight: 220 }} value={form.body} onChange={(e) => set("body", e.target.value)} placeholder={kindOf(form.kind).hint} maxLength={8000} />
-        <small>Write it your way. One point per line works best, because the AI checks an idea against each point.</small>
-      </label>
+        <NotesBox alwaysEdit label="The template" value={form.body} onChange={(v) => set("body", v)} placeholder={kindOf(form.kind).hint} minHeight={220} maxLength={8000} />
+        <small>
+          Write it your way. One point per line works best, because the AI checks an idea against each point.
+          Make the points checkboxes and the template becomes a checklist you can tick off as you work.
+        </small>
+      </div>
       <label className="row" style={{ gap: 10 }}>
         <input type="checkbox" checked={form.active ?? true} onChange={(e) => set("active", e.target.checked)} />
         <span>Check my ideas against this template</span>
@@ -128,6 +133,17 @@ export function Templates() {
   const toast = useToast();
   const [editing, setEditing] = useState<TemplateDraft | null>(null);
   const reload = () => void queryClient.invalidateQueries({ queryKey: templatesKey });
+  // Ticking a box shows at once and is saved behind it; if the save fails the tick is put back.
+  const rewrite = async (id: string, body: string) => {
+    const before = queryClient.getQueryData<Template[]>(templatesKey);
+    queryClient.setQueryData<Template[]>(templatesKey, (list) => (list ?? []).map((x) => (x.id === id ? { ...x, body } : x)));
+    try {
+      await patchTemplate(id, { body });
+    } catch (err) {
+      queryClient.setQueryData(templatesKey, before);
+      toast(message(err), { error: true });
+    }
+  };
   if (templates.isLoading) return <Loading label="Loading your templates" />;
   if (templates.error) return <ErrorNote error={templates.error} retry={() => void templates.refetch()} />;
   const list = templates.data ?? [];
@@ -156,14 +172,20 @@ export function Templates() {
                   <div className="row between" style={{ alignItems: "flex-start", gap: 12 }}>
                     <div>
                       <h3 style={{ margin: 0 }}>{t.name}</h3>
-                      <div className="small muted">{t.active ? "Ideas are checked against it" : "Not used for checking"}, changed {ago(t.updated_at)}</div>
+                      <div className="small muted">
+                        {t.active ? "Ideas are checked against it" : "Not used for checking"}, changed {ago(t.updated_at)}
+                        {checkCount(t.body).total ? `. ${checkCount(t.body).done} of ${checkCount(t.body).total} ticked` : ""}
+                      </div>
                     </div>
                     <div className="row" style={{ gap: 6, flex: "none" }}>
                       <button type="button" className="btn btn-small" onClick={() => void share(t.name, templateText([t]), toast)}>Share</button>
                       <button type="button" className="btn btn-small" onClick={() => setEditing(t)}>Edit</button>
                     </div>
                   </div>
-                  <div className="template-body">{t.body}</div>
+                  <RichNote className="template-body" text={t.body} onChange={(body) => void rewrite(t.id, body)} />
+                  {checkCount(t.body).done ? (
+                    <div style={{ marginTop: 10 }}><button type="button" className="btn btn-quiet btn-small" onClick={() => void rewrite(t.id, untickAll(t.body))}>Untick all, to start over</button></div>
+                  ) : null}
                 </article>
               ))}
             </div>
@@ -183,7 +205,12 @@ export function TemplateHint({ kind }: { kind: TemplateKind }) {
   return (
     <details className="template-hint">
       <summary>My {kindOf(kind).label.toLowerCase()} template</summary>
-      {mine.map((t) => <div key={t.id} className="template-body" style={{ marginTop: 8 }}>{mine.length > 1 ? <strong>{t.name}{"\n"}</strong> : null}{t.body}</div>)}
+      {mine.map((t) => (
+        <div key={t.id} style={{ marginTop: 8 }}>
+          {mine.length > 1 ? <strong>{t.name}</strong> : null}
+          <RichNote className="template-body" text={t.body} />
+        </div>
+      ))}
     </details>
   );
 }

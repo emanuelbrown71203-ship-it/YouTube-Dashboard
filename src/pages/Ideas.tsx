@@ -4,6 +4,7 @@ import { ResearchStatus, ScoreChips, ScorePanel, TitleHelper, useAutoResearch, u
 import { scoreIdea } from "../lib/ideaScore.ts";
 import { ImportIdeas, TemplateHint, TemplateScore } from "./Templates.tsx";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { NotesBox } from "../components/notes.tsx";
 import { Drawer, ErrorNote, FormatTag, Icon, Loading, Mult, Segmented, useToast } from "../components/ui.tsx";
 import { saveIdea, setIdeaTrashed } from "../lib/api.ts";
 import { takePendingIdea } from "../lib/draft.ts";
@@ -479,14 +480,14 @@ function IdeaEditor(props: { draft: IdeaDraft; games: string[]; onClose: () => v
         <textarea className="textarea" style={{ minHeight: 60 }} {...text("hook")} placeholder="The first line, or the first five seconds" />
         <TemplateHint kind="intro" />
       </label>
-      <label className="field">
+      <div className="field">
         <span>What happens</span>
-        <textarea className="textarea" {...text("concept")} placeholder="The challenge, the stakes, how it ends" />
-      </label>
-      <label className="field">
+        <NotesBox label="What happens" value={form.concept ?? ""} onChange={(v) => set("concept", v || null)} placeholder="The challenge, the stakes, how it ends" />
+      </div>
+      <div className="field">
         <span>Outline or script notes</span>
-        <textarea className="textarea" style={{ minHeight: 140 }} {...text("outline")} />
-      </label>
+        <NotesBox label="Outline or script notes" value={form.outline ?? ""} onChange={(v) => set("outline", v || null)} minHeight={140} placeholder="Beats, lines, shots to get. Use bullets, or checkboxes to tick off as you go" />
+      </div>
       {form.format !== "short" ? (
         <label className="field">
           <span>Thumbnail idea</span>
@@ -551,10 +552,10 @@ function IdeaEditor(props: { draft: IdeaDraft; games: string[]; onClose: () => v
         </label>
       ) : null}
 
-      <label className="field">
+      <div className="field">
         <span>Notes</span>
-        <textarea className="textarea" {...text("notes")} />
-      </label>
+        <NotesBox label="Notes" value={form.notes ?? ""} onChange={(v) => set("notes", v || null)} />
+      </div>
     </Drawer>
   );
 }

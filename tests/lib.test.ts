@@ -316,6 +316,63 @@ describe("growth", () => {
     expect(a).not.toBe(b);
   });
 
+  it("reads bullets and checkboxes out of a note, and ticks them", async () => {
+    const { parseNote, toggleCheck, untickAll, checkCount, plainNote, bareNote, hasList } = await import("../src/lib/notes.ts");
+    const note = "Before I film:\n- [ ] Write the hook\n- [x] Pick the build\n  - [ ] Test it once\n\nThings to say\n- The rule\n* The stakes\nA last line";
+    const blocks = parseNote(note);
+    expect(blocks.map((b) => b.kind)).toEqual(["text", "list", "text", "list", "text"]);
+    expect(blocks[1]).toEqual({ kind: "list", items: [
+      { line: 1, check: false, text: "Write the hook", depth: 0 }, { line: 2, check: true, text: "Pick the build", depth: 0 },
+      { line: 3, check: false, text: "Test it once", depth: 1 },
+    ] });
+    expect(blocks[3]).toMatchObject({ items: [{ check: null, text: "The rule" }, { check: null, text: "The stakes" }] });
+    expect(blocks[4]).toEqual({ kind: "text", text: "A last line" });
+    expect(checkCount(note)).toEqual({ done: 1, total: 3 });
+    // Ticking changes that one line and nothing else; it can be unticked again.
+    const ticked = toggleCheck(note, 1);
+    expect(ticked.split("\n")[1]).toBe("- [x] Write the hook");
+    expect(ticked.split("\n").filter((_, i) => i !== 1)).toEqual(note.split("\n").filter((_, i) => i !== 1));
+    expect(toggleCheck(ticked, 1)).toBe(note);
+    expect(toggleCheck(note, 0)).toBe(note);
+    expect(checkCount(untickAll(ticked))).toEqual({ done: 0, total: 3 });
+    expect(plainNote("- [ ] One\n- [x] Two\n- Three\nFour")).toBe("☐ One\n☑ Two\n• Three\nFour");
+    expect(bareNote("- [ ] One\n- [x] Two\n- Three\nFour")).toBe("One\nTwo\nThree\nFour");
+    // Ordinary writing is left alone: a dash in a sentence, a negative number, an empty note.
+    expect(hasList("The run went well - mostly.\n-5 on the last boss")).toBe(false);
+    expect(parseNote("")).toEqual([]);
+    expect(parseNote("Just a sentence.")).toEqual([{ kind: "text", text: "Just a sentence." }]);
+  });
+
+  it("carries a list on when Return is pressed, and turns lines into bullets or checkboxes", async () => {
+    const { continueList, toggleMarker } = await import("../src/lib/notes.ts");
+    // Return at the end of a bullet starts the next bullet; after a ticked box, an empty box.
+    const typed = (before: string, cursor = before.length) => continueList(before, `${before.slice(0, cursor)}\n${before.slice(cursor)}`, cursor + 1);
+    expect(typed("- Hook")).toEqual({ value: "- Hook\n- ", start: 9, end: 9 });
+    expect(typed("Plan\n- [x] Hook")).toEqual({ value: "Plan\n- [x] Hook\n- [ ] ", start: 22, end: 22 });
+    expect(typed("  - Sub")).toMatchObject({ value: "  - Sub\n  - " });
+    // In the middle of an item, the rest moves to a new item.
+    expect(typed("- Hook and stakes", 6)).toMatchObject({ value: "- Hook\n-  and stakes" });
+    // Return on an empty bullet ends the list.
+    expect(typed("- Hook\n- ")).toEqual({ value: "- Hook\n", start: 7, end: 7 });
+    expect(typed("- [ ] ")).toEqual({ value: "", start: 0, end: 0 });
+    // Not a list, or not a Return: nothing to do.
+    expect(typed("A sentence")).toBeNull();
+    expect(continueList("- Hook", "- Hooks", 7)).toBeNull();
+    expect(continueList("- Hook", "- Hook\npasted\ntext", 18)).toBeNull();
+
+    // The buttons: a plain line becomes a bullet, a bullet a checkbox, and pressing the same one again takes it off.
+    expect(toggleMarker("Hook", 2, 2, "bullet")).toEqual({ value: "- Hook", start: 4, end: 4 });
+    expect(toggleMarker("- Hook", 4, 4, "check")).toEqual({ value: "- [ ] Hook", start: 8, end: 8 });
+    expect(toggleMarker("- [x] Hook", 8, 8, "check")).toEqual({ value: "Hook", start: 2, end: 2 });
+    expect(toggleMarker("- [ ] Hook", 8, 8, "bullet").value).toBe("- Hook");
+    expect(toggleMarker("", 0, 0, "check")).toEqual({ value: "- [ ] ", start: 6, end: 6 });
+    // Only the line the cursor is on changes; a selection changes every line in it and skips blank ones.
+    expect(toggleMarker("One\nTwo\nThree", 5, 5, "bullet").value).toBe("One\n- Two\nThree");
+    expect(toggleMarker("One\n\nTwo\nThree", 0, 8, "check").value).toBe("- [ ] One\n\n- [ ] Two\nThree");
+    expect(toggleMarker("- One\nTwo", 0, 9, "bullet").value).toBe("- One\n- Two");
+    expect(toggleMarker("- One\n- Two", 0, 11, "bullet").value).toBe("One\nTwo");
+  });
+
   it("reads an upload's first hours against earlier uploads of the same format", async () => {
     const { first48, curveFromDays, viewsAt, trackedUpload, weekNote } = await import("../src/lib/pulse.ts");
     const v = (id: string, content_type: string, published_at: string, age_days: number) => ({ id, title: id, content_type, privacy: "public", published_at, age_days, vs_typical: 1 }) as never;

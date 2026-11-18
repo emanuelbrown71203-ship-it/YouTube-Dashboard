@@ -99,7 +99,7 @@ export async function saveGoal(draft: GoalDraft): Promise<void> {
   fail(error);
 }
 
-export async function patchGoal(id: string, fields: { done_at?: string | null; trashed_at?: string | null }): Promise<void> {
+export async function patchGoal(id: string, fields: { done_at?: string | null; trashed_at?: string | null; notes?: string | null }): Promise<void> {
   const { error } = await supabase.from("yt_goals").update(fields).eq("id", id);
   fail(error);
 }

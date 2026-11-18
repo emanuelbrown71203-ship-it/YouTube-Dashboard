@@ -15,6 +15,7 @@ const INSTRUCTIONS =
   "When the owner settles on video ideas, save them with add_ideas, each filed under its game (use list_games for the spellings in use). " +
   "The owner writes an idea most days, so a new idea is only an idea: it sits under its game. Set make_it only when they say they have decided to make that video; that puts it on their production board. " +
   "Save a line they want to remember with add_lines, and a title, thumbnail or intro standard with save_template. " +
+  "In notes, outlines, lines and templates, a line that starts with \"- \" shows as a bullet and \"- [ ] \" as a checkbox the owner can tick; use them for steps and checklists. " +
   "Say what you saved in one short sentence. Write to the owner in plain language: they are a creator, not a developer.";
 
 async function sha256(text: string): Promise<string> {

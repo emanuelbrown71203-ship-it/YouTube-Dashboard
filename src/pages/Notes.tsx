@@ -2,6 +2,7 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
+import { NotesBox, RichNote } from "../components/notes.tsx";
 import { Drawer, ErrorNote, Icon, Loading, useToast } from "../components/ui.tsx";
 import { ApiError, fail } from "../lib/api.ts";
 import { ago } from "../lib/format.ts";
@@ -39,7 +40,7 @@ async function saveNote(draft: NoteDraft): Promise<void> {
   fail(error);
 }
 
-async function patchNote(id: string, fields: { on_front?: boolean; trashed_at?: string | null }): Promise<void> {
+async function patchNote(id: string, fields: { on_front?: boolean; trashed_at?: string | null; text?: string }): Promise<void> {
   const { error } = await supabase.from("yt_notes").update(fields).eq("id", id);
   fail(error);
 }
@@ -47,11 +48,28 @@ async function patchNote(id: string, fields: { on_front?: boolean; trashed_at?: 
 export const useNotes = () => useQuery({ queryKey: notesKey, queryFn: getNotes });
 const message = (err: unknown) => (err instanceof Error ? err.message : "Something went wrong. Try again.");
 
+/** Ticking a box in a line shows at once and is saved behind it; if the save fails the tick is put back. */
+function useRewriteLine() {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  return async (id: string, text: string) => {
+    const before = queryClient.getQueryData<Note[]>(notesKey);
+    queryClient.setQueryData<Note[]>(notesKey, (list) => (list ?? []).map((x) => (x.id === id ? { ...x, text } : x)));
+    try {
+      await patchNote(id, { text });
+    } catch (err) {
+      queryClient.setQueryData(notesKey, before);
+      toast(message(err), { error: true });
+    }
+  };
+}
+
 function Line({ note, children }: { note: Note; children?: React.ReactNode }) {
+  const rewrite = useRewriteLine();
   return (
     <div className="item line-note">
       <div className="grow" style={{ minWidth: 0 }}>
-        <div className="line-text">{note.text}</div>
+        <RichNote className="line-text" text={note.text} onChange={(text) => void rewrite(note.id, text)} />
         <div className="row-wrap small muted" style={{ marginTop: 6 }}>
           {note.source ? (note.source_url ? <a href={note.source_url} target="_blank" rel="noreferrer">{note.source}</a> : <span>{note.source}</span>) : null}
           {note.topic ? <span className="tag">{note.topic}</span> : null}
@@ -85,7 +103,7 @@ function QuickLine({ onSaved }: { onSaved: () => void }) {
   };
   return (
     <form className="stack" style={{ gap: 8, marginBottom: 18 }} onSubmit={add}>
-      <textarea className="textarea" style={{ minHeight: 70 }} value={text} onChange={(e) => setText(e.target.value)} placeholder="A line you heard and want to remember" aria-label="The line" maxLength={2000} />
+      <NotesBox alwaysEdit label="The line" value={text} onChange={setText} placeholder="A line you heard and want to remember" minHeight={70} maxLength={2000} />
       <div className="row-wrap">
         <input className="input grow" style={{ minWidth: 180 }} value={source} onChange={(e) => setSource(e.target.value)} placeholder="Where it is from (optional)" aria-label="Where it is from" maxLength={200} />
         <button type="submit" className="btn btn-primary" disabled={busy || !text.trim()}><Icon name="plus" />Save line</button>
@@ -120,7 +138,7 @@ function NoteEditor({ note, onClose, onSaved }: { note: Note; onClose: () => voi
         </>
       )}
     >
-      <label className="field"><span>The line</span><textarea className="textarea" style={{ minHeight: 120 }} value={form.text} onChange={(e) => set("text", e.target.value)} maxLength={2000} /></label>
+      <div className="field"><span>The line</span><NotesBox alwaysEdit label="The line" value={form.text} onChange={(v) => set("text", v)} minHeight={120} maxLength={2000} /></div>
       <label className="field"><span>Where it is from</span><input className="input" value={form.source ?? ""} onChange={(e) => set("source", e.target.value)} placeholder="A podcast, a video, a person" maxLength={200} /></label>
       <label className="field"><span>Link (optional)</span><input className="input" value={form.source_url ?? ""} onChange={(e) => set("source_url", e.target.value)} placeholder="https://" inputMode="url" maxLength={500} /></label>
       <label className="field"><span>Game or subject (optional)</span><input className="input" value={form.topic ?? ""} onChange={(e) => set("topic", e.target.value)} placeholder="Titles, thumbnails, Elden Ring" maxLength={80} /></label>

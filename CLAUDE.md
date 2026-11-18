@@ -85,6 +85,14 @@ free and the owner has said to use them whenever a score needs them.
   `title` | `thumbnail` | `intro` | `other`, `name`, `body`).
 - **Save a line for them**: insert into `public.yt_notes` (`text`, and
   where it came from in `source`). Bin with `trashed_at`.
+- **Bullets and checkboxes**: the note-style fields (an idea's `concept`,
+  `outline` and `notes`, a goal's `notes`, a test's `learned`, a line's
+  `text`, a template's `body`) are plain text where a line starting with
+  `- ` shows as a bullet and `- [ ] ` or `- [x] ` as a checkbox the owner
+  can tick in the app. Write steps and checklists that way. Ticking only
+  rewrites that marker (`src/lib/notes.ts`, `src/components/notes.tsx`).
+  When a template goes to the AI the markers are taken off, so a tick is
+  never read as "this point is met".
 - **Never hard-remove rows.** To bin an idea set `trashed_at = now()`. Browsers
   are switched off with `revoked_at`, codes with `used_at`.
 - **Never write the stats tables by hand.** They belong to the sync.

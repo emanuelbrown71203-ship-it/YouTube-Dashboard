@@ -697,11 +697,16 @@ export async function checkTemplates(deps: Deps, body: { idea_id?: unknown }) {
     prompt: JSON.stringify({
       idea: {
         format: idea.format === "short" ? "Short" : "long-form video", game: idea.topic, title: idea.title,
-        hook_and_opening: [idea.hook, String(idea.outline ?? "").slice(0, 1200)].filter(Boolean).join("\n\n") || null,
+        hook_and_opening: [idea.hook, String(idea.outline ?? "").replace(/^(\s*)[-*•]\s+(?:\[[ xX]\]\s+)?/gm, "$1").slice(0, 1200)].filter(Boolean).join("\n\n") || null,
         what_happens: idea.concept, thumbnail_idea: idea.thumbnail_concept,
       },
       // deno-lint-ignore no-explicit-any
-      templates: (templates as any[]).map((t) => ({ id: t.id, name: t.name, judges: TEMPLATE_PART[t.kind as keyof typeof TEMPLATE_PART], template: String(t.body).slice(0, 4000) })),
+      // A template can be written as bullets or checkboxes. The ticks are the owner's own working state, not
+      // part of the standard, so the AI gets the points without the markers.
+      templates: (templates as any[]).map((t) => ({
+        id: t.id, name: t.name, judges: TEMPLATE_PART[t.kind as keyof typeof TEMPLATE_PART],
+        template: String(t.body).replace(/^(\s*)[-*•]\s+(?:\[[ xX]\]\s+)?/gm, "$1").slice(0, 4000),
+      })),
     }),
     schema: {
       type: "object", additionalProperties: false, required: ["checks"],
