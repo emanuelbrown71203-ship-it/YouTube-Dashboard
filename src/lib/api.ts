@@ -408,11 +408,28 @@ export async function getIdeaRefs(): Promise<IdeaRef[]> {
   return (data ?? []) as unknown as IdeaRef[];
 }
 
-export async function addIdeaRef(ideaId: string, ref: RefInput): Promise<void> {
-  const { error } = await supabase.from("yt_idea_refs").insert({ idea_id: ideaId, ...ref });
+/** Keeps a reference with an idea. Returns its id, or null when that video was already there. */
+export async function addIdeaRef(ideaId: string, ref: RefInput): Promise<string | null> {
+  // Only the table's own columns: the pickers carry labels of their own (which list a video came from).
+  const row = {
+    idea_id: ideaId, video_id: ref.video_id, title: ref.title, channel_title: ref.channel_title, channel_subscribers: ref.channel_subscribers,
+    views: ref.views, outlier_score: ref.outlier_score, published_at: ref.published_at,
+    ...(ref.image ? { image: ref.image, image_small: ref.image_small ?? null } : {}),
+  };
+  const { data, error } = await supabase.from("yt_idea_refs").insert(row).select("id");
   // Already on this idea: nothing to do.
-  if (error && (error as { code?: string }).code === "23505") return;
+  if (error && (error as { code?: string }).code === "23505") return null;
+  if (error && /check constraint "yt_idea_refs_image/.test(error.message)) throw new ApiError("That picture is too large to keep. Try framing a smaller part of it.", "too_large");
   fail(error);
+  return (data?.[0] as { id: string } | undefined)?.id ?? null;
+}
+
+/** A picture the owner added as a reference, small (for cards) or large. Read one at a time: lists leave it out. */
+export async function getRefPicture(id: string, size: "small" | "large"): Promise<string | null> {
+  const column = size === "large" ? "image" : "image_small";
+  const { data, error } = await supabase.from("yt_idea_refs").select(column).eq("id", id).limit(1);
+  fail(error);
+  return ((data ?? [])[0] as Record<string, string | null> | undefined)?.[column] ?? null;
 }
 
 export async function patchIdeaRef(id: string, fields: { note?: string | null; trashed_at?: string | null }): Promise<void> {

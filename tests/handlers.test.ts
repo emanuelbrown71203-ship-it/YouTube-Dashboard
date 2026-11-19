@@ -717,6 +717,15 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     await sql`update public.yt_idea_refs set trashed_at = now() where idea_id = ${idea.id}`;
     await sql`insert into public.yt_idea_refs (idea_id, video_id) values (${idea.id}, ${theirs.id})`;
     await expect(sql`insert into public.yt_idea_refs (idea_id, video_id) values (${idea.id}, 'not-an-id')`).rejects.toThrow();
+    // A screenshot is a reference without a video: several fit on one idea, each needs both sizes, and only as JPEG.
+    const jpeg = "data:image/jpeg;base64,/9j/4AAQ";
+    await sql`insert into public.yt_idea_refs (idea_id, image, image_small) values (${idea.id}, ${jpeg}, ${jpeg})`;
+    await sql`insert into public.yt_idea_refs (idea_id, image, image_small) values (${idea.id}, ${jpeg}, ${jpeg})`;
+    expect((await sql`select count(*)::int as n from public.yt_idea_refs where idea_id = ${idea.id} and video_id is null and trashed_at is null`)[0].n).toBe(2);
+    await expect(sql`insert into public.yt_idea_refs (idea_id) values (${idea.id})`).rejects.toThrow();
+    await expect(sql`insert into public.yt_idea_refs (idea_id, image) values (${idea.id}, ${jpeg})`).rejects.toThrow();
+    await expect(sql`insert into public.yt_idea_refs (idea_id, image, image_small) values (${idea.id}, 'data:image/png;base64,AAAA', ${jpeg})`).rejects.toThrow();
+    await expect(sql`insert into public.yt_idea_refs (idea_id, image, image_small) values (${idea.id}, ${jpeg + "A".repeat(900_000)}, ${jpeg})`).rejects.toThrow();
     await sql`update public.yt_ideas set trashed_at = now() where id = ${idea.id}`;
   });
 

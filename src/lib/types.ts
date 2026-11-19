@@ -122,14 +122,18 @@ export interface Idea {
 }
 
 /** A thumbnail reference not yet saved with an idea (the idea itself is not saved yet). */
+/** A thumbnail reference: a YouTube video, or a picture the owner added themselves (no video_id). */
 export interface RefInput {
-  video_id: string;
+  video_id: string | null;
   title: string | null;
   channel_title: string | null;
   channel_subscribers: number | null;
   views: number | null;
   outlier_score: number | null;
   published_at: string | null;
+  /** A picture not saved yet (on an idea that is not saved yet): the picture itself. */
+  image?: string;
+  image_small?: string;
 }
 export type IdeaDraft = Partial<Omit<Idea, "id" | "created_at" | "updated_at">> & { id?: string; title: string; pending_refs?: RefInput[] };
 

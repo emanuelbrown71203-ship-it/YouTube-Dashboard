@@ -659,9 +659,19 @@ button.nav-link { border: 0; background: none; font-family: inherit; font-size: 
 .ref-item .ref-pic { flex: none; width: 128px; padding: 0; border: 0; background: none; cursor: zoom-in; }
 .ref-item.open { flex-direction: column; }
 .ref-item.open .ref-pic { width: 100%; cursor: zoom-out; }
+.ref-item.open .ref-info { align-self: stretch; }
 .ref-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
 .ref-note { padding: 6px 10px; font-size: 13px; }
 .ref-picker { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-2); }
+/* Pictures the owner adds as references: shown whole, never cut to fit. */
+.ref-picture img { object-fit: contain; }
+.ref-picture-large { display: block; width: 100%; min-height: 80px; border-radius: 10px; overflow: hidden; background: var(--surface-2); }
+.ref-picture-large img { display: block; max-width: 100%; max-height: 70vh; margin: 0 auto; }
+.picture-crop { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-2); }
+.picture-crop-stage { display: flex; justify-content: center; padding: 6px; border-radius: 8px; background: #111; }
+.picture-crop-box { position: relative; display: inline-block; max-width: 100%; line-height: 0; overflow: hidden; cursor: move; touch-action: none; user-select: none; -webkit-user-select: none; }
+.picture-crop-box img { display: block; max-width: 100%; max-height: min(60vh, 560px); pointer-events: none; -webkit-user-drag: none; }
+.picture-crop-frame { position: absolute; border: 2px solid #fff; border-radius: 3px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55); pointer-events: none; }
 
 /* Sections that fold away */
 .fold { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }

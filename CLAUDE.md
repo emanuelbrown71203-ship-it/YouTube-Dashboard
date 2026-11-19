@@ -41,7 +41,7 @@ research and the last sync. Every table and view has a comment explaining it;
 | `yt_video_reach_daily`, `yt_v_video_reach` | Impressions and click-through rate per video, per day and over the newest 28 days. From YouTube's bulk reach report, a day or two behind; empty until the YouTube Reporting API is on in Google Cloud. |
 | `yt_video_pulse` | The live public view count of each upload, noted about once an hour in its first 3 days. With `yt_videos.published_at` it gives views by hours since publishing: the first 48 hours tracker. Only exists for uploads after 2026-11-17; older uploads are compared through their first days in `yt_video_analytics_daily`. |
 | `yt_templates` | The owner's own templates: what a title, a thumbnail or an intro of theirs should have (`kind`, `name`, `body`, usually one point per line). `active` ones are what ideas are checked against; the AI's reading is kept in `yt_ideas.template_check`. Follow these when you suggest titles, thumbnails or openings. |
-| `yt_idea_refs` | Thumbnail references kept with an idea: other people's videos (`video_id`, with title, channel, views and `outlier_score` copied in) and the owner's `note` on what to take from each. The picture is `https://i.ytimg.com/vi/<video_id>/mqdefault.jpg`. |
+| `yt_idea_refs` | Thumbnail references kept with an idea: other people's videos (`video_id`, with title, channel, views and `outlier_score` copied in), or a screenshot the owner added (no `video_id`; `image` and `image_small` hold it as JPEG data, framed to the thumbnail in the browser by `src/lib/pictures.ts`), and the owner's `note` on what to take from each. A video's picture is `https://i.ytimg.com/vi/<video_id>/mqdefault.jpg`. Lists never select the two image columns: read one row's picture at a time. |
 | `yt_notes` | Lines the owner wants to remember (from a podcast, a video, anywhere): `text`, `source`, `source_url`, `topic`. `on_front` ones show on the front page. |
 | `yt_comments` | Recent comments with the AI's reading: `sentiment`, `theme`, `is_question`. `pinned` ones sit on the front page. |
 
@@ -112,8 +112,9 @@ free and the owner has said to use them whenever a score needs them.
 
 - `src/`: Vite + React + TypeScript. Reads go straight to Supabase with the
   publishable key; row level security lets only owners in.
-- `supabase/migrations/`: sixteen files, all `yt_` objects. No statement in them
-  removes anything.
+- `supabase/migrations/`: seventeen files, all `yt_` objects. No statement in them
+  removes a table, a column or a row (017 only lets `yt_idea_refs.video_id` be
+  empty, for screenshots).
 - `supabase/functions/yt-api/`: one edge function, deployed with JWT
   verification off because it checks callers itself. Routes: `/auth/setup`,
   `/auth/start`, `/auth/callback`, `/auth/finish`, `/auth/disconnect`, `/sync`,

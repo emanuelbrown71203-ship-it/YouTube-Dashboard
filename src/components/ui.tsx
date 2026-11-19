@@ -17,6 +17,7 @@ const PATHS: Record<string, string> = {
   settings: "M4 7h9m4 0h3M4 17h3m4 0h9M15 4.5v5M9 14.5v5",
   external: "M14 5h5v5m0-5-8 8M11 6H6a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-5",
   plus: "M12 5v14M5 12h14",
+  image: "M5 5h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm-1 11 4.5-4.5 3.5 3.5 2.5-2.5L20 17M15.5 9.5h.01",
   close: "M6 6l12 12M18 6 6 18",
   bookmark: "M7 4h10a1 1 0 0 1 1 1v15l-6-4-6 4V5a1 1 0 0 1 1-1z",
   refresh: "M19 12a7 7 0 1 1-2.1-5M19 4v4h-4",

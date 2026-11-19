@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ago, compact, day, duration, hours, multiple, percentChange } from "../src/lib/format.ts";
+import { centreOn, clampCrop, defaultCrop, fitWithin, pictureFiles, resizeCrop, widestFrame } from "../src/lib/pictures.ts";
 import { auditAll, dominantTagWord } from "../src/lib/seo.ts";
 import { bucket, change, fillDays, headline, libraryComplete, myTopics, splitPeriod, timeline, titleStats, totals } from "../src/lib/stats.ts";
 import type { DailyRow, FormatDailyRow, Video } from "../src/lib/types.ts";
@@ -475,5 +476,46 @@ describe("reach report", () => {
       { video_id: "vidB", date: "2026-11-11", impressions: 0, ctr: null },
     ]);
     expect(parseReach("nothing useful")).toEqual([]);
+  });
+});
+
+describe("framing a screenshot", () => {
+  it("starts with the widest 16:9 box in the middle", () => {
+    // An iPhone screenshot: the box spans the width.
+    expect(defaultCrop(1179, 2556)).toEqual({ x: 0, y: (2556 - 1179 * 9 / 16) / 2, w: 1179, h: 1179 * 9 / 16 });
+    // A thumbnail-shaped picture: the box is the whole picture.
+    expect(defaultCrop(1280, 720)).toEqual({ x: 0, y: 0, w: 1280, h: 720 });
+    // A wider picture: the box is as tall as the picture.
+    expect(widestFrame(2000, 720)).toEqual({ w: 1280, h: 720 });
+  });
+
+  it("keeps the box inside the picture when it is dragged or brought to a touch", () => {
+    const box = defaultCrop(1179, 2556);
+    expect(clampCrop({ ...box, x: -50, y: -10 }, 1179, 2556)).toMatchObject({ x: 0, y: 0 });
+    expect(clampCrop({ ...box, y: 9999 }, 1179, 2556).y).toBeCloseTo(2556 - box.h);
+    expect(centreOn(box, 600, 1000, 1179, 2556).y).toBeCloseTo(1000 - box.h / 2);
+    expect(centreOn(box, 600, 10, 1179, 2556).y).toBe(0);
+  });
+
+  it("makes the box smaller around its middle, never below a fifth", () => {
+    const box = defaultCrop(1179, 2556);
+    const half = resizeCrop(box, 0.5, 1179, 2556);
+    expect(half.w).toBeCloseTo(589.5);
+    expect(half.w / half.h).toBeCloseTo(16 / 9);
+    expect(half.x + half.w / 2).toBeCloseTo(box.x + box.w / 2);
+    expect(half.y + half.h / 2).toBeCloseTo(box.y + box.h / 2);
+    expect(resizeCrop(box, 0.01, 1179, 2556).w).toBeCloseTo(1179 * 0.2);
+  });
+
+  it("shrinks what is kept to its size limit and never enlarges it", () => {
+    expect(fitWithin(1179, 663, 1280)).toEqual({ w: 1179, h: 663 });
+    expect(fitWithin(1179, 2556, 1280)).toEqual({ w: 590, h: 1280 });
+    expect(fitWithin(1920, 1080, 320)).toEqual({ w: 320, h: 180 });
+  });
+
+  it("takes only pictures from what was chosen or pasted", () => {
+    const file = (name: string, type: string) => ({ name, type }) as File;
+    expect(pictureFiles([file("a.png", "image/png"), file("notes.txt", "text/plain"), file("IMG_1.HEIC", "")]).map((f) => f.name)).toEqual(["a.png", "IMG_1.HEIC"]);
+    expect(pictureFiles(null)).toEqual([]);
   });
 });

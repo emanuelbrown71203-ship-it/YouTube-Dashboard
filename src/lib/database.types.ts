@@ -273,7 +273,7 @@ export type Database = {
         Row: {
           id: string;
           idea_id: string;
-          video_id: string;
+          video_id: string | null;
           title: string | null;
           channel_title: string | null;
           channel_subscribers: number | null;
@@ -283,11 +283,13 @@ export type Database = {
           note: string | null;
           created_at: string;
           trashed_at: string | null;
+          image: string | null;
+          image_small: string | null;
         };
         Insert: {
           id?: string;
           idea_id: string;
-          video_id: string;
+          video_id?: string | null;
           title?: string | null;
           channel_title?: string | null;
           channel_subscribers?: number | null;
@@ -297,11 +299,13 @@ export type Database = {
           note?: string | null;
           created_at?: string;
           trashed_at?: string | null;
+          image?: string | null;
+          image_small?: string | null;
         };
         Update: {
           id?: string;
           idea_id?: string;
-          video_id?: string;
+          video_id?: string | null;
           title?: string | null;
           channel_title?: string | null;
           channel_subscribers?: number | null;
@@ -311,6 +315,8 @@ export type Database = {
           note?: string | null;
           created_at?: string;
           trashed_at?: string | null;
+          image?: string | null;
+          image_small?: string | null;
         };
         Relationships: [];
       };

@@ -2,7 +2,7 @@
 // outside them, and the ones the owner keeps with an idea while making their own.
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type ChangeEvent, type ClipboardEvent, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Drawer, ErrorNote, Icon, Loading, Mult, Segmented, useNear, useToast } from "../components/ui.tsx";
 import {
   addIdeaRef, findOutsideThumbs, getIdeaCheckVideos, getIdeaRefs, getThumbGallery, type IdeaRef, lookupVideo, patchIdeaRef,
@@ -10,9 +10,11 @@ import {
 import { setPendingIdea } from "../lib/draft.ts";
 import { ago, compact, multiple } from "../lib/format.ts";
 import { useChannel, useIdeas, useVideos } from "../lib/hooks.ts";
+import { pictureFiles } from "../lib/pictures.ts";
 import { navigate } from "../lib/router.ts";
 import { currentGames, type GalleryFilter, galleryItems, type GalleryItem, gameOfThumb, ytThumb } from "../lib/thumbs.ts";
 import type { Idea, IdeaDraft, RefInput } from "../lib/types.ts";
+import { PictureCrop, pictureKey, RefPicture } from "./RefPictures.tsx";
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const message = (err: unknown) => (err instanceof Error ? err.message : "Something went wrong. Try again.");
@@ -23,7 +25,7 @@ export const useThumbGallery = () => useQuery({ queryKey: galleryKey, queryFn: g
 export const useIdeaRefs = () => useQuery({ queryKey: refsKey, queryFn: getIdeaRefs, staleTime: 60_000 });
 
 /** A found video in the shape an idea keeps. */
-export const refFrom = (v: { id?: string; video_id?: string; title: string | null; channel_title?: string | null; channel?: string | null; channel_subscribers?: number | null; subscribers?: number | null; views: number | null; outlier_score?: number | null; score?: number | null; published_at?: string | null; published?: string | null }): RefInput => ({
+export const refFrom = (v: { id?: string; video_id?: string; title: string | null; channel_title?: string | null; channel?: string | null; channel_subscribers?: number | null; subscribers?: number | null; views: number | null; outlier_score?: number | null; score?: number | null; published_at?: string | null; published?: string | null }): RefInput & { video_id: string } => ({
   video_id: (v.video_id ?? v.id)!,
   title: v.title,
   channel_title: v.channel_title ?? v.channel ?? null,
@@ -167,7 +169,7 @@ export function Thumbnails({ connected }: { connected: boolean }) {
   );
   const onIdeas = useMemo(() => {
     const n = new Map<string, number>();
-    for (const r of refs.data ?? []) n.set(r.video_id, (n.get(r.video_id) ?? 0) + 1);
+    for (const r of refs.data ?? []) if (r.video_id) n.set(r.video_id, (n.get(r.video_id) ?? 0) + 1);
     return n;
   }, [refs.data]);
   // Little from outside the owner's games yet: search one more kind of video now. The sync does the rest over the next days.
@@ -247,13 +249,13 @@ export function RefStrip({ refs }: { refs: IdeaRef[] }) {
   if (refs.length === 0) return null;
   return (
     <div className="ref-strip" aria-label={`${refs.length} thumbnail ${refs.length === 1 ? "reference" : "references"}`}>
-      {refs.slice(0, 3).map((r) => <WideThumb key={r.id} id={r.video_id} />)}
+      {refs.slice(0, 3).map((r) => (r.video_id ? <WideThumb key={r.id} id={r.video_id} /> : <RefPicture key={r.id} id={r.id} />))}
       {refs.length > 3 ? <span className="small muted">+{refs.length - 3}</span> : null}
     </div>
   );
 }
 
-type Tile = RefInput & { note?: string; match?: string };
+type Tile = RefInput & { video_id: string; match?: string };
 
 /** Picks references for an idea: from its own check, from its game, from outside the niche, or a pasted link. */
 function RefPicker(props: { idea: IdeaDraft; have: Set<string>; onAdd: (ref: RefInput) => Promise<void>; onClose: () => void }) {
@@ -285,10 +287,10 @@ function RefPicker(props: { idea: IdeaDraft; have: Set<string>; onAdd: (ref: Ref
     return (tab === "game" ? pool.filter((r) => game && gameOfThumb(r, [game]) === game) : pool.filter((r) => r.game === null)).map((r) => refFrom(r));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, check.data, gallery.data, games, game, today, channel.data?.id]);
-  const add = async (ref: RefInput) => {
-    setBusy(ref.video_id);
+  const add = async (tile: Tile) => {
+    setBusy(tile.video_id);
     try {
-      await props.onAdd(ref);
+      await props.onAdd(refFrom(tile));
     } catch (err) {
       toast(message(err), { error: true });
     }
@@ -314,7 +316,7 @@ function RefPicker(props: { idea: IdeaDraft; have: Set<string>; onAdd: (ref: Ref
   return (
     <div className="ref-picker">
       <div className="row between" style={{ gap: 8 }}>
-        <strong>Add references</strong>
+        <strong>Pick from YouTube</strong>
         <button type="button" className="btn btn-quiet btn-small" onClick={props.onClose}>Close</button>
       </div>
       <Segmented label="Where from" value={tab} onChange={(v) => { setTab(v); setShown(12); }} options={tabs} />
@@ -352,8 +354,12 @@ function RefPicker(props: { idea: IdeaDraft; have: Set<string>; onAdd: (ref: Ref
   );
 }
 
+type Listed = RefInput & { id?: string; note?: string | null };
+const refKey = (r: Listed, i: number) => r.id ?? r.video_id ?? `new-picture-${i}`;
+
 /**
- * The thumbnail references inside the idea editor. A saved idea keeps them straight away; a new
+ * The thumbnail references inside the idea editor: videos picked from YouTube, and pictures the
+ * owner adds (a screenshot, framed to the thumbnail). A saved idea keeps them straight away; a new
  * one holds them until it is saved.
  */
 export function IdeaRefs(props: { idea: IdeaDraft; onPending: (refs: RefInput[]) => void }) {
@@ -362,20 +368,40 @@ export function IdeaRefs(props: { idea: IdeaDraft; onPending: (refs: RefInput[])
   const toast = useToast();
   const [picking, setPicking] = useState(false);
   const [big, setBig] = useState<string | null>(null);
+  // Pictures chosen and waiting to be framed, one at a time.
+  const [queue, setQueue] = useState<{ files: File[]; total: number }>({ files: [], total: 0 });
+  const fileInput = useRef<HTMLInputElement>(null);
   const saved = props.idea.id ? (refs.data ?? []).filter((r) => r.idea_id === props.idea.id) : [];
   const pending = props.idea.pending_refs ?? [];
-  const list: (RefInput & { id?: string; note?: string | null })[] = [...saved, ...pending];
-  const have = new Set(list.map((r) => r.video_id));
+  const list: Listed[] = [...saved, ...pending];
+  const have = new Set(list.map((r) => r.video_id).filter((v): v is string => Boolean(v)));
   const reload = () => queryClient.invalidateQueries({ queryKey: refsKey });
   const add = async (ref: RefInput) => {
-    if (have.has(ref.video_id)) return;
+    if (ref.video_id && have.has(ref.video_id)) return;
     if (props.idea.id) {
-      await addIdeaRef(props.idea.id, ref);
+      const id = await addIdeaRef(props.idea.id, ref);
+      // The picture was just made here: no need to fetch it back.
+      if (id && ref.image && ref.image_small) {
+        queryClient.setQueryData(pictureKey(id, "small"), ref.image_small);
+        queryClient.setQueryData(pictureKey(id, "large"), ref.image);
+      }
       await reload();
     } else props.onPending([...pending, ref]);
   };
-  const remove = async (r: RefInput & { id?: string }) => {
-    if (!r.id) return props.onPending(pending.filter((p) => p.video_id !== r.video_id));
+  const choose = (files: File[]) => {
+    if (files.length) setQueue((q) => ({ files: [...q.files, ...files], total: q.files.length ? q.total + files.length : files.length }));
+  };
+  const picked = (e: ChangeEvent<HTMLInputElement>) => {
+    choose(pictureFiles(e.target.files));
+    e.target.value = "";
+  };
+  const paste = (e: ClipboardEvent<HTMLDivElement>) => {
+    const files = pictureFiles(e.clipboardData?.files);
+    if (files.length) { e.preventDefault(); choose(files); }
+  };
+  const next = () => setQueue((q) => ({ files: q.files.slice(1), total: q.files.length > 1 ? q.total : 0 }));
+  const remove = async (r: Listed) => {
+    if (!r.id) return props.onPending(pending.filter((p) => p !== r));
     try {
       await patchIdeaRef(r.id, { trashed_at: new Date().toISOString() });
       await reload();
@@ -392,41 +418,75 @@ export function IdeaRefs(props: { idea: IdeaDraft; onPending: (refs: RefInput[])
       toast(message(err), { error: true });
     }
   };
+  const framing = queue.files[0];
   return (
-    <div className="field">
+    <div className="field" onPaste={paste}>
       <span>Thumbnail references</span>
-      {list.length === 0 && !picking ? <small>Other people's thumbnails to look at while you make yours. Tap Add references to pick some.</small> : null}
+      {list.length === 0 && !picking && !framing ? <small>Other people's thumbnails to look at while you make yours. Pick some from YouTube, or add a screenshot.</small> : null}
       {list.length ? (
         <div className="ref-list">
-          {list.map((r) => (
-            <div key={r.video_id} className={`ref-item${big === r.video_id ? " open" : ""}`}>
-              <button type="button" className="ref-pic" onClick={() => setBig(big === r.video_id ? null : r.video_id)} aria-label={big === r.video_id ? "Show smaller" : "Show larger"}>
-                <WideThumb id={r.video_id} size={big === r.video_id ? "large" : "small"} />
-              </button>
-              <div className="ref-info">
-                <div className="clip2" style={{ fontWeight: 600, lineHeight: 1.3 }}>{r.title}</div>
-                <div className="small muted clip">
-                  {r.channel_title}{r.outlier_score !== null ? `, ${multiple(r.outlier_score)} its channel's usual` : ""}{r.id ? "" : ". Kept when the idea is saved"}
-                </div>
-                {r.id ? (
-                  <input
-                    className="input ref-note" defaultValue={r.note ?? ""} placeholder="What to take from it" aria-label={`What to take from "${r.title}"`} maxLength={300}
-                    onBlur={(e) => void note(r.id!, e.target.value, r.note ?? null)}
-                  />
-                ) : null}
-                <div className="row" style={{ gap: 4 }}>
-                  <a className="btn btn-quiet btn-small" href={`https://www.youtube.com/watch?v=${r.video_id}`} target="_blank" rel="noreferrer">Open</a>
-                  <button type="button" className="btn btn-quiet btn-small" onClick={() => void remove(r)}>Remove</button>
+          {list.map((r, i) => {
+            const key = refKey(r, i);
+            const open = big === key;
+            const label = r.video_id ? `"${r.title}"` : "this screenshot";
+            return (
+              <div key={key} className={`ref-item${open ? " open" : ""}`}>
+                <button type="button" className="ref-pic" onClick={() => setBig(open ? null : key)} aria-label={open ? "Show smaller" : "Show larger"}>
+                  {r.video_id
+                    ? <WideThumb id={r.video_id} size={open ? "large" : "small"} />
+                    : <RefPicture id={r.id} src={r.id ? undefined : (open ? r.image : r.image_small)} size={open ? "large" : "small"} />}
+                </button>
+                <div className="ref-info">
+                  {r.video_id ? (
+                    <>
+                      <div className="clip2" style={{ fontWeight: 600, lineHeight: 1.3 }}>{r.title}</div>
+                      <div className="small muted clip">
+                        {r.channel_title}{r.outlier_score !== null ? `, ${multiple(r.outlier_score)} its channel's usual` : ""}{r.id ? "" : ". Kept when the idea is saved"}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ fontWeight: 600, lineHeight: 1.3 }}>Your screenshot</div>
+                      {r.id ? null : <div className="small muted">Kept when the idea is saved</div>}
+                    </>
+                  )}
+                  {r.id ? (
+                    <input
+                      className="input ref-note" defaultValue={r.note ?? ""} placeholder="What to take from it" aria-label={`What to take from ${label}`} maxLength={300}
+                      onBlur={(e) => void note(r.id!, e.target.value, r.note ?? null)}
+                    />
+                  ) : null}
+                  <div className="row" style={{ gap: 4 }}>
+                    {r.video_id ? <a className="btn btn-quiet btn-small" href={`https://www.youtube.com/watch?v=${r.video_id}`} target="_blank" rel="noreferrer">Open</a> : null}
+                    <button type="button" className="btn btn-quiet btn-small" onClick={() => void remove(r)}>Remove</button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : null}
-      {picking
-        ? <RefPicker idea={props.idea} have={have} onAdd={add} onClose={() => setPicking(false)} />
-        : <div><button type="button" className="btn btn-small" onClick={() => setPicking(true)}><Icon name="plus" />Add references</button></div>}
+      {framing ? (
+        <PictureCrop
+          key={`${framing.name}-${framing.size}-${framing.lastModified}-${queue.files.length}`}
+          file={framing}
+          progress={queue.total > 1 ? `${queue.total - queue.files.length + 1} of ${queue.total}` : undefined}
+          skipLabel={queue.files.length > 1 ? "Skip this one" : "Cancel"}
+          onSkip={next}
+          onUse={async (picture) => {
+            await add({ video_id: null, title: null, channel_title: null, channel_subscribers: null, views: null, outlier_score: null, published_at: null, ...picture });
+            next();
+          }}
+        />
+      ) : null}
+      {picking ? <RefPicker idea={props.idea} have={have} onAdd={add} onClose={() => setPicking(false)} /> : null}
+      <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={picked} aria-label="Choose screenshots" />
+      {picking || framing ? null : (
+        <div className="row-wrap" style={{ gap: 8 }}>
+          <button type="button" className="btn btn-small" onClick={() => setPicking(true)}><Icon name="plus" />Pick from YouTube</button>
+          <button type="button" className="btn btn-small" onClick={() => fileInput.current?.click()}><Icon name="image" />Add a screenshot</button>
+        </div>
+      )}
     </div>
   );
 }
-
