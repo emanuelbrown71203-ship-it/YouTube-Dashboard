@@ -34,7 +34,7 @@ research and the last sync. Every table and view has a comment explaining it;
 | `yt_video_analytics_daily` | Day-by-day numbers for uploads in their first weeks. |
 | `yt_reports` | Latest 28-day breakdowns as JSON: traffic sources, countries, age and gender, devices, top videos. |
 | `yt_v_my_formats` | Usual views and upload pace per format. |
-| `yt_v_ideas` | The ideas board (ideas in the bin are left out). |
+| `yt_v_ideas` | The ideas board (ideas in the bin, and suggestions still waiting in the Suggested tab, are left out). |
 | `yt_research_videos`, `yt_keywords`, `yt_research_channels`, `yt_research_runs` | Outliers found, phrases scored, channels watched, and every research run with what it returned. |
 | `yt_sync_runs` | Sync history. Check the newest row before trusting freshness. |
 | `yt_goals`, `yt_tests`, `yt_video_changes` | The owner's goals, their title and thumbnail tests (what they changed, what they expected, how it went), and every title or thumbnail change the sync noticed. |
@@ -44,6 +44,7 @@ research and the last sync. Every table and view has a comment explaining it;
 | `yt_idea_refs` | Thumbnail references kept with an idea: other people's videos (`video_id`, with title, channel, views and `outlier_score` copied in), or a screenshot the owner added (no `video_id`; `image` and `image_small` hold it as JPEG data, framed to the thumbnail in the browser by `src/lib/pictures.ts`), and the owner's `note` on what to take from each. A video's picture is `https://i.ytimg.com/vi/<video_id>/mqdefault.jpg`. Lists never select the two image columns: read one row's picture at a time. |
 | `yt_notes` | Lines the owner wants to remember (from a podcast, a video, anywhere): `text`, `source`, `source_url`, `topic`. `on_front` ones show on the front page. |
 | `yt_comments` | Recent comments with the AI's reading: `sentiment`, `theme`, `is_question`. `pinned` ones sit on the front page. |
+| `yt_rhythm` | The owner's upload rhythm: one target per format (`long`, `short`, `live`), "post at least every `every_days` days". `active = false` switches one off. Home shows the days since the last upload of that format against it. |
 
 `yt_v_videos` also carries `topic` (the game), `estimated_revenue` and `feeders`
 (which videos sent viewers to a long video). `yt_research_videos.explanation`
@@ -82,6 +83,9 @@ free and the owner has said to use them whenever a score needs them.
   decided to make it: that puts it on the production board (Group by Stage),
   where `status` says how far along it is (`idea` = picked, not started).
   Never set `status` past `idea` without `picked_at`.
+  Rows with `in_suggested = true` are suggestions the dashboard wrote that
+  wait in the Suggested tab; they are not the owner's ideas until kept
+  (`in_suggested = false`). `suggestion` says why each was suggested.
 - **Save a template for them**: insert into `public.yt_templates` (`kind`:
   `title` | `thumbnail` | `intro` | `other`, `name`, `body`).
 - **Save a line for them**: insert into `public.yt_notes` (`text`, and
@@ -112,15 +116,15 @@ free and the owner has said to use them whenever a score needs them.
 
 - `src/`: Vite + React + TypeScript. Reads go straight to Supabase with the
   publishable key; row level security lets only owners in.
-- `supabase/migrations/`: seventeen files, all `yt_` objects. No statement in them
+- `supabase/migrations/`: eighteen files, all `yt_` objects. No statement in them
   removes a table, a column or a row (017 only lets `yt_idea_refs.video_id` be
   empty, for screenshots).
 - `supabase/functions/yt-api/`: one edge function, deployed with JWT
   verification off because it checks callers itself. Routes: `/auth/setup`,
   `/auth/start`, `/auth/callback`, `/auth/finish`, `/auth/disconnect`, `/sync`,
   `/sync/extras`, `/sync/pulse`, `/research`, `/ai/setup`, `/ai/titles`,
-  `/ai/check`, `/ai/import`, `/ideas/check`, `/mcp/setup`, `/mcp/<secret>`,
-  `/health`. `/sync/pulse` runs every hour (cron job `yt-pulse`, scheduler
+  `/ai/check`, `/ai/import`, `/ai/script`, `/ideas/check`, `/ideas/suggest`,
+  `/mcp/setup`, `/mcp/<secret>`, `/health`. `/sync/pulse` runs every hour (cron job `yt-pulse`, scheduler
   secret only): it spots a new upload and starts a sync, or notes the live
   view counts of uploads in their first 3 days; two lookups each time. A sync does the quick
   work, then has the database call `/sync/extras` (scheduler secret only) for
@@ -129,7 +133,7 @@ free and the owner has said to use them whenever a score needs them.
   anything is left, so no request runs out of time; their results are added
   to the same `yt_sync_runs` row under `games`, `comments_read`, `feeders`. Google sign-in only lets a browser in when the same
   browser that started it comes back with the secret it kept (`/auth/finish`);
-  do not weaken that. `index.ts` is the only Deno-specific file (eight files in the folder); the rest take their
+  do not weaken that. `index.ts` is the only Deno-specific file (nine files in the folder); the rest take their
   database client, `fetch` and clock as arguments so tests can replace them.
   Supabase stops accepting the older `anon` key at the end of 2026, so the app
   sends the publishable key from `.env` and `index.ts` reads the function's
@@ -176,6 +180,30 @@ free and the owner has said to use them whenever a score needs them.
   (`/sync/extras` does up to four a turn; opening the Ideas page starts a
   pass through `/ideas/check`). These spend the day's free lookups like any
   search, up to the same ceiling, and are stored with `params.auto = true`.
+- Suggested ideas (Ideas, Suggested tab; `ideas.ts`, `src/pages/Suggested.tsx`):
+  the dashboard writes ideas itself, as idea rows with `in_suggested = true`,
+  so each gets the same YouTube check and scores as any idea before the
+  owner sees it. A batch of 10 (8 long-form, 2 Shorts) comes every 7 days
+  and whenever the owner taps Give me more; follow-ups (3) come when an
+  upload beats its usual by 2x or more (the next part of a series first,
+  then the same challenge on another of their games). The hourly pulse
+  sees what is due and has the database call `/ideas/suggest` with the
+  scheduler secret. The AI is given the owner's winners and flops, what is
+  breaking out in their games and on other games, Shorts that did well,
+  comment requests, their title templates, everything they already have or
+  made, and the suggestions they kept and turned down. **Titles matter most
+  to the owner**: a title must name the game and state the challenge
+  plainly; `titleProblems` in `ideas.ts` throws out vague, shouting or hype
+  titles whatever the AI wrote, falling back to a clear alternative, and
+  `isRepeat` drops the same video however it is worded (titles that differ
+  in a number, like "Act 2" and "Act 3", are different videos). Keep sends
+  one to the board; Not for me bins it and the next batch learns from it;
+  ones left alone for 21 days are retired (`suggestion.expired`).
+- The script starter (Script fold in the idea editor; `/ai/script`) drafts
+  a hook, what happens and timed beats with a shots checklist, from the
+  idea, the owner's intro templates, the idea's YouTube check, their best
+  titles and their lines to remember. It fills empty parts and only offers
+  the rest: it never overwrites what the owner wrote.
 - Thumbnail references (Research, Thumbnails tab; `src/pages/Thumbnails.tsx`)
   are long-form videos in `yt_research_videos` from the last year that did
   at least 3x their channel's usual, split into the owner's games (open
@@ -210,15 +238,16 @@ free and the owner has said to use them whenever a score needs them.
   Shorts suggests the idea could carry a long video (`shortsWorthAVideo`).
   The same goes when answering the owner's questions from the data.
 - **Sections** (`NAV` in `src/App.tsx`): Home, Videos (all videos, title
-  and thumbnail tests), Ideas (board, planner), Research (outliers,
+  and thumbnail tests), Ideas (board, suggested, planner), Research (outliers,
   thumbnails, search phrases, channels), Stats (charts,
   monthly recap, by game, Shorts to long), Goals, Comments, Playbook
   (templates, lines to remember), Settings. A phone shows the first four
   and a More menu. Put a new page in the section it belongs to; when it
   fits none of them, give it a section of its own. Never tuck it under
   whichever section is handy.
-- The front page is for what the owner acts on: the new upload, the weekly
-  note, saved lines, pinned comments, goals, latest uploads. Each shows a
+- The front page is for what the owner acts on: the new upload, waiting
+  follow-ups, the upload rhythm (only with a target), the weekly note, saved
+  lines, pinned comments, goals, latest uploads. Each shows a
   few and links to the rest (3 lines, 2 goals, 4 uploads); a block with
   nothing in it is left out. Charts and breakdowns go in the Stats section
   (`#/stats`), not there.

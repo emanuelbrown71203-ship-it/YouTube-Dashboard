@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ago, compact, day, duration, hours, multiple, percentChange } from "../src/lib/format.ts";
+import { daysSince, rhythmStatus, targetChoices, usualGap } from "../src/lib/rhythm.ts";
+import { cleanTitle, isRepeat, likeness, matchGame, pickTitle, titleProblems } from "../supabase/functions/yt-api/ideas.ts";
 import { centreOn, clampCrop, defaultCrop, fitWithin, pictureFiles, resizeCrop, widestFrame } from "../src/lib/pictures.ts";
 import { auditAll, dominantTagWord } from "../src/lib/seo.ts";
 import { bucket, change, fillDays, headline, libraryComplete, myTopics, splitPeriod, timeline, titleStats, totals } from "../src/lib/stats.ts";
@@ -517,5 +519,61 @@ describe("framing a screenshot", () => {
     const file = (name: string, type: string) => ({ name, type }) as File;
     expect(pictureFiles([file("a.png", "image/png"), file("notes.txt", "text/plain"), file("IMG_1.HEIC", "")]).map((f) => f.name)).toEqual(["a.png", "IMG_1.HEIC"]);
     expect(pictureFiles(null)).toEqual([]);
+  });
+});
+
+describe("suggested idea titles", () => {
+  it("keeps only titles that say plainly what the video is", () => {
+    expect(titleProblems("Can You Beat Elden Ring Using Only Merchant Items?", "Elden Ring")).toEqual([]);
+    expect(titleProblems("Honour Mode With Only 2 Characters in BG3 - Act 3", "Baldur's Gate 3")).toEqual([]);
+    expect(titleProblems("This Changed Everything", "Elden Ring")).toContain("does not name the game");
+    expect(titleProblems("I Tried Something INSANE in Elden Ring", "Elden Ring")).toEqual(["shouts", "hides the challenge behind hype"]);
+    expect(titleProblems("Elden Ring", "Elden Ring")).toContain("too short to say what the video is");
+  });
+
+  it("cleans titles and falls back to a clear alternative", () => {
+    expect(cleanTitle(' "Can You Beat Cuphead With 1 HP? \u{1F525} #shorts #cuphead" ')).toBe("Can You Beat Cuphead With 1 HP?");
+    expect(pickTitle(["This Changed Everything", "Elden Ring But Every Boss Is Doubled", "Elden Ring Bosses Doubled, Can I Win?"], "Elden Ring"))
+      .toEqual({ title: "Elden Ring But Every Boss Is Doubled", others: ["Elden Ring Bosses Doubled, Can I Win?"] });
+    expect(pickTitle(["This Changed Everything"], "Elden Ring")).toBeNull();
+  });
+
+  it("knows a repeat however it is worded, but not the next part of a series", () => {
+    expect(isRepeat("Can You Beat Elden Ring Using Only Merchant Items", ["Can You Beat Elden Ring Using Only Merchant Items?"])).toBe(true);
+    expect(isRepeat("Elden Ring But I Only Use Merchant Items", ["Can You Beat Elden Ring Using Only Merchant Items?"])).toBe(true);
+    expect(isRepeat("Honour Mode But I Only Use 2 Characters - Act 3", ["Honour Mode But I Only Use 2 Characters - Act 2"])).toBe(false);
+    expect(likeness("Cuphead With Only 1 HP", "Elden Ring Without Dodging")).toBe(0);
+  });
+
+  it("spells the game the way the owner does", () => {
+    expect(matchGame("elden ring", ["Elden Ring", "Cuphead"])).toBe("Elden Ring");
+    expect(matchGame("Baldur's Gate", ["Baldur's Gate 3"])).toBe("Baldur's Gate 3");
+    expect(matchGame("Minecraft", ["Elden Ring"])).toBeNull();
+  });
+});
+
+describe("upload rhythm", () => {
+  const now = Date.parse("2026-11-19T12:00:00Z");
+  const at = (daysAgo: number, content_type: "long" | "short" | "live", privacy = "public") =>
+    ({ id: `${content_type}-${daysAgo}`, content_type, privacy, published_at: new Date(now - daysAgo * 86_400_000).toISOString() }) as unknown as Video;
+  const videos = [at(76, "long"), at(90, "long"), at(110, "long"), at(130, "long"), at(3, "long", "private"), at(200, "short"), at(5, "live")];
+
+  it("counts each format on its own, public uploads only", () => {
+    expect(daysSince(videos, "long", now)).toBe(76);
+    expect(daysSince(videos, "short", now)).toBe(200);
+    expect(daysSince(videos, "live", now)).toBe(5);
+    expect(daysSince([], "long", now)).toBeNull();
+  });
+
+  it("finds the usual gap from the last year, and none from too few uploads", () => {
+    expect(usualGap(videos, "long", now)).toBe(20);
+    expect(usualGap(videos, "short", now)).toBeNull();
+  });
+
+  it("says how a format stands against its target", () => {
+    expect(rhythmStatus({ format: "long", every_days: 14, active: true }, videos, now)).toMatchObject({ since: 76, late: true, share: 1, words: "62 days past your target." });
+    expect(rhythmStatus({ format: "live", every_days: 7, active: true }, videos, now)).toMatchObject({ since: 5, late: false, words: "Next one due in 2 days." });
+    expect(targetChoices(20)).toEqual([3, 5, 7, 10, 14, 20, 21, 30]);
+    expect(targetChoices(null)).toEqual([3, 5, 7, 10, 14, 21, 30]);
   });
 });

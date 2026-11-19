@@ -574,7 +574,7 @@ function staleIdeas(sql: Sql, only: string | null) {
           -- A check that was cut off, or that failed, is tried again after a while.
           and not (r.summary ? 'pending' and r.created_at < now() - interval '10 minutes')
           and not (r.summary ? 'failed' and r.created_at < now() - interval '6 hours'))
-    order by (i.picked_at is not null) desc, i.created_at desc limit 80`;
+    order by (i.picked_at is not null) desc, i.in_suggested, i.created_at desc limit 80`;
 }
 
 export async function countStaleIdeas(sql: Sql): Promise<number> {

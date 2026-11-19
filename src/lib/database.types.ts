@@ -352,6 +352,9 @@ export type Database = {
           template_check: Json | null;
           template_checked_at: string | null;
           picked_at: string | null;
+          in_suggested: boolean;
+          suggested_at: string | null;
+          suggestion: Json | null;
         };
         Insert: {
           id?: string;
@@ -384,6 +387,9 @@ export type Database = {
           template_check?: Json | null;
           template_checked_at?: string | null;
           picked_at?: string | null;
+          in_suggested?: boolean;
+          suggested_at?: string | null;
+          suggestion?: Json | null;
         };
         Update: {
           id?: string;
@@ -416,6 +422,9 @@ export type Database = {
           template_check?: Json | null;
           template_checked_at?: string | null;
           picked_at?: string | null;
+          in_suggested?: boolean;
+          suggested_at?: string | null;
+          suggestion?: Json | null;
         };
         Relationships: [];
       };
@@ -848,6 +857,30 @@ export type Database = {
         };
         Relationships: [];
       };
+      yt_rhythm: {
+        Row: {
+          format: string;
+          every_days: number;
+          active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          format: string;
+          every_days: number;
+          active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          format?: string;
+          every_days?: number;
+          active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       yt_sync_runs: {
         Row: {
           id: number;
@@ -1223,6 +1256,7 @@ export type Database = {
           updated_at: string | null;
           topic: string | null;
           picked_at: string | null;
+          suggested_at: string | null;
         };
         Relationships: [];
       };

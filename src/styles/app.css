@@ -722,3 +722,22 @@ button.nav-link { border: 0; background: none; font-family: inherit; font-size: 
 @media (pointer: coarse) {
   input, select, textarea, .input, .select, .textarea, .ref-note { font-size: 16px !important; }
 }
+
+/* Suggested ideas (Ideas, Suggested tab). The title is what the owner judges first. */
+.suggestion { display: flex; flex-direction: column; gap: 8px; }
+.suggestion-title { margin: 2px 0 0; font-size: 18px; line-height: 1.3; font-weight: 750; text-wrap: balance; }
+.suggestion-others { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.suggestion-others .link-button { text-align: left; font-weight: 500; font-size: 14px; }
+.suggestion-challenge { margin: 0; color: var(--ink-2); line-height: 1.5; }
+.tag-strong { background: var(--accent-soft); border-color: transparent; color: var(--accent-strong); }
+
+/* The script starter in the idea editor. */
+.script-starter { display: flex; flex-direction: column; gap: 10px; }
+.script-draft { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-2); }
+.script-draft-part { padding-top: 8px; border-top: 1px solid var(--line); }
+
+/* Upload rhythm (Goals page and Home). */
+.rhythm-row { align-items: center; gap: 12px; }
+.rhythm-row .select { width: auto; flex: none; max-width: 190px; }
+.rhythm-late { color: var(--bad); font-weight: 600; }
+@media (max-width: 640px) { .rhythm-row { flex-wrap: wrap; } .rhythm-row .select { max-width: none; width: 100%; } }

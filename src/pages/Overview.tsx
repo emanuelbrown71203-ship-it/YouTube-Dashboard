@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { GoalsStrip, KindWords, RunBand, STATS_TABS, Tabs } from "./Growth.tsx";
 import { FrontLines } from "./Notes.tsx";
 import { NewUpload, WeekCard } from "./Pulse.tsx";
+import { RhythmCard } from "./Rhythm.tsx";
+import { FollowUpsWaiting } from "./Suggested.tsx";
 import { BarList, Sparkline, Timeline, type UploadPin } from "../components/Timeline.tsx";
 import { Delta, ErrorNote, FormatTag, Loading, Mult, Segmented, Thumb } from "../components/ui.tsx";
 import { ago, compact, day, FORMAT_PLURAL, hours, signed, whole } from "../lib/format.ts";
@@ -96,7 +98,7 @@ export function Overview({ view }: { view: "home" | "stats" }) {
         {home ? null : <Segmented label="Time range" value={range} options={RANGES} onChange={setRange} />}
       </div>
       {home ? null : <Tabs label="Stats" base="/stats" current="" tabs={STATS_TABS} />}
-      {home ? <><RunBand /><NewUpload /><WeekCard /></> : null}
+      {home ? <><RunBand /><NewUpload /><FollowUpsWaiting /><RhythmCard /><WeekCard /></> : null}
 
       {connection.data?.connection_error ? (
         <div className="notice error" role="alert">

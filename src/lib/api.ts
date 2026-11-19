@@ -264,19 +264,47 @@ export async function getBriefing(): Promise<unknown> {
 // ---------------------------------------------------------------------------
 
 const IDEA_COLUMNS =
-  "id, format, status, discovery, title, title_options, target_keyword, hook, concept, outline, thumbnail_concept, priority, target_date, inspiration_url, inspiration_video_id, notes, video_id, parent_id, sort_order, source, created_at, updated_at, topic, template_check, template_checked_at, picked_at";
+  "id, format, status, discovery, title, title_options, target_keyword, hook, concept, outline, thumbnail_concept, priority, target_date, inspiration_url, inspiration_video_id, notes, video_id, parent_id, sort_order, source, created_at, updated_at, topic, template_check, template_checked_at, picked_at, in_suggested, suggested_at, suggestion";
 
 export async function getIdeas(): Promise<Idea[]> {
   const { data, error } = await supabase.from("yt_ideas").select(IDEA_COLUMNS)
-    .is("trashed_at", null).eq("archived", false).order("sort_order").limit(1000);
+    .is("trashed_at", null).eq("archived", false).eq("in_suggested", false).order("sort_order").limit(1000);
   fail(error);
   return (data ?? []) as unknown as Idea[];
 }
 
+/** Ideas the dashboard wrote that are waiting in the Suggested tab, newest first. */
+export async function getSuggestions(): Promise<Idea[]> {
+  const { data, error } = await supabase.from("yt_ideas").select(IDEA_COLUMNS)
+    .eq("in_suggested", true).is("trashed_at", null).order("suggested_at", { ascending: false }).limit(200);
+  fail(error);
+  return (data ?? []) as unknown as Idea[];
+}
+
+/** Keeps a suggestion: it joins the board under its game, with the title the owner picked. */
+export async function keepSuggestion(id: string, titles?: { title: string; title_options: string[] }): Promise<void> {
+  const { error } = await supabase.from("yt_ideas").update({ in_suggested: false, ...(titles ?? {}) }).eq("id", id);
+  fail(error);
+}
+
+/** "Not for me": the suggestion goes in the bin, and the next batch stays away from ideas like it. */
+export async function dismissSuggestion(id: string): Promise<void> {
+  const { error } = await supabase.from("yt_ideas").update({ trashed_at: new Date().toISOString() }).eq("id", id);
+  fail(error);
+}
+
+/** Has the dashboard write a batch of suggestions now. Takes about a minute. */
+export const askForSuggestions = () =>
+  callApi<{ made: "batch" | "follow_up" | "nothing"; added: { id: string; title: string }[]; dropped?: number; running?: boolean; checking?: boolean }>("/ideas/suggest", {});
+
+/** A first draft of an idea's hook, what happens and beats. */
+export const draftScript = (body: { idea_id?: string; title: string; game: string | null; format: string; hook?: string | null; concept?: string | null; outline?: string | null }) =>
+  callApi<{ hook: string; concept: string; outline: string }>("/ai/script", body);
+
 export async function saveIdea(draft: IdeaDraft): Promise<Idea> {
   // The AI's reading against the templates is written by the server only, never from here, and
   // references waiting for the idea to be saved go in their own table once it is.
-  const { id, template_check: _check, template_checked_at: _checkedAt, pending_refs: _refs, ...fields } = draft;
+  const { id, template_check: _check, template_checked_at: _checkedAt, pending_refs: _refs, in_suggested: _waiting, suggested_at: _suggested, suggestion: _why, ...fields } = draft;
   const clean = { ...fields, title: fields.title.trim() };
   if (!clean.title) throw new ApiError("Give the idea a title first.", "bad_request");
   const query = id
@@ -491,4 +519,24 @@ export async function getWatchedChannels(): Promise<ResearchChannel[]> {
 export async function stopWatchingChannel(id: string): Promise<void> {
   const { error } = await supabase.rpc("yt_watch_channel", { p_channel_id: id, p_watched: false });
   fail(error);
+}
+
+// ---------------------------------------------------------------------------
+// Upload rhythm
+// ---------------------------------------------------------------------------
+
+export async function getRhythm(): Promise<import("./rhythm.ts").RhythmTarget[]> {
+  const { data, error } = await supabase.from("yt_rhythm").select("format, every_days, active");
+  fail(error);
+  return (data ?? []) as unknown as import("./rhythm.ts").RhythmTarget[];
+}
+
+/** Sets a format's target (every so many days), or switches it off with null. */
+export async function setRhythm(format: string, everyDays: number | null): Promise<void> {
+  const fields = everyDays === null ? { active: false } : { every_days: everyDays, active: true };
+  const { data, error } = await supabase.from("yt_rhythm").update(fields).eq("format", format).select("format");
+  fail(error);
+  if ((data ?? []).length || everyDays === null) return;
+  const added = await supabase.from("yt_rhythm").insert({ format, every_days: everyDays, active: true });
+  fail(added.error);
 }

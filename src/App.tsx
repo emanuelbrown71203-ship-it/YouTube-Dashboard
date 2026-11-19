@@ -11,6 +11,7 @@ import { Notes } from "./pages/Notes.tsx";
 import { Overview } from "./pages/Overview.tsx";
 import { Research } from "./pages/Research.tsx";
 import { Settings } from "./pages/Settings.tsx";
+import { Suggested } from "./pages/Suggested.tsx";
 import { type GoogleResult, SignIn } from "./pages/SignIn.tsx";
 import { Templates } from "./pages/Templates.tsx";
 import { Videos } from "./pages/Videos.tsx";
@@ -205,6 +206,13 @@ function Shell(props: { google: GoogleResult | null; clearGoogle: () => void; on
             </>
           )
           : section === "videos" ? <Videos />
+          : section === "ideas" && sub === "suggested" ? (
+            <>
+              <div className="page-head"><h1>Ideas</h1></div>
+              <Tabs label="Ideas" base="/ideas" current={sub} tabs={IDEA_TABS} />
+              <Suggested />
+            </>
+          )
           : section === "ideas" && sub === "planner" ? (
             <>
               <div className="page-head"><h1>Ideas</h1></div>

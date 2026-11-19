@@ -232,6 +232,41 @@ const deps: Deps = {
         }),
       };
     }
+    if (props.suggestions) {
+      // Suggested ideas: clear challenge titles on the owner's games, built on what it was given.
+      const sent = JSON.parse(req.prompt) as { what_to_write: string; their_games: string[]; their_uploads_that_beat_their_usual: { title: string; times_usual: number }[] };
+      const follow = /just beat their usual: "([^"]+)"/.exec(sent.what_to_write)?.[1];
+      const n = Number(/Write (\d+)/.exec(sent.what_to_write)?.[1] ?? 10);
+      const rules = ["Using Only Merchant Items", "With Only 1 HP", "Without Dodging", "Using Only Bosses' Weapons", "With Random Gear Every Area", "Without Leveling Up", "Using Only Throwables", "With A New Rule Every Boss", "Without Healing", "Using Only Starting Gear", "With One Hand On The Controller", "Using Only Magic"];
+      const games = sent.their_games.length ? sent.their_games : ["Elden Ring"];
+      const best = sent.their_uploads_that_beat_their_usual[0];
+      return {
+        suggestions: Array.from({ length: n }, (_, i) => {
+          const game = games[i % games.length];
+          const rule = rules[(i + (follow ? 5 : 0) + (Date.now() % 7)) % rules.length];
+          const kind = follow ? "follow_up" : ["your_format", "breakout", "other_games", "short_hint", "comment"][i % 5];
+          return {
+            title: follow && i === 0 ? (/Act \d+/.test(follow) ? follow.replace(/Act (\d+)/, (_m, d) => `Act ${Number(d) + 1}`) : `${follow.replace(/[?!.]+$/, "")} - Part 2`) : `Can You Beat ${game} ${rule}?`,
+            other_titles: [`${game} But I Can Only Win ${rule}`, `I Tried Beating ${game} ${rule}`],
+            game, format: follow || i < 8 ? "long" : "short",
+            challenge: `(made-up) Play through ${game} ${rule.toLowerCase()}. If the rule breaks, the run starts over.`,
+            why: best ? `(made-up) Your "${best.title}" got ${best.times_usual} times your usual views.` : "(made-up) A format working in your games.",
+            kind, based_on: follow ?? best?.title ?? "",
+          };
+        }),
+      };
+    }
+    if (props.beats) {
+      const sent = JSON.parse(req.prompt) as { video: { title: string; format: string } };
+      const short = /short/i.test(sent.video.format);
+      return {
+        hook: `(made-up) ${sent.video.title} Sounds easy. It is not, and one mistake ends the run.`,
+        what_happens: "(made-up) The rules, how the run is won or lost, and what makes it hard.",
+        beats: (short ? ["0s Hook", "10s The rule", "30s The hardest moment", "50s The ending"] : ["0:00 Cold open", "1:00 The rules", "4:00 First wall", "9:00 It falls apart", "14:00 The comeback", "18:00 Final boss"])
+          .map((b) => { const [at, ...label] = b.split(" "); return { at, beat: label.join(" "), detail: "(made-up) What happens here and what to say." }; }),
+        shots: ["(made-up) The moment the rule nearly breaks", "(made-up) A close-up of the health bar"],
+      };
+    }
     if (props.ideas) {
       const pasted = (JSON.parse(req.prompt) as { pasted_text: string }).pasted_text;
       return {

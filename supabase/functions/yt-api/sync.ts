@@ -8,6 +8,7 @@ import {
 import {
   logChanges, nameTopics, readComments, syncComments, syncFeeders, syncFirstDays, syncReach, syncTestDays, syncTopics, tickGoals,
 } from "./growth.ts";
+import { queueSuggestionsIfDue } from "./ideas.ts";
 import { coverGames, coverIdeas, coverOutside, countStaleIdeas, refreshWatched } from "./research.ts";
 import { classifyFormat } from "./scoring.ts";
 
@@ -613,6 +614,17 @@ async function notePulse(sql: Sql): Promise<number> {
  * live view count of uploads in their first three days and writes it down. Two lookups at most.
  */
 export async function runPulse(deps: Deps): Promise<Record<string, unknown>> {
+  const out = await pulse(deps);
+  // Once an hour is also when the suggestions look for something to write: follow-ups to an upload
+  // that beat its usual, or the weekly batch. The writing itself runs as a request of its own.
+  if (out.status !== "skipped") {
+    const queued = await queueSuggestionsIfDue(deps).catch((err) => { deps.log?.("could not queue suggestions:", describe(err)); return false; });
+    if (queued) out.suggestions = "queued";
+  }
+  return out;
+}
+
+async function pulse(deps: Deps): Promise<Record<string, unknown>> {
   const { sql } = deps;
   const cfg = await getConfig(sql, ["google_refresh_token"]);
   if (!cfg.google_refresh_token) return { status: "skipped" };

@@ -14,6 +14,8 @@
 //   POST /ideas/check       start checking the ideas that have not been set against YouTube yet
 //   POST /ai/check          how an idea measures up to the owner's templates
 //   POST /ai/import         reads pasted text into ideas to look over
+//   POST /ai/script         a first draft of an idea's hook, what happens and beats
+//   POST /ideas/suggest     owner: write a batch of suggested ideas now; scheduler: follow-ups or the weekly batch, when due
 //   POST /mcp/setup         make or switch off the address of Claude's connector
 //   *    /mcp/<secret>      Claude's connector (Model Context Protocol)
 //   POST /research          owner runs a research action
@@ -25,6 +27,7 @@ import {
   type Api, closeApi, COMMENTS_SCOPE, type Deps, EARNINGS_SCOPE, exchangeToken, fetchChannels, getConfig, HttpError, SCOPES, setConfig,
 } from "./google.ts";
 import { checkTemplates, readIdeas, suggestTitles } from "./growth.ts";
+import { draftScript, suggestIdeas } from "./ideas.ts";
 import { handleMcp, mcpSetup } from "./mcp.ts";
 import { research } from "./research.ts";
 import { runExtras, runPulse, runSync, startIdeaChecks } from "./sync.ts";
@@ -330,6 +333,17 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
       case "/ai/import":
         await requireOwner(req, deps);
         return json(await readIdeas(deps, body ?? {}));
+      case "/ai/script":
+        await requireOwner(req, deps);
+        return json(await draftScript(deps, body ?? {}));
+      case "/ideas/suggest": {
+        const scheduled = await isScheduler(req, deps);
+        if (!scheduled) await requireOwner(req, deps);
+        const out = await suggestIdeas(deps, scheduled ? "auto" : "batch");
+        // The new suggestions are checked against YouTube straight away, so they arrive with scores.
+        const checks = out.added.length ? await startIdeaChecks(deps).catch(() => null) : null;
+        return json({ ...out, checking: checks?.started ?? false });
+      }
       case "/mcp/setup":
         await requireOwner(req, deps);
         return json(await mcpSetup(deps, body ?? {}));

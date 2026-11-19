@@ -834,6 +834,139 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     expect(row.fresh).toBe(true);
   });
 
+  it("suggests ideas with clear titles, follows up an upload that beat its usual, and drafts a script", async () => {
+    const { call, deps } = setup();
+    const [{ value: secret }] = await sql`select value from public.yt_private where key = 'cron_secret'`;
+    const cron = { headers: { "x-cron-secret": secret } };
+    await sql`insert into public.yt_private (key, value) values ('anthropic_api_key', '') on conflict (key) do update set value = ''`;
+    // Without the AI nothing is written: the owner is told why, the scheduler just passes.
+    expect((await call("POST", "/ideas/suggest", { user: OWNER })).status).toBe(409);
+    expect((await call("POST", "/ideas/suggest", cron)).data).toMatchObject({ made: "nothing", added: [] });
+    expect((await call("POST", "/ideas/suggest", { user: STRANGER })).status).toBe(403);
+    await sql`update public.yt_private set value = 'sk-ant-test' where key = 'anthropic_api_key'`;
+    await sql`insert into public.yt_ideas (title, format, topic) values ('Can You Beat Elden Ring Using Only Merchant Items?', 'long', 'Elden Ring')`;
+    // Winners already followed up, so the scheduler's turn below is about the weekly batch only.
+    const winners = await sql`select id from public.yt_v_videos where vs_typical >= 2 and privacy = 'public'`;
+    await sql`insert into public.yt_private (key, value) values ('follow_ups_done', ${(winners as { id: string }[]).map((w) => w.id).join(",")})
+              on conflict (key) do update set value = excluded.value`;
+
+    // deno-lint-ignore no-explicit-any
+    let seen: any = null;
+    const idea = (title: string, more: Record<string, unknown> = {}) => ({
+      title, other_titles: [], game: "Elden Ring", format: "long", challenge: "Beat the game with the rule. Break it and start over.",
+      why: "Your best video did 3 times your usual.", kind: "your_format", based_on: "", ...more,
+    });
+    deps.claude = async (_key, req) => {
+      seen = JSON.parse(req.prompt);
+      return {
+        suggestions: [
+          idea("Can You Beat Elden Ring Without Ever Dodging?", { other_titles: ["Elden Ring But I Can Never Dodge", "x"], game: "elden ring" }),
+          // A title that hides the challenge is never kept, but a clear alternative is.
+          idea("This Changed Everything", { other_titles: ["I Tried Something INSANE"] }),
+          idea("This Changed Everything", { other_titles: ["Elden Ring But Every Boss Is Doubled"] }),
+          // The same video as an idea they already have, however it is worded.
+          idea("Can You Beat Elden Ring Using Only Merchant Items"),
+          // Not one of their games.
+          idea("Can You Beat Minecraft With One Heart?", { game: "Minecraft" }),
+          // Hashtags and emoji come off; an unknown kind becomes a plain one.
+          idea("#shorts Can You Beat Elden Ring In 60 Seconds? \u{1F525}", { format: "short", kind: "made-up" }),
+        ],
+      };
+    };
+    const batch = await call("POST", "/ideas/suggest", { user: OWNER });
+    expect(batch.status).toBe(200);
+    expect(batch.data.made).toBe("batch");
+    expect(batch.data.added.map((a: { title: string }) => a.title)).toEqual([
+      "Can You Beat Elden Ring Without Ever Dodging?", "Elden Ring But Every Boss Is Doubled", "Can You Beat Elden Ring In 60 Seconds?",
+    ]);
+    expect(seen.their_games).toContain("Elden Ring");
+    expect(seen.ideas_they_already_have).toContain("Can You Beat Elden Ring Using Only Merchant Items?");
+    const rows = await sql`select title, topic, format, title_options, in_suggested, source, concept, suggestion from public.yt_ideas where source = 'suggested' order by created_at, title`;
+    const dodging = rows.find((r: { title: string }) => r.title.includes("Dodging"));
+    expect(dodging).toMatchObject({ topic: "Elden Ring", format: "long", in_suggested: true, title_options: ["Elden Ring But I Can Never Dodge"], concept: "Beat the game with the rule. Break it and start over." });
+    expect(dodging.suggestion).toMatchObject({ kind: "your_format", made_by: "batch", why: "Your best video did 3 times your usual." });
+    expect(rows.find((r: { format: string }) => r.format === "short").suggestion.kind).toBe("your_format");
+    // Waiting suggestions are not on the board, in the briefing or in the connector's list.
+    expect((await sql`select count(*)::int as n from public.yt_v_ideas where source = 'suggested'`)[0].n).toBe(0);
+    const [{ ctx }] = await sql`select public.yt_claude_context() as ctx`;
+    expect(JSON.stringify(ctx.ideas ?? [])).not.toContain("Without Ever Dodging");
+
+    // The weekly batch is not due again for a week.
+    expect((await call("POST", "/ideas/suggest", cron)).data.made).toBe("nothing");
+
+    // An upload that beats its usual gets follow-ups, in its own format, once.
+    const [w] = await sql`
+      select id, title, content_type, topic from public.yt_v_videos
+      where content_type = 'long' and privacy = 'public' and published_at > now() - interval '80 days' and age_days >= 3
+      order by published_at desc limit 1`;
+    await sql`update public.yt_videos set views = views * 80 + 200000 where id = ${w.id}`;
+    const game = w.topic ?? "Elden Ring";
+    let brief = "";
+    deps.claude = async (_key, req) => {
+      brief = JSON.parse(req.prompt).what_to_write;
+      return {
+        suggestions: [
+          idea(`${game} Challenge But Harder - Part 2`, { game, kind: "breakout", format: "short" }),
+          idea(`Can You Beat ${game} With A Second Rule On Top?`, { game }),
+        ],
+      };
+    };
+    // Follow-ups that come out as nothing but repeats are tried again a day later, not given up on.
+    const sayRepeats = deps.claude;
+    deps.claude = async () => ({ suggestions: [idea("Can You Beat Elden Ring Using Only Merchant Items?")] });
+    expect((await call("POST", "/ideas/suggest", cron)).data).toMatchObject({ made: "follow_up", follow_up_of: w.id, added: [] });
+    expect((await call("POST", "/ideas/suggest", cron)).data.made).toBe("nothing");
+    const [{ value: tries }] = await sql`select value from public.yt_private where key = 'follow_up_tries'`;
+    await sql`update public.yt_private set value = ${tries.replace(/"at":"[^"]+"/, `"at":"${new Date(Date.now() - 2 * 86_400_000).toISOString()}"`)} where key = 'follow_up_tries'`;
+    deps.claude = sayRepeats;
+    const follow = await call("POST", "/ideas/suggest", cron);
+    expect(follow.data).toMatchObject({ made: "follow_up", follow_up_of: w.id });
+    expect(follow.data.added).toHaveLength(2);
+    expect(brief).toContain(w.title);
+    const ups = await sql`select format, suggestion from public.yt_ideas where suggestion->>'follow_up_of' = ${w.id}`;
+    expect(ups.every((u: { format: string; suggestion: { kind: string } }) => u.format === "long" && u.suggestion.kind === "follow_up")).toBe(true);
+    expect((await call("POST", "/ideas/suggest", cron)).data.made).toBe("nothing");
+
+    // A turned-down suggestion is remembered; one left alone for three weeks is retired without counting as turned down.
+    await sql`update public.yt_ideas set trashed_at = now() where title = 'Elden Ring But Every Boss Is Doubled'`;
+    await sql`update public.yt_ideas set suggested_at = now() - interval '30 days' where title = 'Can You Beat Elden Ring In 60 Seconds?'`;
+    deps.claude = async (_key, req) => {
+      seen = JSON.parse(req.prompt);
+      return { suggestions: [idea("Elden Ring But Every Boss Is Doubled Again"), idea("Can You Beat Elden Ring Blindfolded?")] };
+    };
+    const more = await call("POST", "/ideas/suggest", { user: OWNER });
+    expect(seen.suggestions_they_turned_down.map((t: { title: string }) => t.title)).toEqual(["Elden Ring But Every Boss Is Doubled"]);
+    expect(more.data.added.map((a: { title: string }) => a.title)).toEqual(["Can You Beat Elden Ring Blindfolded?"]);
+    const [old] = await sql`select trashed_at is not null as gone, suggestion->>'expired' as expired from public.yt_ideas where title = 'Can You Beat Elden Ring In 60 Seconds?'`;
+    expect(old).toEqual({ gone: true, expired: "true" });
+
+    // The hourly pulse asks for the next batch once a week has passed.
+    await sql`update public.yt_private set value = ${new Date(Date.now() - 8 * 86_400_000).toISOString()} where key = 'suggest_batch_at'`;
+    expect((await call("POST", "/sync/pulse", cron)).data.suggestions).toBe("queued");
+
+    // The script starter: a hook, what happens, and beats and shots in the app's bullets and checkboxes.
+    expect((await call("POST", "/ai/script", { user: OWNER, body: { title: " " } })).status).toBe(400);
+    deps.claude = async (_key, req) => {
+      seen = JSON.parse(req.prompt);
+      return {
+        hook: "One rule: no dodging. One mistake and it is over.", what_happens: "Beat Elden Ring without a single dodge roll.",
+        beats: [{ at: "0:00", beat: "Cold open", detail: "The first death." }, { at: "1:00", beat: "The rule", detail: "Explain it." }],
+        shots: ["The health bar at one hit", " "],
+      };
+    };
+    const draft = await call("POST", "/ai/script", { user: OWNER, body: { title: "Can You Beat Elden Ring Without Ever Dodging?", game: "Elden Ring", format: "long", hook: "- My own opening" } });
+    expect(draft.status).toBe(200);
+    expect(draft.data).toEqual({
+      hook: "One rule: no dodging. One mistake and it is over.",
+      concept: "Beat Elden Ring without a single dodge roll.",
+      outline: "- 0:00 Cold open: The first death.\n- 1:00 The rule: Explain it.\n\nShots to get\n- [ ] The health bar at one hit",
+    });
+    // What the owner already wrote goes to the AI without the bullet markers.
+    expect(seen.video.what_they_wrote_so_far.hook).toBe("My own opening");
+    await sql`update public.yt_ideas set trashed_at = now() where source = 'suggested' or title = 'Can You Beat Elden Ring Using Only Merchant Items?'`;
+    await sql`update public.yt_private set value = '' where key = 'anthropic_api_key'`;
+  });
+
   it("puts all of it in the one-call briefing for Claude", async () => {
     const [{ ctx }] = await sql`select public.yt_claude_context() as ctx`;
     expect(ctx.channel).toMatchObject({ id: MY_CHANNEL_ID, subscribers: 3880 });

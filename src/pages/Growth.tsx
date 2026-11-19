@@ -2,6 +2,7 @@
 // and changes, the monthly recap, goals, comments and the upload planner.
 
 import { useQueryClient } from "@tanstack/react-query";
+import { RhythmSettings } from "./Rhythm.tsx";
 import { type ReactNode, useMemo, useState } from "react";
 import { NotesBox, RichNote } from "../components/notes.tsx";
 import { Drawer, ErrorNote, FormatTag, Loading, Segmented, Thumb, useToast } from "../components/ui.tsx";
@@ -24,7 +25,7 @@ const message = (err: unknown) => (err instanceof Error ? err.message : "That di
 // new thing does not fit one of these, it gets a section of its own rather than a tab somewhere handy.
 export const STATS_TABS = [{ key: "", label: "Charts" }, { key: "recap", label: "Monthly recap" }, { key: "games", label: "By game" }, { key: "funnel", label: "Shorts to long" }];
 export const VIDEO_TABS = [{ key: "", label: "All videos" }, { key: "tests", label: "Title and thumbnail tests" }];
-export const IDEA_TABS = [{ key: "", label: "Board" }, { key: "planner", label: "Planner" }];
+export const IDEA_TABS = [{ key: "", label: "Board" }, { key: "suggested", label: "Suggested" }, { key: "planner", label: "Planner" }];
 export const PLAYBOOK_TABS = [{ key: "", label: "Templates" }, { key: "lines", label: "Lines to remember" }];
 
 export function Tabs(props: { label: string; base: string; current: string; tabs: { key: string; label: string }[] }) {
@@ -600,6 +601,7 @@ export function Goals() {
           : open.map((g) => <GoalRow key={g.id} goal={g} onEdit={() => setEditing(g)} />)}
       </div>
       {done.length ? <Section title="Reached"><div className="panel">{done.map((g) => <GoalRow key={g.id} goal={g} onEdit={() => setEditing(g)} />)}</div></Section> : null}
+      <RhythmSettings />
       {editing ? (
         <GoalEditor
           draft={editing} videos={ctx.videos} subscribers={ctx.subscribers} onClose={() => setEditing(null)}

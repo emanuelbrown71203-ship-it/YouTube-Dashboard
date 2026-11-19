@@ -198,7 +198,7 @@ async function callTool(deps: Deps, name: string, a: Args): Promise<unknown> {
                title_options as other_titles, (template_check->>'score')::int as template_score, created_at::date as added,
                (picked_at is not null or status <> 'idea') as making_it
         from public.yt_ideas
-        where trashed_at is null and not archived and (${stage}::text is null or status = ${stage})
+        where trashed_at is null and not archived and not in_suggested and (${stage}::text is null or status = ${stage})
           and (${a.only_making === true} = false or picked_at is not null or status <> 'idea')
         order by (picked_at is not null or status <> 'idea') desc, status, priority, created_at desc limit 300`;
     }

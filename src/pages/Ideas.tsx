@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { IDEA_TABS, Tabs } from "./Growth.tsx";
 import { ScoreChips, ScorePanel, TitleHelper, useAutoResearch, useCovered, useDraftScores, useFound, useIdeaChecking, useIdeaScores } from "./Pulse.tsx";
+import { ScriptStarter } from "./ScriptStarter.tsx";
 import { bareNote, checkCount } from "../lib/notes.ts";
 import { scoreIdea } from "../lib/ideaScore.ts";
 import { ImportIdeas, TemplateHint, TemplateScore } from "./Templates.tsx";
@@ -507,6 +508,7 @@ function IdeaEditor(props: { draft: IdeaDraft; games: string[]; onClose: () => v
       </Fold>
 
       <Fold title="Script" summary={scriptSummary} open={!form.id || Boolean(form.hook || form.concept || form.outline)}>
+        <ScriptStarter form={form} onUse={(part, value) => set(part, value)} />
         <label className="field">
           <span>Hook</span>
           <textarea className="textarea" style={{ minHeight: 60 }} {...text("hook")} placeholder="The first line, or the first five seconds" />

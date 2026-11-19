@@ -119,6 +119,23 @@ export interface Idea {
   source: string;
   created_at: string;
   updated_at: string;
+  /** A suggestion still waiting in the Suggested tab: not on the board yet. */
+  in_suggested: boolean;
+  /** When the dashboard suggested it. Null = the owner's own idea. */
+  suggested_at: string | null;
+  suggestion: Suggestion | null;
+}
+
+/** Why the dashboard suggested an idea, and what it rests on. */
+export interface Suggestion {
+  kind: "follow_up" | "your_format" | "breakout" | "other_games" | "short_hint" | "comment";
+  why: string;
+  based_on?: string;
+  basis?: { video_id?: string; title: string; channel?: string; views: number | null; times_usual: number | null; own: boolean }[];
+  /** The upload this follows up. */
+  follow_up_of?: string;
+  made_by?: "batch" | "follow_up";
+  batch?: string;
 }
 
 /** A thumbnail reference not yet saved with an idea (the idea itself is not saved yet). */
@@ -170,6 +187,9 @@ export interface Connection {
   comments?: boolean;
   ai?: boolean;
   ai_error?: string | null;
+  /** When the last batch of suggested ideas was written, and when one started being written (empty when none is). */
+  suggest_batch_at?: string | null;
+  suggest_running_at?: string | null;
 }
 
 export interface OwnerRow {
