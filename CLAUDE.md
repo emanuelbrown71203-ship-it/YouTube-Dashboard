@@ -256,10 +256,11 @@ through.
 
 - **Database**: add a new numbered file in `supabase/migrations`, prove it on
   the local database, then apply it with the Supabase connector's
-  `apply_migration`. Supabase asks the owner to confirm and waits only 60
-  seconds, so make that call the first thing you do after they reply, and
-  tell them a prompt is coming. Regenerate `src/lib/database.types.ts` with
-  `npx tsx dev/gen-types.ts`.
+  `apply_migration`. The owner has said to always allow it (and `execute_sql`
+  and Vercel's `create_deployment`): `.claude/settings.json` lets them run
+  without a permission prompt. If Supabase still asks the owner to confirm,
+  it waits only 60 seconds: tell them a prompt is coming. Regenerate
+  `src/lib/database.types.ts` with `npx tsx dev/gen-types.ts`.
 - **Edge function**: `deploy_edge_function` with every file in
   `supabase/functions/yt-api` (entry `index.ts`, `verify_jwt` false). The
   type check and the tests skip `index.ts`; check it with Deno first, from a
