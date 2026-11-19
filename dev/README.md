@@ -5,6 +5,7 @@ one machine, with no Supabase project, no Google account and no network.
 
 | File | What it is |
 |---|---|
+| `compare-deployed.py` | Compares the edge function Supabase is running (the saved answer of the connector's `get_edge_function`) with `supabase/functions/yt-api`, byte for byte. |
 | `reset-db.ts` | Rebuilds a local Postgres database: a small stand-in for Supabase's own schemas (`supabase-stub.sql`), then every migration in order. |
 | `server.ts` | A stand-in for the hosted backend on port 54321: anonymous sign-in, the part of the REST interface the app uses (with row level security enforced), and the real `yt-api` code. |
 | `mock-youtube.ts` | A made-up YouTube: sign-in, the Data API, the Analytics API and search suggestions, answering with invented channels and videos in the real response shapes. |

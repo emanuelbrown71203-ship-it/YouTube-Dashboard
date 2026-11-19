@@ -301,7 +301,9 @@ through.
   `supabase/functions/yt-api` (entry `index.ts`, `verify_jwt` false). The
   type check and the tests skip `index.ts`; check it with Deno first, from a
   copy of the folder outside the repository (see `dev/README.md`). Afterwards confirm the live function answers (next
-  section) and that `get_edge_function` returns the files you sent.
+  section) and that `get_edge_function` returns the files you sent:
+  `python3 -I dev/compare-deployed.py <saved result>` must end with `MATCH`.
+  The whole release, in order, is the `ship` skill (`.claude/skills/ship`).
 - **Site**: the Vercel project `youtube-dashboard`, built from this
   repository with the settings in `vercel.json`. Vercel's production branch
   is `main`, which holds only a README until the work is merged, so a push
@@ -317,9 +319,11 @@ through.
 
 ## Checking the live app from a cloud session
 
-Cloud sessions cannot reach `supabase.co` or `vercel.app`, so neither `curl`
-nor a browser here can open the live app. Ask the database to make the
-request and read the answer back:
+The owner's `youtube-dashboard` cloud environment allows the live backend
+(`nivsnjvrsqekyocvtema.supabase.co`) and the site
+(`youtube-dashboard-ashen-six.vercel.app`), so `curl` and a browser reach
+them directly there. Other environments block both: then ask the database to
+make the request and read the answer back:
 
 ```sql
 select net.http_get(url := 'https://nivsnjvrsqekyocvtema.supabase.co/functions/v1/yt-api/health');
