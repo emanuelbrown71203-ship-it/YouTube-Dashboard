@@ -599,6 +599,12 @@ describe("suggested ideas order", () => {
     expect(earlier.map((i) => i.title)).toEqual(["old follow-up"]);
   });
 
+  it("counts follow-ups written the same day as the newest batch as new", () => {
+    const { fresh, earlier } = splitByBatch([idea("act 3", "2026-11-19T09:50:00Z", "follow_up"), idea("batch", "2026-11-19T10:00:00Z")]);
+    expect(fresh.map((i) => i.title)).toEqual(["act 3", "batch"]);
+    expect(earlier).toEqual([]);
+  });
+
   it("shows everything as new before the first batch", () => {
     expect(splitByBatch([idea("f", "2026-11-14T10:00:00Z", "follow_up")]).earlier).toEqual([]);
   });
