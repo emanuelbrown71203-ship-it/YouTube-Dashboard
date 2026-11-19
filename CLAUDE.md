@@ -193,8 +193,9 @@ free and the owner has said to use them whenever a score needs them.
   comment requests, their title templates, everything they already have or
   made, and the suggestions they kept and turned down. **Titles matter most
   to the owner**: a title must name the game and state the challenge
-  plainly; `titleProblems` in `ideas.ts` throws out vague, shouting or hype
-  titles whatever the AI wrote, falling back to a clear alternative, and
+  plainly; `titleProblems` in `ideas.ts` throws out vague, shouting (two or
+  more words in capitals; one for emphasis, like "EVERY", is the owner's
+  style) or hype titles whatever the AI wrote, falling back to a clear alternative, and
   `isRepeat` drops the same video however it is worded (titles that differ
   in a number, like "Act 2" and "Act 3", are different videos). Keep sends
   one to the board; Not for me bins it and the next batch learns from it;
