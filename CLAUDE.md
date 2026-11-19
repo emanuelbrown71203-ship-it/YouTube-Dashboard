@@ -229,6 +229,13 @@ free and the owner has said to use them whenever a score needs them.
   Settings folds every part. A game on the Ideas board shows its first 5
   ideas, plus any added on this visit. Filters are dropdowns, not rows of
   chips.
+- On a phone nothing may be wider than the screen, the idea editor
+  included: it only ever moves up and down. Switches (`Segmented`) side by
+  side in a `.field-row` go one under the other on a phone. Every text box
+  is 16px on a touch screen, because an iPhone zooms into a smaller one when
+  it is tapped. Pulling down at the top of any page reloads the app
+  (`src/components/pull.tsx`); the browser's own pull is switched off so
+  there is only one, and a pull inside the editor or a box does nothing.
 - Live streams are many and small. "Latest uploads", the planner and the
   upload markers leave them out; they have their own Streams tab.
 - Thumbnails load only while on or near the screen (`Thumb` in

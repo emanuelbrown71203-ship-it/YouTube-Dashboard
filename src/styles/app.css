@@ -108,10 +108,13 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
-html { -webkit-text-size-adjust: 100%; }
+/* No double-tap zoom, and no browser pull-to-refresh: the app has its own (components/pull.tsx). */
+html { -webkit-text-size-adjust: 100%; touch-action: manipulation; overscroll-behavior-y: none; }
 
 body {
   margin: 0;
+  /* Nothing may push a page sideways on a phone. */
+  overflow-x: clip;
   background: var(--page);
   color: var(--ink);
   font-family: var(--font);
@@ -201,7 +204,7 @@ img { display: block; max-width: 100%; }
 .btn-danger { color: var(--bad); }
 .btn svg { width: 16px; height: 16px; }
 
-.seg { display: inline-flex; padding: 3px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); gap: 2px; max-width: 100%; }
+.seg { display: inline-flex; flex-wrap: wrap; padding: 3px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); gap: 2px; max-width: 100%; }
 .seg button {
   border: 0; background: transparent; padding: 5px 12px; border-radius: 7px; font-weight: 600; color: var(--ink-2);
   cursor: pointer; white-space: nowrap; min-height: 30px;
@@ -219,6 +222,9 @@ img { display: block; max-width: 100%; }
 .field > span { font-weight: 600; font-size: 13px; }
 .field > small { color: var(--ink-3); font-size: 12.5px; }
 .field-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+/* Switches need more room than two phone columns give them: they go one under the other there. */
+.field-row:has(.seg) { grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
+.field > .seg button { flex: 1 1 auto; }
 
 .chip {
   display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line-2);
@@ -413,11 +419,16 @@ button.item:hover, a.item:hover { background: var(--surface-2); }
   display: flex; flex-direction: column; box-shadow: var(--shadow);
 }
 .drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
-.drawer-body { padding: 18px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 16px; }
+.drawer-body { padding: 18px; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; flex: 1; display: flex; flex-direction: column; gap: 16px; }
 .drawer-foot { padding: 12px 18px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); display: flex; gap: 10px; justify-content: space-between; flex-wrap: wrap; }
 @media (prefers-reduced-motion: no-preference) {
   .drawer { animation: slide-in 0.18s ease-out; }
   @keyframes slide-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+  /* On a phone the editor fills the screen: it rises into place instead of sliding in from the side. */
+  @media (max-width: 640px) {
+    .drawer { animation-name: rise-in; }
+    @keyframes rise-in { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+  }
 }
 
 .checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
@@ -695,3 +706,19 @@ button.nav-link { border: 0; background: none; font-family: inherit; font-size: 
 .idea .score-chip b { min-width: 22px; font-size: 11px; }
 .idea .foot { margin-top: 6px; }
 .idea .idea-move { margin-top: 6px; }
+
+/* Pull to refresh (components/pull.tsx). */
+.pull {
+  position: fixed; top: calc(env(safe-area-inset-top) + 8px); left: 50%; z-index: 60; display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px 6px 6px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); box-shadow: var(--shadow);
+  color: var(--ink-2); font-size: 13px; font-weight: 600; pointer-events: none;
+}
+.pull-circle { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--surface-2); color: var(--ink-3); }
+.pull-circle svg { width: 16px; height: 16px; }
+.pull.ready .pull-circle { background: var(--accent); color: #fff; }
+@media (prefers-reduced-motion: no-preference) { .pull-circle.spinning { animation: spin 0.8s linear infinite; } }
+
+/* A phone zooms into any box with text smaller than 16px when it is tapped: keep them at 16px there. */
+@media (pointer: coarse) {
+  input, select, textarea, .input, .select, .textarea, .ref-note { font-size: 16px !important; }
+}

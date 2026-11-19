@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PullToRefresh } from "./components/pull.tsx";
 import { Icon, Loading, useToast } from "./components/ui.tsx";
 import { ensureSession, finishGoogleSignIn, whoami } from "./lib/api.ts";
 import { keys, useChannel, useSyncRuns } from "./lib/hooks.ts";
@@ -147,6 +148,7 @@ function Shell(props: { google: GoogleResult | null; clearGoogle: () => void; on
   const title = channel.data?.title ?? "My channel";
   return (
     <div className="app">
+      <PullToRefresh />
       <nav className="rail" aria-label="Sections">
         <div className="rail-channel">
           {channel.data?.thumbnail_url && !avatarBroken
