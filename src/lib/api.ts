@@ -159,7 +159,7 @@ export interface Explanation {
 }
 export const explainVideo = (video_id: string) =>
   callApi<{ video_id: string; explanation: Explanation }>("/research", { action: "explain", video_id });
-export interface TitleIdea { title: string; why: string }
+export interface TitleIdea { title: string; why: string; emotions?: import("./emotions.ts").Emotion[] }
 export const suggestTitles = (idea: { title: string; concept: string; format: "long" | "short"; game: string | null }) =>
   callApi<{ titles: TitleIdea[] }>("/ai/titles", idea);
 export interface TemplateCheck {

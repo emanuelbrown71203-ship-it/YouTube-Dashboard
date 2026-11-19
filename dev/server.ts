@@ -251,7 +251,7 @@ const deps: Deps = {
             game, format: follow || i < 8 ? "long" : "short",
             challenge: `(made-up) Play through ${game} ${rule.toLowerCase()}. If the rule breaks, the run starts over.`,
             why: best ? `(made-up) Your "${best.title}" got ${best.times_usual} times your usual views.` : "(made-up) A format working in your games.",
-            kind, based_on: follow ?? best?.title ?? "",
+            kind, based_on: follow ?? best?.title ?? "", emotions: i % 2 ? ["curiosity", "fear"] : ["desire"],
           };
         }),
       };
@@ -278,8 +278,8 @@ const deps: Deps = {
       const idea = JSON.parse(req.prompt).idea as { working_title: string; game: string | null };
       const game = idea.game ?? "this game";
       return {
-        titles: [`Can I Beat ${game} With One Rule?`, `I Tried ${game} With 0 Hours`, `${game} But Every Boss Is Harder`].map((title) => ({
-          title, why: "(made-up) Follows the kind of title that beat your usual video.",
+        titles: [`Can I Beat ${game} With One Rule?`, `I Tried ${game} With 0 Hours`, `${game} But Every Boss Is Harder`].map((title, i) => ({
+          title, why: "(made-up) Follows the kind of title that beat your usual video.", emotions: i % 2 ? ["curiosity"] : ["curiosity", "fear"],
         })),
       };
     }

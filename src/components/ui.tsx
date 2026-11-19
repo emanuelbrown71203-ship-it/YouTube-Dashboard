@@ -365,3 +365,14 @@ export function Fold(props: { title: string; summary?: string | null; open?: boo
     </section>
   );
 }
+
+/** The emotions a title sparks, each with the colour the owner uses for it in their notes. */
+export function EmotionTags({ emotions }: { emotions?: import("../lib/emotions.ts").Emotion[] }) {
+  if (!emotions?.length) return null;
+  const label = { curiosity: "Curiosity", desire: "Desire", fear: "Fear" } as const;
+  return (
+    <span className="emotion-tags" aria-label={`Sparks ${emotions.map((e) => label[e].toLowerCase()).join(" and ")}`}>
+      {emotions.map((e) => <span key={e} className="tag emotion"><span className={`dot emo-${e}`} />{label[e]}</span>)}
+    </span>
+  );
+}

@@ -136,6 +136,8 @@ export interface Suggestion {
   follow_up_of?: string;
   made_by?: "batch" | "follow_up";
   batch?: string;
+  /** What the title sparks, as the owner colour-codes titles: curiosity, desire, fear. */
+  emotions?: import("./emotions.ts").Emotion[];
 }
 
 /** A thumbnail reference not yet saved with an idea (the idea itself is not saved yet). */

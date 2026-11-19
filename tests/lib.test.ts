@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ago, compact, day, duration, hours, multiple, percentChange } from "../src/lib/format.ts";
 import { splitByBatch } from "../src/lib/suggestions.ts";
+import { lengthRule } from "../src/lib/emotions.ts";
 import { daysSince, rhythmStatus, targetChoices, usualGap } from "../src/lib/rhythm.ts";
 import { cleanTitle, isRepeat, likeness, matchGame, pickTitle, titleProblems } from "../supabase/functions/yt-api/ideas.ts";
 import { centreOn, clampCrop, defaultCrop, fitWithin, pictureFiles, resizeCrop, widestFrame } from "../src/lib/pictures.ts";
@@ -607,5 +608,14 @@ describe("suggested ideas order", () => {
 
   it("shows everything as new before the first batch", () => {
     expect(splitByBatch([idea("f", "2026-11-14T10:00:00Z", "follow_up")]).earlier).toEqual([]);
+  });
+});
+
+describe("the owner's title length rule", () => {
+  it("reads it from their own words", () => {
+    expect(lengthRule(["- [ ] 45-55 characters"])).toEqual({ min: 45, max: 55 });
+    expect(lengthRule(["One subject", "Keep it 45 to 55 characters long"])).toEqual({ min: 45, max: 55 });
+    expect(lengthRule(["No rule about length here"])).toBeNull();
+    expect(lengthRule(["90 to 20 characters"])).toBeNull();
   });
 });

@@ -120,7 +120,7 @@ function TemplateEditor({ draft, onClose, onSaved }: { draft: TemplateDraft; onC
       </div>
       <label className="row" style={{ gap: 10 }}>
         <input type="checkbox" checked={form.active ?? true} onChange={(e) => set("active", e.target.checked)} />
-        <span>Check my ideas against this template</span>
+        <span>{form.kind === "other" ? "Use this template: the AI follows it when it writes ideas and scripts" : "Use this template: ideas are checked against it, and the AI follows it"}</span>
       </label>
     </Drawer>
   );
@@ -173,7 +173,7 @@ export function Templates() {
                     <div>
                       <h3 style={{ margin: 0 }}>{t.name}</h3>
                       <div className="small muted">
-                        {t.active ? "Ideas are checked against it" : "Not used for checking"}, changed {ago(t.updated_at)}
+                        {!t.active ? "Switched off" : t.kind === "other" ? "The AI follows it" : "Ideas are checked against it"}, changed {ago(t.updated_at)}
                         {checkCount(t.body).total ? `. ${checkCount(t.body).done} of ${checkCount(t.body).total} ticked` : ""}
                       </div>
                     </div>
@@ -220,7 +220,8 @@ export function TemplateScore(props: { idea: IdeaDraft; dirty: boolean; onChecke
   const toast = useToast();
   const templates = useTemplates();
   const [busy, setBusy] = useState(false);
-  const active = (templates.data ?? []).filter((t) => t.active);
+  // Only what an idea has can be scored: its title, thumbnail and opening.
+  const active = (templates.data ?? []).filter((t) => t.active && t.kind !== "other");
   const check = props.idea.template_check ?? null;
   const run = async () => {
     if (!props.idea.id) return;

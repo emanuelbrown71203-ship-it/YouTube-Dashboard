@@ -2,7 +2,7 @@
 
 import { type QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { useToast } from "../components/ui.tsx";
+import { EmotionTags, useToast } from "../components/ui.tsx";
 import { coverGame, getCoveredGames, getFoundVideos, getIdeaChecks, startIdeaChecks, suggestTitles, type TitleIdea } from "../lib/api.ts";
 import { whole } from "../lib/format.ts";
 import { goalProgress, useGoals } from "../lib/growth.ts";
@@ -275,12 +275,13 @@ export function TitleHelper(props: { draft: IdeaDraft; game: string | null; onUs
           {busy ? "Writing titles" : ideas ? "Write six more" : "Suggest titles in my style"}
         </button>
       </div>
-      <small>The AI reads your own titles that beat your usual video, and the ones that fell flat, then writes new ones for this idea. It uses your Claude key.</small>
+      <small>The AI reads your title rules and notes, your titles that beat your usual video and the ones that fell flat, then writes new ones for this idea, each with the emotions it sparks. It uses your Claude key.</small>
       {ideas ? (
         <div className="stack" style={{ gap: 8, marginTop: 4 }}>
           {ideas.map((t) => (
             <div key={t.title} className="title-idea">
               <div style={{ fontWeight: 600, lineHeight: 1.3 }}>{t.title}</div>
+              <EmotionTags emotions={t.emotions} />
               <div className="small soft">{t.why}</div>
               <div className="row" style={{ gap: 6, marginTop: 6 }}>
                 <button type="button" className="btn btn-small" onClick={() => props.onUse(t.title)}>Use as the title</button>

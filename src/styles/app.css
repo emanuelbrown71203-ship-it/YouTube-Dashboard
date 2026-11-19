@@ -741,3 +741,11 @@ button.nav-link { border: 0; background: none; font-family: inherit; font-size: 
 .rhythm-row .select { width: auto; flex: none; max-width: 190px; }
 .rhythm-late { color: var(--bad); font-weight: 600; }
 @media (max-width: 640px) { .rhythm-row { flex-wrap: wrap; } .rhythm-row .select { max-width: none; width: 100%; } }
+
+/* The emotions a title sparks, in the owner's own colour code (only the dot carries the colour). */
+:root { --emo-curiosity: #8f6fd6; --emo-desire: #a3b23a; --emo-fear: #a5703c; }
+.emotion-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.tag.emotion { font-size: 11.5px; padding: 0 6px; }
+.dot.emo-curiosity { background: var(--emo-curiosity); }
+.dot.emo-desire { background: var(--emo-desire); }
+.dot.emo-fear { background: var(--emo-fear); }

@@ -331,9 +331,14 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     expect(noKey.status).toBe(409);
     await sql`insert into public.yt_private (key, value) values ('anthropic_api_key', 'sk-ant-test') on conflict (key) do update set value = excluded.value`;
     let seen = "";
-    deps.claude = async (_key, req) => { seen = req.prompt; return { titles: [{ title: "Can I Beat Elden Ring With One Rule?", why: "A clear rule in the title." }, { title: " ", why: "" }] }; };
+    deps.claude = async (_key, req) => {
+      seen = req.prompt;
+      return { titles: [{ title: "Can I Beat Elden Ring With One Rule?", why: "A clear rule in the title.", emotions: ["Curiosity", "anger"] }, { title: " ", why: "" }] };
+    };
     const got = await call("POST", "/ai/titles", { user: owner, body: { title: "Elden Ring with one restriction", format: "long" } });
-    expect(got.data.titles).toEqual([{ title: "Can I Beat Elden Ring With One Rule?", why: "A clear rule in the title." }]);
+    // The emotions each title sparks come back as the owner colour-codes them; anything else is dropped.
+    expect(got.data.titles).toEqual([{ title: "Can I Beat Elden Ring With One Rule?", why: "A clear rule in the title.", emotions: ["curiosity"] }]);
+    expect(JSON.parse(seen)).toHaveProperty("their_title_rules");
     const examples = JSON.parse(seen).their_titles_that_beat_their_usual as { title: string }[];
     const shortTitles = new Set((await sql`select title from public.yt_videos where content_type = 'short'`).map((r: { title: string }) => r.title));
     const longTitles = new Set((await sql`select title from public.yt_videos where content_type = 'long'`).map((r: { title: string }) => r.title));
@@ -845,6 +850,10 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     expect((await call("POST", "/ideas/suggest", { user: STRANGER })).status).toBe(403);
     await sql`update public.yt_private set value = 'sk-ant-test' where key = 'anthropic_api_key'`;
     await sql`insert into public.yt_ideas (title, format, topic) values ('Can You Beat Elden Ring Using Only Merchant Items?', 'long', 'Elden Ring')`;
+    // The owner's own rules and lines go to the AI, without their bullets and ticks.
+    const [rules] = await sql`insert into public.yt_templates (kind, name, body) values ('title', 'Title rules', '- [x] 45 to 55 characters\n- One subject') returning id`;
+    const [story] = await sql`insert into public.yt_templates (kind, name, body) values ('other', 'Storytelling', '- But for conflict, so for the way through') returning id`;
+    const [line] = await sql`insert into public.yt_notes (text, source, on_front) values ('- The algorithm is tailored to the audience', 'My notes', false) returning id`;
     // Winners already followed up, so the scheduler's turn below is about the weekly batch only.
     const winners = await sql`select id from public.yt_v_videos where vs_typical >= 2 and privacy = 'public'`;
     await sql`insert into public.yt_private (key, value) values ('follow_ups_done', ${(winners as { id: string }[]).map((w) => w.id).join(",")})
@@ -860,7 +869,7 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
       seen = JSON.parse(req.prompt);
       return {
         suggestions: [
-          idea("Can You Beat Elden Ring Without Ever Dodging?", { other_titles: ["Elden Ring But I Can Never Dodge", "x"], game: "elden ring" }),
+          idea("Can You Beat Elden Ring Without Ever Dodging?", { other_titles: ["Elden Ring But I Can Never Dodge", "x"], game: "elden ring", emotions: ["curiosity", "fear", "joy", "fear"] }),
           // A title that hides the challenge is never kept, but a clear alternative is.
           idea("This Changed Everything", { other_titles: ["I Tried Something INSANE"] }),
           idea("This Changed Everything", { other_titles: ["Elden Ring But Every Boss Is Doubled"] }),
@@ -880,11 +889,15 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
       "Can You Beat Elden Ring Without Ever Dodging?", "Elden Ring But Every Boss Is Doubled", "Can You Beat Elden Ring In 60 Seconds?",
     ]);
     expect(seen.their_games).toContain("Elden Ring");
+    expect(seen.their_templates.map((t: { name: string; points: string }) => [t.name, t.points])).toEqual(expect.arrayContaining([
+      ["Title rules", "45 to 55 characters\nOne subject"], ["Storytelling", "But for conflict, so for the way through"],
+    ]));
+    expect(seen.their_notes).toContain("The algorithm is tailored to the audience");
     expect(seen.ideas_they_already_have).toContain("Can You Beat Elden Ring Using Only Merchant Items?");
     const rows = await sql`select title, topic, format, title_options, in_suggested, source, concept, suggestion from public.yt_ideas where source = 'suggested' order by created_at, title`;
     const dodging = rows.find((r: { title: string }) => r.title.includes("Dodging"));
     expect(dodging).toMatchObject({ topic: "Elden Ring", format: "long", in_suggested: true, title_options: ["Elden Ring But I Can Never Dodge"], concept: "Beat the game with the rule. Break it and start over." });
-    expect(dodging.suggestion).toMatchObject({ kind: "your_format", made_by: "batch", why: "Your best video did 3 times your usual." });
+    expect(dodging.suggestion).toMatchObject({ kind: "your_format", made_by: "batch", why: "Your best video did 3 times your usual.", emotions: ["curiosity", "fear"] });
     expect(rows.find((r: { format: string }) => r.format === "short").suggestion.kind).toBe("your_format");
     // Waiting suggestions are not on the board, in the briefing or in the connector's list.
     expect((await sql`select count(*)::int as n from public.yt_v_ideas where source = 'suggested'`)[0].n).toBe(0);
@@ -944,6 +957,17 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     await sql`update public.yt_private set value = ${new Date(Date.now() - 8 * 86_400_000).toISOString()} where key = 'suggest_batch_at'`;
     expect((await call("POST", "/sync/pulse", cron)).data.suggestions).toBe("queued");
 
+    // The template check scores only what an idea has: an "other" template guides the AI instead.
+    deps.claude = async (_key, req) => {
+      seen = JSON.parse(req.prompt);
+      return { checks: seen.templates.map((t: { id: string }) => ({ template_id: t.id, score: 80, met: [], missing: [], fix: "" })) };
+    };
+    const [{ id: checked }] = await sql`select id from public.yt_ideas where title = 'Can You Beat Elden Ring Using Only Merchant Items?'`;
+    const scored = (await call("POST", "/ai/check", { user: OWNER, body: { idea_id: checked } })).data.checks.map((c: { name: string }) => c.name);
+    expect(scored).toContain("Title rules");
+    expect(scored).not.toContain("Storytelling");
+    expect(seen.templates.map((t: { id: string }) => t.id)).not.toContain(story.id);
+
     // The script starter: a hook, what happens, and beats and shots in the app's bullets and checkboxes.
     expect((await call("POST", "/ai/script", { user: OWNER, body: { title: " " } })).status).toBe(400);
     deps.claude = async (_key, req) => {
@@ -963,6 +987,11 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     });
     // What the owner already wrote goes to the AI without the bullet markers.
     expect(seen.video.what_they_wrote_so_far.hook).toBe("My own opening");
+    expect(seen.their_templates.map((t: { name: string }) => t.name)).toContain("Storytelling");
+    expect(seen.their_templates.map((t: { kind: string }) => t.kind).every((k: string) => k === "intro" || k === "other")).toBe(true);
+    expect(seen.lines_they_want_to_remember).toContain("The algorithm is tailored to the audience");
+    await sql`update public.yt_templates set trashed_at = now() where id in (${rules.id}, ${story.id})`;
+    await sql`update public.yt_notes set trashed_at = now() where id = ${line.id}`;
     await sql`update public.yt_ideas set trashed_at = now() where source = 'suggested' or title = 'Can You Beat Elden Ring Using Only Merchant Items?'`;
     await sql`update public.yt_private set value = '' where key = 'anthropic_api_key'`;
   });

@@ -4,7 +4,8 @@ import { ScoreChips, ScorePanel, TitleHelper, useAutoResearch, useCovered, useDr
 import { ScriptStarter } from "./ScriptStarter.tsx";
 import { bareNote, checkCount } from "../lib/notes.ts";
 import { scoreIdea } from "../lib/ideaScore.ts";
-import { ImportIdeas, TemplateHint, TemplateScore } from "./Templates.tsx";
+import { ImportIdeas, TemplateHint, TemplateScore, useTemplates } from "./Templates.tsx";
+import { lengthRule } from "../lib/emotions.ts";
 import { IdeaRefs, RefStrip, useIdeaRefs } from "./Thumbnails.tsx";
 import { addIdeaRef } from "../lib/api.ts";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
@@ -393,7 +394,10 @@ function IdeaEditor(props: { draft: IdeaDraft; games: string[]; onClose: () => v
   };
 
   const title = form.title ?? "";
+  const templatesAll = useTemplates();
   const bare = title.replace(/\s*#\S+/g, "").trim();
+  // The length the owner's own title templates ask for, when one says it.
+  const lengthGoal = lengthRule((templatesAll.data ?? []).filter((t) => t.kind === "title" && t.active).map((t) => t.body));
   const hashtags = (title.match(/#\S+/g) ?? []).length;
   const inspiration = saved.data?.find((v) => v.id === form.inspiration_video_id);
   const options = form.title_options ?? [];
@@ -452,7 +456,9 @@ function IdeaEditor(props: { draft: IdeaDraft; games: string[]; onClose: () => v
         <span>Title</span>
         <input className="input" value={title} onChange={(e) => set("title", e.target.value)} maxLength={200} autoFocus={!form.id} />
         <small>
-          {bare.length} characters{bare.length > 70 ? ". YouTube cuts titles off after about 60 to 70, so the end may not show" : ""}
+          {bare.length} characters
+          {lengthGoal ? (bare.length < lengthGoal.min || bare.length > lengthGoal.max ? `. Your title rules say ${lengthGoal.min} to ${lengthGoal.max}` : `, inside your ${lengthGoal.min} to ${lengthGoal.max}`) : ""}
+          {bare.length > 70 ? ". YouTube cuts titles off after about 60 to 70, so the end may not show" : ""}
           {hashtags > 3 ? `. ${hashtags} hashtags: only three are shown` : ""}.
         </small>
         <TemplateHint kind="title" />

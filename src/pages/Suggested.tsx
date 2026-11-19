@@ -6,7 +6,7 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Fold, Icon, Loading, ErrorNote, useToast } from "../components/ui.tsx";
+import { EmotionTags, Fold, Icon, Loading, ErrorNote, useToast } from "../components/ui.tsx";
 import { askForSuggestions, dismissSuggestion, getSuggestions, keepSuggestion } from "../lib/api.ts";
 import { compact, multiple } from "../lib/format.ts";
 import { keys, useConnection } from "../lib/hooks.ts";
@@ -196,6 +196,7 @@ function SuggestionCard({ idea, scores, onDone }: { idea: Idea; scores: IdeaScor
         {idea.topic ? <span className="tag">{idea.topic}</span> : null}
       </div>
       <h3 className="suggestion-title">{title}</h3>
+      {title === idea.title ? <EmotionTags emotions={s?.emotions} /> : null}
       {others.length ? (
         <div className="suggestion-others">
           <span className="small muted">Or:</span>
