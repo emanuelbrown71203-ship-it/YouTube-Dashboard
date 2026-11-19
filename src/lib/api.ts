@@ -283,11 +283,12 @@ export async function getSuggestions(): Promise<Idea[]> {
 
 /** Keeps a suggestion: it joins the board under its game, with the title the owner picked. */
 export async function keepSuggestion(id: string, titles?: { title: string; title_options: string[] }): Promise<void> {
-  const { error } = await supabase.from("yt_ideas").update({ in_suggested: false, ...(titles ?? {}) }).eq("id", id);
+  // It joins the board now, so it goes to the top of its game with the other new ideas.
+  const { error } = await supabase.from("yt_ideas").update({ in_suggested: false, sort_order: Date.now() / 1000, ...(titles ?? {}) }).eq("id", id);
   fail(error);
 }
 
-/** "Not for me": the suggestion goes in the bin, and the next batch stays away from ideas like it. */
+/** "Not for me": the suggestion goes in the bin, and that one video is not suggested again. */
 export async function dismissSuggestion(id: string): Promise<void> {
   const { error } = await supabase.from("yt_ideas").update({ trashed_at: new Date().toISOString() }).eq("id", id);
   fail(error);

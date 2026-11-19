@@ -198,7 +198,8 @@ free and the owner has said to use them whenever a score needs them.
   style) or hype titles whatever the AI wrote, falling back to a clear alternative, and
   `isRepeat` drops the same video however it is worded (titles that differ
   in a number, like "Act 2" and "Act 3", are different videos). Keep sends
-  one to the board; Not for me bins it and the next batch learns from it;
+  one to the board; Not for me bins it and rules out only that video (the
+  AI is told not to read it as that kind of challenge, title or format failing);
   ones left alone for 21 days are retired (`suggestion.expired`), which does
   not count as turned down. The tab shows the newest batch on top (with any
   follow-ups that came after it) and folds older ones into "Earlier
@@ -268,8 +269,12 @@ free and the owner has said to use them whenever a score needs them.
   in a `Fold` (`src/components/ui.tsx`): a closed heading with a one-line
   summary. The idea editor keeps title, game, format and "Am I making it?"
   open and folds scores, script, thumbnail, other titles, plan and notes;
-  Settings folds every part. A game on the Ideas board shows its first 5
-  ideas, plus any added on this visit. Filters are dropdowns, not rows of
+  Settings folds every part. The Ideas board puts new ideas first and never
+  makes the owner clear old ones (`src/lib/ideaOrder.ts`): the game with the
+  newest idea comes first, each game shows its 5 newest ideas (older ones
+  fold under "Show N older ideas"), and ideas from the last 7 days say New.
+  `sort_order` is when an idea joined the board; keeping a suggestion resets
+  it to that moment. Filters are dropdowns, not rows of
   chips.
 - On a phone nothing may be wider than the screen, the idea editor
   included: it only ever moves up and down. Switches (`Segmented`) side by

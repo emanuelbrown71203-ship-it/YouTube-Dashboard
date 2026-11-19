@@ -100,7 +100,7 @@ export function Suggested() {
     <>
       <p className="soft" style={{ margin: "0 0 12px", maxWidth: "68ch" }}>
         Ideas written from what is working for you, newest batch first. Keep the ones you like: they go to your board.
-        Older ones move down to Earlier suggestions and go away after three weeks, so there is nothing to clear. Not for me only steers these suggestions, never YouTube.
+        Older ones move down to Earlier suggestions and go away after three weeks, so there is nothing to clear. Not for me only rules out that one video, never the kind of idea or title, and never touches YouTube.
       </p>
       <div className="row-wrap" style={{ gap: 10, marginBottom: 14, alignItems: "center" }}>
         <button type="button" className="btn btn-primary" disabled={busy || !c?.ai} onClick={() => void more()}>

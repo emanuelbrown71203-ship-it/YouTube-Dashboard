@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ago, compact, day, duration, hours, multiple, percentChange } from "../src/lib/format.ts";
 import { splitByBatch } from "../src/lib/suggestions.ts";
 import { lengthRule } from "../src/lib/emotions.ts";
+import { byNewest, isNew, orderSections } from "../src/lib/ideaOrder.ts";
 import { daysSince, rhythmStatus, targetChoices, usualGap } from "../src/lib/rhythm.ts";
 import { cleanTitle, isRepeat, likeness, matchGame, pickTitle, titleProblems } from "../supabase/functions/yt-api/ideas.ts";
 import { centreOn, clampCrop, defaultCrop, fitWithin, pictureFiles, resizeCrop, widestFrame } from "../src/lib/pictures.ts";
@@ -620,5 +621,26 @@ describe("the owner's title length rule", () => {
     expect(lengthRule(["One subject", "Keep it 45 to 55 characters long"])).toEqual({ min: 45, max: 55 });
     expect(lengthRule(["No rule about length here"])).toBeNull();
     expect(lengthRule(["90 to 20 characters"])).toBeNull();
+  });
+});
+
+describe("ideas board order", () => {
+  const idea = (sort_order: number, more: Partial<{ priority: number; picked_at: string | null; status: string }> = {}) =>
+    ({ sort_order, priority: 2, picked_at: null, status: "idea", ...more });
+
+  it("puts the newest idea first, after the ones being made and the owner's priority", () => {
+    const old = idea(100), newer = idea(300), newest = idea(500), making = idea(50, { picked_at: "2026-11-01" }), low = idea(900, { priority: 3 });
+    expect([old, low, newest, making, newer].sort(byNewest)).toEqual([making, newest, newer, old, low]);
+  });
+
+  it("orders games by their newest idea, ideas with no game last", () => {
+    const groups = new Map([["Elden Ring", [idea(100), idea(200), idea(150)]], ["", [idea(999)]], ["Valheim", [idea(400)]]]);
+    expect(orderSections(groups).map(([game]) => game)).toEqual(["Valheim", "Elden Ring", ""]);
+  });
+
+  it("marks ideas from the last week as new", () => {
+    const now = Date.parse("2026-11-19T12:00:00Z");
+    expect(isNew(idea(now / 1000 - 6 * 86_400), now)).toBe(true);
+    expect(isNew(idea(now / 1000 - 8 * 86_400), now)).toBe(false);
   });
 });

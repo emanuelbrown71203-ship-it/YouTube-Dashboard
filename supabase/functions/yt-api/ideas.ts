@@ -199,8 +199,9 @@ const SYSTEM =
   "breaking out on other games, Shorts that beat their other Shorts, and what commenters ask for.\n\n" +
   "Every idea must be a video they can actually make, in one of their games (spell the game exactly as given), built on one piece of the " +
   "evidence, which you name in based_on (copy that video's title, or the comment). Never suggest something they already have or have made: " +
-  "the same game with the same challenge counts as the same video, however it is worded. Stay away from ideas like the ones they turned down, " +
-  "and lean towards the kinds they kept.\n\n" +
+  "the same game with the same challenge counts as the same video, however it is worded. A suggestion they turned down means only that " +
+  "that exact video is not for them: never suggest it again, but do not read it as that kind of challenge, title or format failing, " +
+  "because it may still work on another game, in another format or worded another way. Lean towards the kinds they kept.\n\n" +
   "The title is the most important part. Someone who reads only the title must know exactly what the video is: the game and the challenge, " +
   "stated plainly and specifically (the rule, the restriction or the goal). A good title reads like a clear question or statement of the " +
   "challenge, for example \"Can You Beat Elden Ring Using Only Merchant Items?\" or \"Baldur's Gate 3 Honour Mode With Only 2 Characters - Act 3\". " +

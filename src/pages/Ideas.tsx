@@ -6,6 +6,7 @@ import { bareNote, checkCount } from "../lib/notes.ts";
 import { scoreIdea } from "../lib/ideaScore.ts";
 import { ImportIdeas, TemplateHint, TemplateScore, useTemplates } from "./Templates.tsx";
 import { lengthRule } from "../lib/emotions.ts";
+import { byNewest, isNew, orderSections } from "../lib/ideaOrder.ts";
 import { IdeaRefs, RefStrip, useIdeaRefs } from "./Thumbnails.tsx";
 import { addIdeaRef } from "../lib/api.ts";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
@@ -28,7 +29,7 @@ const STATUSES: { key: IdeaStatus; label: string }[] = [
   { key: "scheduled", label: "Scheduled" },
   { key: "published", label: "Published" },
 ];
-/** How many ideas a game section shows before "Show more". */
+/** How many ideas a game section shows before its older ones fold away. */
 const FIRST_IN_GAME = 5;
 const next = (status: IdeaStatus) => STATUSES[STATUSES.findIndex((s) => s.key === status) + 1] ?? null;
 
@@ -183,6 +184,7 @@ export function Ideas() {
                       {idea.status !== "published" ? <ScoreChips scores={scores.get(idea.id)} templates={idea.template_check?.score ?? null} /> : null}
                       <div className="foot">
                         <FormatTag format={idea.format} />
+                        {!picked && isNew(idea) ? <span className="tag tag-strong">New</span> : null}
                         {withStage && picked ? <span className="tag" style={{ borderColor: "var(--note-line)", background: "var(--note-bg)", color: "var(--note-ink)" }}>Making it: {STATUSES.find((x) => x.key === idea.status)?.label}</span> : null}
                         {!withStage && sectionOf(idea) ? <span className="tag">{sectionOf(idea)}</span> : null}
                         {idea.discovery === "search" ? <span className="tag">For search</span> : null}
@@ -205,9 +207,9 @@ export function Ideas() {
                   );
   };
   const rank = (x: Idea) => (order === "priority" ? 0 : -(scores.get(x.id)?.[order].value ?? -1));
-  const sorted = (cards: Idea[]) => [...cards].sort((a, b) => rank(a) - rank(b) || a.priority - b.priority || a.sort_order - b.sort_order);
-  // By game: one section per game, the ones with the most open ideas first, unfiled ideas last.
-  const stageOf = (i: Idea) => STATUSES.findIndex((x) => x.key === i.status);
+  // Newest first, so a new idea never lands at the end of a long list; a score order sorts by that score.
+  const sorted = (cards: Idea[]) => [...cards].sort((a, b) => rank(a) - rank(b) || byNewest(a, b));
+  // By game: one section per game, the one with the newest idea first, unfiled ideas last.
   const sections = useMemo(() => {
     const groups = new Map<string, Idea[]>();
     for (const idea of list) {
@@ -216,7 +218,7 @@ export function Ideas() {
       const key = sectionOf(idea) ?? "";
       groups.set(key, [...(groups.get(key) ?? []), idea]);
     }
-    return [...groups.entries()].sort((x, y) => Number(x[0] === "") - Number(y[0] === "") || y[1].length - x[1].length || x[0].localeCompare(y[0]));
+    return orderSections(groups);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list, scores]);
 
@@ -271,7 +273,7 @@ export function Ideas() {
             <option value="short">Shorts</option>
           </select>
           <select className="select input" value={order} onChange={(e) => setOrder(e.target.value as typeof order)} aria-label="Order ideas by">
-            <option value="priority">My order</option>
+            <option value="priority">Newest first</option>
             <option value="history">Best on your history</option>
             <option value="recommended">Best on recommended</option>
           </select>
@@ -300,7 +302,7 @@ export function Ideas() {
         <div className={`stack${ideas.isFetching ? " fade" : ""}`} style={{ gap: 22 }}>
           {sections.length === 0 ? <div className="panel"><div className="empty"><h3>No open ideas</h3><p>Everything here has been published. Add the next one above.</p></div></div> : null}
           {sections.map(([game, cards]) => {
-            const all = sorted(cards).sort((a, b) => (order === "priority" ? stageOf(a) - stageOf(b) : 0));
+            const all = sorted(cards);
             const rest = all.filter((i) => !fresh.has(i.id));
             const shown = openGames.has(game) ? all : [...all.filter((i) => fresh.has(i.id)), ...rest.slice(0, FIRST_IN_GAME)];
             return (
@@ -313,7 +315,7 @@ export function Ideas() {
               <div className="game-ideas">{shown.map((idea) => card(idea, true))}</div>
               {rest.length > FIRST_IN_GAME ? (
                 <button type="button" className="btn btn-quiet btn-small" style={{ marginTop: 8 }} onClick={() => toggleGame(game)}>
-                  {openGames.has(game) ? "Show fewer" : `Show ${all.length - shown.length} more ${game || "ideas"}`}
+                  {openGames.has(game) ? "Hide older ideas" : `Show ${all.length - shown.length} older ${all.length - shown.length === 1 ? "idea" : "ideas"}`}
                 </button>
               ) : null}
             </section>
