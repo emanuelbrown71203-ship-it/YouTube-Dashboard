@@ -64,7 +64,8 @@ export function gameWords(game: string): string[] {
 
 /**
  * What is wrong with a title, in plain words; empty when it is fine. A title has to name the game and
- * say what the video is, without shouting or hiding the challenge.
+ * say what the video is, without shouting or hiding the challenge. One word in capitals for emphasis
+ * ("Get EVERY Achievement") is the owner's own style and common in videos that break out; two shout.
  */
 export function titleProblems(title: string, game: string): string[] {
   const out: string[] = [];
@@ -72,7 +73,7 @@ export function titleProblems(title: string, game: string): string[] {
   if (title.length < 15) out.push("too short to say what the video is");
   if (title.length > 80) out.push("too long");
   if (!gameWords(game).some((w) => t.includes(w))) out.push("does not name the game");
-  if ((title.match(/\b[A-Z]{5,}\b/g) ?? []).length >= 1) out.push("shouts");
+  if ((title.match(/\b[A-Z]{5,}\b/g) ?? []).length >= 2) out.push("shouts");
   if (/\b(this changed everything|you won'?t believe|gone wrong|insane|crazy|unbelievable|shocking)\b/i.test(title)) out.push("hides the challenge behind hype");
   return out;
 }
@@ -204,7 +205,8 @@ const SYSTEM =
   "stated plainly and specifically (the rule, the restriction or the goal). A good title reads like a clear question or statement of the " +
   "challenge, for example \"Can You Beat Elden Ring Using Only Merchant Items?\" or \"Baldur's Gate 3 Honour Mode With Only 2 Characters - Act 3\". " +
   "Never write a vague or hype title such as \"This Changed Everything\", \"I Tried Something INSANE\" or \"Elden Ring Challenge\": a title that " +
-  "hides the challenge is useless to this creator even if they would rename it later. No words in capitals, no emoji, no hashtags, nothing the " +
+  "hides the challenge is useless to this creator even if they would rename it later. At most one word in capitals, and only for emphasis " +
+  "(\"EVERY\", \"NEVER\"); no emoji, no hashtags, nothing the " +
   "video would not deliver, and always name the game. Learn the wording from their own titles that beat their usual. Keep to the length their " +
   "title rules ask for (often 45 to 55 characters); go longer only when the challenge cannot be said clearly in fewer, and never over 70. " +
   "Give two more titles that are just as clear, worded differently. In emotions, name what the main title sparks: curiosity, desire or fear " +

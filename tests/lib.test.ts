@@ -529,7 +529,10 @@ describe("suggested idea titles", () => {
     expect(titleProblems("Can You Beat Elden Ring Using Only Merchant Items?", "Elden Ring")).toEqual([]);
     expect(titleProblems("Honour Mode With Only 2 Characters in BG3 - Act 3", "Baldur's Gate 3")).toEqual([]);
     expect(titleProblems("This Changed Everything", "Elden Ring")).toContain("does not name the game");
-    expect(titleProblems("I Tried Something INSANE in Elden Ring", "Elden Ring")).toEqual(["shouts", "hides the challenge behind hype"]);
+    expect(titleProblems("I Tried Something INSANE in Elden Ring", "Elden Ring")).toEqual(["hides the challenge behind hype"]);
+    // One word in capitals for emphasis is the owner's style; two or more shout.
+    expect(titleProblems('Can Someone With "0 Hours" Get EVERY Achievement in Elden Ring?', "Elden Ring")).toEqual([]);
+    expect(titleProblems("These NEWBIES Couldn't Handle RADAHN in Elden Ring", "Elden Ring")).toEqual(["shouts"]);
     expect(titleProblems("Elden Ring", "Elden Ring")).toContain("too short to say what the video is");
   });
 
