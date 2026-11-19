@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { ago, compact, day, duration, hours, multiple, percentChange } from "../src/lib/format.ts";
+import { splitByBatch } from "../src/lib/suggestions.ts";
 import { daysSince, rhythmStatus, targetChoices, usualGap } from "../src/lib/rhythm.ts";
 import { cleanTitle, isRepeat, likeness, matchGame, pickTitle, titleProblems } from "../supabase/functions/yt-api/ideas.ts";
 import { centreOn, clampCrop, defaultCrop, fitWithin, pictureFiles, resizeCrop, widestFrame } from "../src/lib/pictures.ts";
 import { auditAll, dominantTagWord } from "../src/lib/seo.ts";
 import { bucket, change, fillDays, headline, libraryComplete, myTopics, splitPeriod, timeline, titleStats, totals } from "../src/lib/stats.ts";
-import type { DailyRow, FormatDailyRow, Video } from "../src/lib/types.ts";
+import type { DailyRow, FormatDailyRow, Idea, Video } from "../src/lib/types.ts";
 
 const NOW = new Date("2026-11-16T12:00:00Z");
 const row = (date: string, views: number, extra: Partial<DailyRow> = {}): DailyRow => ({
@@ -575,5 +576,30 @@ describe("upload rhythm", () => {
     expect(rhythmStatus({ format: "live", every_days: 7, active: true }, videos, now)).toMatchObject({ since: 5, late: false, words: "Next one due in 2 days." });
     expect(targetChoices(20)).toEqual([3, 5, 7, 10, 14, 20, 21, 30]);
     expect(targetChoices(null)).toEqual([3, 5, 7, 10, 14, 21, 30]);
+  });
+});
+
+describe("suggested ideas order", () => {
+  const idea = (title: string, batch: string, made_by: "batch" | "follow_up" = "batch") =>
+    ({ id: title, title, created_at: batch, suggested_at: batch, suggestion: { kind: "your_format", why: "", made_by, batch } }) as unknown as Idea;
+  it("puts the newest batch on top and earlier ones below, newest first", () => {
+    const week1 = [idea("a", "2026-11-05T10:00:00Z"), idea("b", "2026-11-05T10:00:00Z")];
+    const week2 = [idea("c", "2026-11-12T10:00:00Z")];
+    const latest = [idea("d", "2026-11-19T10:00:00Z"), idea("e", "2026-11-19T10:00:00Z")];
+    const { fresh, earlier } = splitByBatch([...week1, ...latest, ...week2]);
+    expect(fresh.map((i) => i.title)).toEqual(["d", "e"]);
+    expect(earlier.map((i) => i.title)).toEqual(["c", "a", "b"]);
+  });
+
+  it("keeps follow-ups that came after the newest batch on top, and older ones below", () => {
+    const { fresh, earlier } = splitByBatch([
+      idea("old follow-up", "2026-11-10T10:00:00Z", "follow_up"), idea("batch", "2026-11-12T10:00:00Z"), idea("new follow-up", "2026-11-14T10:00:00Z", "follow_up"),
+    ]);
+    expect(fresh.map((i) => i.title)).toEqual(["batch", "new follow-up"]);
+    expect(earlier.map((i) => i.title)).toEqual(["old follow-up"]);
+  });
+
+  it("shows everything as new before the first batch", () => {
+    expect(splitByBatch([idea("f", "2026-11-14T10:00:00Z", "follow_up")]).earlier).toEqual([]);
   });
 });

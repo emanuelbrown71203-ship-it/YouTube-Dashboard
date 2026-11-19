@@ -1,6 +1,8 @@
 // Ideas, Suggested tab: ideas the dashboard wrote from what is working for the owner, waiting to be
 // kept or turned down. Each is checked against YouTube like any idea, so it shows the same scores.
-// Kept ones join the board under their game; turned-down ones teach the next batch.
+// The newest batch is on top; older ones wait in a closed "Earlier suggestions" section, so the
+// owner never has to turn ideas down just to clear them. Kept ones join the board under their game;
+// turned-down ones steer the next batch (the dashboard's own suggestions only, never YouTube).
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
@@ -9,6 +11,7 @@ import { askForSuggestions, dismissSuggestion, getSuggestions, keepSuggestion } 
 import { compact, multiple } from "../lib/format.ts";
 import { keys, useConnection } from "../lib/hooks.ts";
 import type { IdeaScores } from "../lib/ideaScore.ts";
+import { splitByBatch } from "../lib/suggestions.ts";
 import type { Idea, Suggestion } from "../lib/types.ts";
 import { ScoreChips, useIdeaChecking, useIdeaScores } from "./Pulse.tsx";
 
@@ -49,9 +52,10 @@ export function Suggested() {
   const checking = useIdeaChecking(ideas);
 
   const groups = useMemo(() => {
+    const { fresh, earlier } = splitByBatch(ideas);
     const follow = new Map<string, Idea[]>();
     const rest: Idea[] = [];
-    for (const i of ideas) {
+    for (const i of fresh) {
       const of = i.suggestion?.follow_up_of;
       if (of) follow.set(of, [...(follow.get(of) ?? []), i]);
       else rest.push(i);
@@ -62,6 +66,7 @@ export function Suggested() {
       follow: [...follow.values()].map((g) => g.sort(sort)),
       strong: ranked.filter((i) => (scores.get(i.id)?.recommended.value ?? WEAK) >= WEAK),
       weak: ranked.filter((i) => (scores.get(i.id)?.recommended.value ?? WEAK) < WEAK),
+      earlier,
     };
   }, [ideas, scores]);
 
@@ -94,7 +99,8 @@ export function Suggested() {
   return (
     <>
       <p className="soft" style={{ margin: "0 0 12px", maxWidth: "68ch" }}>
-        Ideas written from what is working for you. Keep the ones you like: they go to your board under their game. Turn one down and the next batch stays away from ideas like it.
+        Ideas written from what is working for you, newest batch first. Keep the ones you like: they go to your board.
+        Older ones move down to Earlier suggestions and go away after three weeks, so there is nothing to clear. Not for me only steers these suggestions, never YouTube.
       </p>
       <div className="row-wrap" style={{ gap: 10, marginBottom: 14, alignItems: "center" }}>
         <button type="button" className="btn btn-primary" disabled={busy || !c?.ai} onClick={() => void more()}>
@@ -129,7 +135,7 @@ export function Suggested() {
       })}
       {groups.strong.length ? (
         <section className="section" style={{ marginTop: groups.follow.length ? undefined : 0 }}>
-          {groups.follow.length ? <div className="section-head"><h2>New ideas</h2></div> : null}
+          {groups.follow.length || groups.earlier.length ? <div className="section-head"><h2>Newest ideas</h2></div> : null}
           <div className="stack" style={{ gap: 10 }}>{groups.strong.map((i) => <SuggestionCard key={i.id} idea={i} scores={scores.get(i.id)} onDone={refresh} />)}</div>
         </section>
       ) : null}
@@ -137,6 +143,14 @@ export function Suggested() {
         <div style={{ marginTop: 16 }}>
           <Fold title={`${groups.weak.length} weaker on YouTube right now`} summary="Low Recommended score">
             <div className="stack" style={{ gap: 10 }}>{groups.weak.map((i) => <SuggestionCard key={i.id} idea={i} scores={scores.get(i.id)} onDone={refresh} />)}</div>
+          </Fold>
+        </div>
+      ) : null}
+      {groups.earlier.length ? (
+        <div style={{ marginTop: 16 }}>
+          <Fold title="Earlier suggestions" summary={`${groups.earlier.length} from earlier batches`}>
+            <p className="small muted" style={{ margin: 0 }}>Newest first. Ones you leave here go away three weeks after they were suggested, without counting against anything.</p>
+            <div className="stack" style={{ gap: 10 }}>{groups.earlier.map((i) => <SuggestionCard key={i.id} idea={i} scores={scores.get(i.id)} onDone={refresh} />)}</div>
           </Fold>
         </div>
       ) : null}

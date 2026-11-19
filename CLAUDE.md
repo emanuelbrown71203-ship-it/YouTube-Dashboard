@@ -198,7 +198,11 @@ free and the owner has said to use them whenever a score needs them.
   `isRepeat` drops the same video however it is worded (titles that differ
   in a number, like "Act 2" and "Act 3", are different videos). Keep sends
   one to the board; Not for me bins it and the next batch learns from it;
-  ones left alone for 21 days are retired (`suggestion.expired`).
+  ones left alone for 21 days are retired (`suggestion.expired`), which does
+  not count as turned down. The tab shows the newest batch on top (with any
+  follow-ups that came after it) and folds older ones into "Earlier
+  suggestions" (`src/lib/suggestions.ts`): the owner should never have to
+  turn ideas down just to clear them.
 - The script starter (Script fold in the idea editor; `/ai/script`) drafts
   a hook, what happens and timed beats with a shots checklist, from the
   idea, the owner's intro templates, the idea's YouTube check, their best
