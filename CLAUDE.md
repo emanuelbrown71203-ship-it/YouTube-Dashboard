@@ -201,10 +201,11 @@ free and the owner has said to use them whenever a score needs them.
   one to the board; Not for me bins it and rules out only that video (the
   AI is told not to read it as that kind of challenge, title or format failing);
   ones left alone for 21 days are retired (`suggestion.expired`), which does
-  not count as turned down. The tab shows the newest batch on top (with any
-  follow-ups that came after it) and folds older ones into "Earlier
-  suggestions" (`src/lib/suggestions.ts`): the owner should never have to
-  turn ideas down just to clear them.
+  not count as turned down. The tab shows only the newest batch on top (with
+  follow-ups from the day before it or since) and folds every earlier batch,
+  even one from minutes before, into "Earlier suggestions"
+  (`src/lib/suggestions.ts`): after Give me more the owner sees just what
+  was written, and never has to turn ideas down just to clear them.
 - The owner's rules are a guide, not a law (their words: "there is always an
   exception to the rule"). Every AI helper gets their active templates and
   lines to remember with `OWN_RULES` (`growth.ts`): follow them by default,
@@ -269,12 +270,11 @@ free and the owner has said to use them whenever a score needs them.
   in a `Fold` (`src/components/ui.tsx`): a closed heading with a one-line
   summary. The idea editor keeps title, game, format and "Am I making it?"
   open and folds scores, script, thumbnail, other titles, plan and notes;
-  Settings folds every part. The Ideas board puts new ideas first and never
-  makes the owner clear old ones (`src/lib/ideaOrder.ts`): the game with the
-  newest idea comes first, each game shows its 5 newest ideas (older ones
-  fold under "Show N older ideas"), and ideas from the last 7 days say New.
-  `sort_order` is when an idea joined the board; keeping a suggestion resets
-  it to that moment. Filters are dropdowns, not rows of
+  Settings folds every part. The Ideas board never makes the owner clear
+  old ideas (`src/lib/ideaOrder.ts`): games keep their order (most ideas
+  first), and each game shows its 5 newest ideas, with older ones folded
+  under "Show N older ideas". `sort_order` is when an idea joined the
+  board; keeping a suggestion resets it to that moment. Filters are dropdowns, not rows of
   chips.
 - On a phone nothing may be wider than the screen, the idea editor
   included: it only ever moves up and down. Switches (`Segmented`) side by

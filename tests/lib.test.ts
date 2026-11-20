@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ago, compact, day, duration, hours, multiple, percentChange } from "../src/lib/format.ts";
 import { splitByBatch } from "../src/lib/suggestions.ts";
 import { lengthRule } from "../src/lib/emotions.ts";
-import { byNewest, isNew, orderSections } from "../src/lib/ideaOrder.ts";
+import { byNewest, orderSections } from "../src/lib/ideaOrder.ts";
 import { daysSince, rhythmStatus, targetChoices, usualGap } from "../src/lib/rhythm.ts";
 import { cleanTitle, isRepeat, likeness, matchGame, pickTitle, titleProblems } from "../supabase/functions/yt-api/ideas.ts";
 import { centreOn, clampCrop, defaultCrop, fitWithin, pictureFiles, resizeCrop, widestFrame } from "../src/lib/pictures.ts";
@@ -610,6 +610,15 @@ describe("suggested ideas order", () => {
     expect(earlier).toEqual([]);
   });
 
+  it("shows only the batch just written when Give me more was tapped several times in a row", () => {
+    const { fresh, earlier } = splitByBatch([
+      idea("10:47", "2026-11-19T10:47:00Z"), idea("11:01", "2026-11-19T11:01:00Z"), idea("12:32 a", "2026-11-19T12:32:00Z"),
+      idea("11:29", "2026-11-19T11:29:00Z"), idea("12:32 b", "2026-11-19T12:32:00Z"),
+    ]);
+    expect(fresh.map((i) => i.title)).toEqual(["12:32 a", "12:32 b"]);
+    expect(earlier.map((i) => i.title)).toEqual(["11:29", "11:01", "10:47"]);
+  });
+
   it("shows everything as new before the first batch", () => {
     expect(splitByBatch([idea("f", "2026-11-14T10:00:00Z", "follow_up")]).earlier).toEqual([]);
   });
@@ -633,14 +642,8 @@ describe("ideas board order", () => {
     expect([old, low, newest, making, newer].sort(byNewest)).toEqual([making, newest, newer, old, low]);
   });
 
-  it("orders games by their newest idea, ideas with no game last", () => {
-    const groups = new Map([["Elden Ring", [idea(100), idea(200), idea(150)]], ["", [idea(999)]], ["Valheim", [idea(400)]]]);
-    expect(orderSections(groups).map(([game]) => game)).toEqual(["Valheim", "Elden Ring", ""]);
-  });
-
-  it("marks ideas from the last week as new", () => {
-    const now = Date.parse("2026-11-19T12:00:00Z");
-    expect(isNew(idea(now / 1000 - 6 * 86_400), now)).toBe(true);
-    expect(isNew(idea(now / 1000 - 8 * 86_400), now)).toBe(false);
+  it("keeps games in their usual order, most ideas first, ideas with no game last", () => {
+    const groups = new Map([["Valheim", [idea(400)]], ["", [idea(999), idea(998), idea(997)]], ["Elden Ring", [idea(100), idea(200), idea(150)]]]);
+    expect(orderSections(groups).map(([game]) => game)).toEqual(["Elden Ring", "Valheim", ""]);
   });
 });

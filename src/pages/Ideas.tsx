@@ -6,7 +6,7 @@ import { bareNote, checkCount } from "../lib/notes.ts";
 import { scoreIdea } from "../lib/ideaScore.ts";
 import { ImportIdeas, TemplateHint, TemplateScore, useTemplates } from "./Templates.tsx";
 import { lengthRule } from "../lib/emotions.ts";
-import { byNewest, isNew, orderSections } from "../lib/ideaOrder.ts";
+import { byNewest, orderSections } from "../lib/ideaOrder.ts";
 import { IdeaRefs, RefStrip, useIdeaRefs } from "./Thumbnails.tsx";
 import { addIdeaRef } from "../lib/api.ts";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
@@ -184,7 +184,6 @@ export function Ideas() {
                       {idea.status !== "published" ? <ScoreChips scores={scores.get(idea.id)} templates={idea.template_check?.score ?? null} /> : null}
                       <div className="foot">
                         <FormatTag format={idea.format} />
-                        {!picked && isNew(idea) ? <span className="tag tag-strong">New</span> : null}
                         {withStage && picked ? <span className="tag" style={{ borderColor: "var(--note-line)", background: "var(--note-bg)", color: "var(--note-ink)" }}>Making it: {STATUSES.find((x) => x.key === idea.status)?.label}</span> : null}
                         {!withStage && sectionOf(idea) ? <span className="tag">{sectionOf(idea)}</span> : null}
                         {idea.discovery === "search" ? <span className="tag">For search</span> : null}
@@ -209,7 +208,7 @@ export function Ideas() {
   const rank = (x: Idea) => (order === "priority" ? 0 : -(scores.get(x.id)?.[order].value ?? -1));
   // Newest first, so a new idea never lands at the end of a long list; a score order sorts by that score.
   const sorted = (cards: Idea[]) => [...cards].sort((a, b) => rank(a) - rank(b) || byNewest(a, b));
-  // By game: one section per game, the one with the newest idea first, unfiled ideas last.
+  // By game: one section per game, the ones with the most open ideas first, unfiled ideas last.
   const sections = useMemo(() => {
     const groups = new Map<string, Idea[]>();
     for (const idea of list) {
