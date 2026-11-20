@@ -260,11 +260,13 @@ free and the owner has said to use them whenever a score needs them.
   and a More menu. Put a new page in the section it belongs to; when it
   fits none of them, give it a section of its own. Never tuck it under
   whichever section is handy.
-- The front page is for what the owner acts on: the new upload, waiting
-  follow-ups, the upload rhythm (only with a target), the weekly note, saved
-  lines, pinned comments, goals, latest uploads. Each shows a
-  few and links to the rest (3 lines, 2 goals, 4 uploads); a block with
-  nothing in it is left out. Charts and breakdowns go in the Stats section
+- The front page is for what the owner acts on, and the owner has said it
+  felt overbearing, so keep it short and never say a thing twice: the new
+  upload, waiting follow-ups, one "This week" card (the upload rhythm rows,
+  only with a target, then a few lines; no goal there, since Goals has its
+  own block), one saved line and one pinned comment (a different one each
+  day, `src/lib/daily.ts`), up to 2 goals and 3 latest uploads, each linking
+  to the rest. A block with nothing in it is left out. Charts and breakdowns go in the Stats section
   (`#/stats`), not there.
 - Keep screens short on a phone. Detail that is not needed every time goes
   in a `Fold` (`src/components/ui.tsx`): a closed heading with a one-line

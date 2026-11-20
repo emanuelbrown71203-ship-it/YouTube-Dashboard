@@ -15,6 +15,7 @@ import {
 } from "../lib/growth.ts";
 import { keys, useChannel, useConnection, useDaily, useIdeas, useVideos } from "../lib/hooks.ts";
 import { bareNote, hasList } from "../lib/notes.ts";
+import { ofTheDay } from "../lib/daily.ts";
 import { navigate } from "../lib/router.ts";
 import type { Video } from "../lib/types.ts";
 
@@ -867,7 +868,7 @@ export function KindWords() {
   return (
     <Section title="Kind words" aside={<a className="small" href="#/comments">All comments</a>}>
       <div className="panel">
-        {best.map((c) => (
+        {[ofTheDay(best)!].map((c) => (
           <CommentCard
             key={c.id} comment={c} video={c.video_id ? byId.get(c.video_id) : undefined}
             actions={<button type="button" className="btn btn-quiet btn-small" onClick={() => void act(c.id, { pinned: false }, "Taken off your front page.")}>Unpin</button>}

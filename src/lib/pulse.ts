@@ -177,6 +177,8 @@ export function weekNote(input: {
   videos: Video[]; daily: DailyRow[]; ideas: Idea[]; today: string;
   goals: { title: string; progress: GoalProgress }[];
   topIdea?: { title: string; id: string; score: number } | null;
+  /** The upload rhythm sits in the same card and already says how long it has been. */
+  rhythmShown?: boolean;
 }): NoteLine[] {
   const { videos, daily, ideas, today } = input;
   const lines: NoteLine[] = [];
@@ -188,7 +190,9 @@ export function weekNote(input: {
   // 1. What went up.
   const made = week.filter((v) => v.content_type !== "live");
   const streams = week.length - made.length;
-  if (made.length === 0) {
+  if (made.length === 0 && input.rhythmShown) {
+    // The rhythm rows above already say how long it has been for each format.
+  } else if (made.length === 0) {
     const last = open.filter((v) => v.content_type !== "live").sort((a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? ""))[0];
     const ago = last ? Math.round((t - Date.parse(last.published_at!.slice(0, 10))) / dayMs) : null;
     lines.push({
@@ -234,8 +238,6 @@ export function weekNote(input: {
   } else {
     lines.push({ text: "Nothing is planned. Add an idea and give it a date to see it here.", href: "#/ideas" });
   }
-  const goal = input.goals.filter((g) => !g.progress.done && g.progress.share !== null && g.progress.left !== null)
-    .sort((a, b) => (b.progress.share ?? 0) - (a.progress.share ?? 0))[0];
-  if (goal) lines.push({ text: `Closest goal: ${goal.title}, ${whole(goal.progress.left!)} to go.`, href: "#/goals" });
+  // Goals have their own block on the front page, so they are not repeated here.
   return lines;
 }

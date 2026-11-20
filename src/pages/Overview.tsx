@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { GoalsStrip, KindWords, RunBand, STATS_TABS, Tabs } from "./Growth.tsx";
 import { FrontLines } from "./Notes.tsx";
 import { NewUpload, WeekCard } from "./Pulse.tsx";
-import { RhythmCard } from "./Rhythm.tsx";
 import { FollowUpsWaiting } from "./Suggested.tsx";
 import { BarList, Sparkline, Timeline, type UploadPin } from "../components/Timeline.tsx";
 import { Delta, ErrorNote, FormatTag, Loading, Mult, Segmented, Thumb } from "../components/ui.tsx";
@@ -78,7 +77,7 @@ export function Overview({ view }: { view: "home" | "stats" }) {
 
   const complete = libraryComplete(videos.data ?? [], channel.data?.videos);
   // Streams are left out here: there are many of them and they would push the videos off the list.
-  const latest = (videos.data ?? []).filter((v) => v.privacy === "public" && v.content_type !== "live").slice(0, 4);
+  const latest = (videos.data ?? []).filter((v) => v.privacy === "public" && v.content_type !== "live").slice(0, 3);
   const lastOk = runs.data?.find((r) => r.status === "ok" || r.status === "partial");
   const traffic = reports.data?.traffic_sources_28d;
   const trafficRows = (traffic?.data ?? [])
@@ -98,7 +97,7 @@ export function Overview({ view }: { view: "home" | "stats" }) {
         {home ? null : <Segmented label="Time range" value={range} options={RANGES} onChange={setRange} />}
       </div>
       {home ? null : <Tabs label="Stats" base="/stats" current="" tabs={STATS_TABS} />}
-      {home ? <><RunBand /><NewUpload /><FollowUpsWaiting /><RhythmCard /><WeekCard /></> : null}
+      {home ? <><RunBand /><NewUpload /><FollowUpsWaiting /><WeekCard /></> : null}
 
       {connection.data?.connection_error ? (
         <div className="notice error" role="alert">

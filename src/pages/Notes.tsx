@@ -6,6 +6,7 @@ import { NotesBox, RichNote } from "../components/notes.tsx";
 import { Drawer, ErrorNote, Icon, Loading, useToast } from "../components/ui.tsx";
 import { ApiError, fail } from "../lib/api.ts";
 import { ago } from "../lib/format.ts";
+import { ofTheDay } from "../lib/daily.ts";
 import { supabase } from "../lib/supabase.ts";
 
 export interface Note {
@@ -64,17 +65,17 @@ function useRewriteLine() {
   };
 }
 
-function Line({ note, children }: { note: Note; children?: React.ReactNode }) {
+function Line({ note, children, compact }: { note: Note; children?: React.ReactNode; compact?: boolean }) {
   const rewrite = useRewriteLine();
   return (
     <div className="item line-note">
       <div className="grow" style={{ minWidth: 0 }}>
         <RichNote className="line-text" text={note.text} onChange={(text) => void rewrite(note.id, text)} />
-        <div className="row-wrap small muted" style={{ marginTop: 6 }}>
+        {compact ? null : <div className="row-wrap small muted" style={{ marginTop: 6 }}>
           {note.source ? (note.source_url ? <a href={note.source_url} target="_blank" rel="noreferrer">{note.source}</a> : <span>{note.source}</span>) : null}
           {note.topic ? <span className="tag">{note.topic}</span> : null}
           <span>{ago(note.created_at)}</span>
-        </div>
+        </div>}
       </div>
       {children}
     </div>
@@ -192,7 +193,7 @@ export function Notes() {
   );
 }
 
-/** On the front page: the lines the owner keeps there, with a way to add one on the spot. */
+/** On the front page: one of the lines the owner keeps there, a different one each day, with a way to add one on the spot. */
 export function FrontLines() {
   const notes = useNotes();
   const queryClient = useQueryClient();
@@ -211,11 +212,10 @@ export function FrontLines() {
       </div>
       {adding ? <QuickLine onSaved={() => { reload(); setAdding(false); }} /> : null}
       {shown.length ? (
-        <div className="panel">{shown.slice(0, 3).map((note) => <Line key={note.id} note={note} />)}</div>
+        <div className="panel">{[ofTheDay(shown)!].map((note) => <Line key={note.id} note={note} compact />)}</div>
       ) : adding ? null : (
         <div className="panel"><p className="small muted" style={{ padding: "14px 18px", margin: 0 }}>Heard a good line in a podcast or a video? Tap Add a line and it stays here where you will see it.</p></div>
       )}
-      {shown.length > 3 ? <p className="small muted" style={{ marginTop: 8 }}><a href="#/playbook/lines">{shown.length - 3} more in Lines to remember</a></p> : null}
     </section>
   );
 }

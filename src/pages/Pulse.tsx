@@ -9,6 +9,7 @@ import { goalProgress, useGoals } from "../lib/growth.ts";
 import { useChannel, useDaily, useIdeas, useVideos } from "../lib/hooks.ts";
 import { type IdeaScores, type Market, type Score, scoreIdea, scoreWord } from "../lib/ideaScore.ts";
 import { first48, type Point, trackedUpload, TRACK_HOURS, useFirstDays, usePulse, weekNote, yardstickVideos } from "../lib/pulse.ts";
+import { RhythmRows, useRhythm } from "./Rhythm.tsx";
 import type { Idea, IdeaDraft, Video } from "../lib/types.ts";
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -374,8 +375,11 @@ export function NewUpload() {
 // The weekly note
 // ---------------------------------------------------------------------------
 
+/** The front page's one summary card: the upload rhythm, then a few lines on the week. Nothing in it repeats another block. */
 export function WeekCard() {
   const videos = useVideos();
+  const rhythm = useRhythm();
+  const rhythmShown = (rhythm.data ?? []).some((r) => r.active);
   const daily = useDaily();
   const ideas = useIdeas();
   const goals = useGoals();
@@ -387,15 +391,19 @@ export function WeekCard() {
     const ctx = { subscribers: channel.data?.subscribers ?? null, videos: videos.data ?? [], daily: daily.data ?? [], today };
     const best = open.map((i) => ({ i, s: scores.get(i.id)?.history.value ?? null })).filter((x) => x.s !== null).sort((a, b) => (b.s ?? 0) - (a.s ?? 0))[0];
     return weekNote({
-      videos: videos.data ?? [], daily: daily.data ?? [], ideas: ideas.data ?? [], today,
+      videos: videos.data ?? [], daily: daily.data ?? [], ideas: ideas.data ?? [], today, rhythmShown,
       goals: (goals.data ?? []).map((g) => ({ title: g.title, progress: goalProgress(g, ctx) })),
       topIdea: best ? { title: best.i.title, id: best.i.id, score: best.s! } : null,
     });
-  }, [videos.data, daily.data, ideas.data, goals.data, channel.data, open, scores]);
+  }, [videos.data, daily.data, ideas.data, goals.data, channel.data, open, scores, rhythmShown]);
   if (videos.isLoading || daily.isLoading || lines.length === 0) return null;
   return (
     <section className="week-card" aria-label="This week">
-      <h2>This week</h2>
+      <div className="row between" style={{ gap: 8 }}>
+        <h2>This week</h2>
+        {rhythmShown ? <a className="small" href="#/goals">Targets</a> : null}
+      </div>
+      <RhythmRows />
       <ul>
         {lines.map((line) => <li key={line.text}>{line.href ? <a href={line.href}>{line.text}</a> : line.text}</li>)}
       </ul>

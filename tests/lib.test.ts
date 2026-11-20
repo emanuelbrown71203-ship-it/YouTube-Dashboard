@@ -441,6 +441,18 @@ describe("growth", () => {
     expect(note[0].text).toBe("You posted 1 long-form video in the last 7 days.");
     expect(note.at(-1)!.text).toContain("71 out of 100");
     expect(weekNote({ videos: old, daily: [], ideas: [], goals: [], today: "2026-11-17" })[0].text).toContain("Your last one was 33 days ago");
+    // The rhythm rows in the same card already say how long it has been, and goals have their own block.
+    const goal = { title: "50K views", progress: { done: false, share: 0.7, left: 15000 } } as never;
+    const withRhythm = weekNote({ videos: old, daily: [], ideas: [], goals: [goal], today: "2026-11-17", rhythmShown: true });
+    expect(withRhythm.some((l) => l.text.includes("days ago"))).toBe(false);
+    expect(withRhythm.some((l) => l.text.includes("goal"))).toBe(false);
+  });
+
+  it("shows one saved line or comment a day, each in turn", async () => {
+    const { ofTheDay } = await import("../src/lib/daily.ts");
+    const day = 86_400_000;
+    expect([0, 1, 2, 3].map((d) => ofTheDay(["a", "b", "c"], d * day + 5))).toEqual(["a", "b", "c", "a"]);
+    expect(ofTheDay([], 0)).toBeUndefined();
   });
 
   it("shows only the comments the owner pinned on the front page", async () => {

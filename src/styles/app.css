@@ -740,6 +740,10 @@ button.nav-link { border: 0; background: none; font-family: inherit; font-size: 
 .rhythm-row { align-items: center; gap: 12px; }
 .rhythm-row .select { width: auto; flex: none; max-width: 190px; }
 .rhythm-late { color: var(--bad); font-weight: 600; }
+.rhythm-rows { display: flex; flex-direction: column; gap: 8px; margin: 2px 0 12px; }
+.rhythm-line { display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
+.rhythm-name { font-weight: 650; font-size: 14px; }
+.meter.thin { height: 5px; }
 @media (max-width: 640px) { .rhythm-row { flex-wrap: wrap; } .rhythm-row .select { max-width: none; width: 100%; } }
 
 /* The emotions a title sparks, in the owner's own colour code (only the dot carries the colour). */
