@@ -256,6 +256,18 @@ const deps: Deps = {
         }),
       };
     }
+    if (props.sections) {
+      // A plan for a goal: a few headings with steps, built on the goal it was given.
+      const goal = (JSON.parse(req.prompt) as { goal: { title: string } }).goal;
+      return {
+        reality: `(made-up) Where "${goal.title}" stands against your numbers.`,
+        sections: [
+          { heading: "First", steps: ["(made-up) Pick the idea that moves this goal most", "(made-up) Set a date for it in the planner"] },
+          { heading: "Every week", steps: ["(made-up) Post one long-form video", "(made-up) Stream once and cut a Short from it"] },
+          { heading: "Before the deadline", steps: ["(made-up) Check how far you got and adjust the plan"] },
+        ],
+      };
+    }
     if (props.beats) {
       const sent = JSON.parse(req.prompt) as { video: { title: string; format: string } };
       const short = /short/i.test(sent.video.format);

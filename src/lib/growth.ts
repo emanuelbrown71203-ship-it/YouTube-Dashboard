@@ -3,6 +3,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { ApiError, fail } from "./api.ts";
+import { parseNote } from "./notes.ts";
 import { median } from "./stats.ts";
 import { supabase } from "./supabase.ts";
 import type { DailyRow, Idea, Video } from "./types.ts";
@@ -21,7 +22,10 @@ export interface Goal {
   /** For a views goal with no video picked: the kind of video that counts. Formats are never mixed. */
   format: "short" | "long" | "live" | null;
   due_on: string | null;
+  /** Why it matters. */
   notes: string | null;
+  /** How to get there: steps written as checkboxes, under plain heading lines. */
+  plan: string | null;
   done_at: string | null;
   created_at: string;
 }
@@ -80,7 +84,7 @@ const addDays = (date: string, n: number) => new Date(Date.parse(`${date}T00:00:
 // Reads and writes
 // ---------------------------------------------------------------------------
 
-const GOAL = "id, kind, title, target, start_value, video_id, format, due_on, notes, done_at, created_at";
+const GOAL = "id, kind, title, target, start_value, video_id, format, due_on, notes, plan, done_at, created_at";
 const TEST = "id, video_id, kind, what, why, started_on, ended_on, ctr_before, ctr_after, verdict, learned, created_at";
 
 export async function getGoals(): Promise<Goal[]> {
@@ -99,7 +103,7 @@ export async function saveGoal(draft: GoalDraft): Promise<void> {
   fail(error);
 }
 
-export async function patchGoal(id: string, fields: { done_at?: string | null; trashed_at?: string | null; notes?: string | null }): Promise<void> {
+export async function patchGoal(id: string, fields: { done_at?: string | null; trashed_at?: string | null; notes?: string | null; plan?: string | null }): Promise<void> {
   const { error } = await supabase.from("yt_goals").update(fields).eq("id", id);
   fail(error);
 }
@@ -450,6 +454,12 @@ export interface GoalProgress {
 export function bestVideo(videos: Video[], format?: "short" | "long" | "live" | null): Video | undefined {
   return videos.filter((v) => v.privacy === "public" && v.views !== null && (!format || v.content_type === format))
     .sort((a, b) => (b.views ?? 0) - (a.views ?? 0))[0];
+}
+
+/** How far along a goal's plan is: its checkbox steps, how many are ticked, and the first one still to do. */
+export function planStatus(plan: string | null | undefined): { done: number; total: number; next: string | null } {
+  const steps = parseNote(plan ?? "").flatMap((b) => (b.kind === "list" ? b.items : [])).filter((i) => i.check !== null);
+  return { done: steps.filter((s) => s.check).length, total: steps.length, next: steps.find((s) => !s.check)?.text.trim() || null };
 }
 
 export function goalProgress(goal: Goal, ctx: { subscribers: number | null; videos: Video[]; daily: DailyRow[]; today: string }): GoalProgress {

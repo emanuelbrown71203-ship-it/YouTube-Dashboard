@@ -204,7 +204,7 @@ describe("growth", () => {
   it("measures a goal from where it started and projects when it lands", async () => {
     const { goalProgress } = await import("../src/lib/growth.ts");
     const daily = days(28, () => 100).map((d) => ({ ...d, subs_gained: 12, subs_lost: 2 }));
-    const goal = { id: "g", kind: "subscribers" as const, title: "5K", target: 5000, start_value: 3000, video_id: null, format: null, due_on: null, notes: null, done_at: null, created_at: "" };
+    const goal = { id: "g", kind: "subscribers" as const, title: "5K", target: 5000, start_value: 3000, video_id: null, format: null, due_on: null, notes: null, plan: null, done_at: null, created_at: "" };
     const p = goalProgress(goal, { subscribers: 4000, videos: [], daily, today: "2026-11-16" });
     expect(p.share).toBe(0.5);
     expect(p.left).toBe(1000);
@@ -218,7 +218,7 @@ describe("growth", () => {
     const videos = [v("s1", "short", 90000, { vs_typical: 6 }), v("s2", "short", 500), v("l1", "long", 2600), v("l2", "long", 300, { published_at: "2026-09-01" }), v("x", "live", 400)];
     expect(bestVideo(videos, "long")?.id).toBe("l1");
     expect(bestVideo(videos, "short")?.id).toBe("s1");
-    const goal = { id: "g", kind: "video_views" as const, title: "t", target: 10000, start_value: 2600, video_id: null, format: "long" as const, due_on: null, notes: null, done_at: null, created_at: "2026-11-01" };
+    const goal = { id: "g", kind: "video_views" as const, title: "t", target: 10000, start_value: 2600, video_id: null, format: "long" as const, due_on: null, notes: null, plan: null, done_at: null, created_at: "2026-11-01" };
     const p = goalProgress(goal, { subscribers: 1, videos, daily: [], today: "2026-11-16" });
     expect(p.current).toBe(2600);
     expect(p.done).toBe(false);
@@ -446,6 +446,14 @@ describe("growth", () => {
     const withRhythm = weekNote({ videos: old, daily: [], ideas: [], goals: [goal], today: "2026-11-17", rhythmShown: true });
     expect(withRhythm.some((l) => l.text.includes("days ago"))).toBe(false);
     expect(withRhythm.some((l) => l.text.includes("goal"))).toBe(false);
+  });
+
+  it("reads how far a goal's plan is, and its next step", async () => {
+    const { planStatus } = await import("../src/lib/growth.ts");
+    const plan = "First\n- [x] Turn on memberships\n- [ ] Make 3 emoji\n\nEvery month\n- [ ] Members' poll\n- A note, not a step";
+    expect(planStatus(plan)).toEqual({ done: 1, total: 3, next: "Make 3 emoji" });
+    expect(planStatus("- [x] Done")).toEqual({ done: 1, total: 1, next: null });
+    expect(planStatus(null)).toEqual({ done: 0, total: 0, next: null });
   });
 
   it("shows one saved line or comment a day, each in turn", async () => {

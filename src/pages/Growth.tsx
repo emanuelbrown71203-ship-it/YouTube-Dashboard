@@ -5,12 +5,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { RhythmSettings } from "./Rhythm.tsx";
 import { type ReactNode, useMemo, useState } from "react";
 import { NotesBox, RichNote } from "../components/notes.tsx";
-import { Drawer, ErrorNote, FormatTag, Loading, Segmented, Thumb, useToast } from "../components/ui.tsx";
-import { saveIdea } from "../lib/api.ts";
+import { Drawer, ErrorNote, Fold, FormatTag, Loading, Segmented, Thumb, useToast } from "../components/ui.tsx";
+import { draftGoalPlan, saveIdea } from "../lib/api.ts";
 import { ago, compact, count, day, duration, money, multiple, percent, whole } from "../lib/format.ts";
 import {
   bestVideo, byTopic, shortsWorthAVideo, type Comment, emptyWeeks, type Goal, type GoalDraft, goalProgress, growthKeys, kindWords, markComment, monthsWithData,
-  patchGoal, planMonth, recap, saveGoal, saveTest, shortsFunnel, type Test, type TestDraft, testResult, themes, trashTest,
+  patchGoal, planMonth, planStatus, recap, saveGoal, saveTest, shortsFunnel, type Test, type TestDraft, testResult, themes, trashTest,
   testCtr, useChanges, useComments, useGoals, useReachDays, useTests, useVideoDays,
 } from "../lib/growth.ts";
 import { keys, useChannel, useConnection, useDaily, useIdeas, useVideos } from "../lib/hooks.ts";
@@ -518,18 +518,20 @@ function useGoalContext() {
   return { subscribers: channel.data?.subscribers ?? null, videos: videos.data ?? [], daily: daily.data ?? [], today: todayIso() };
 }
 
-function GoalRow({ goal, onEdit }: { goal: Goal; onEdit?: () => void }) {
+function GoalRow({ goal, onEdit, compact }: { goal: Goal; onEdit?: () => void; compact?: boolean }) {
   const ctx = useGoalContext();
   const queryClient = useQueryClient();
   const toast = useToast();
   const p = goalProgress(goal, ctx);
+  const steps = planStatus(goal.plan);
   const video = goal.video_id ? ctx.videos.find((v) => v.id === goal.video_id) : undefined;
   const best = goal.kind === "video_views" && !goal.video_id ? bestVideo(ctx.videos, goal.format) : undefined;
-  const retick = async (notes: string) => {
+  // Ticking a box rewrites only that marker, straight away, and puts it back if the save fails.
+  const retick = async (field: "notes" | "plan", text: string) => {
     const before = queryClient.getQueryData<Goal[]>(growthKeys.goals);
-    queryClient.setQueryData<Goal[]>(growthKeys.goals, (list) => (list ?? []).map((x) => (x.id === goal.id ? { ...x, notes } : x)));
+    queryClient.setQueryData<Goal[]>(growthKeys.goals, (list) => (list ?? []).map((x) => (x.id === goal.id ? { ...x, [field]: text } : x)));
     try {
-      await patchGoal(goal.id, { notes });
+      await patchGoal(goal.id, { [field]: text });
     } catch (err) {
       queryClient.setQueryData(growthKeys.goals, before);
       toast(message(err), { error: true });
@@ -544,6 +546,9 @@ function GoalRow({ goal, onEdit }: { goal: Goal; onEdit?: () => void }) {
       toast(message(err), { error: true });
     }
   };
+  const stepsWord = `${steps.done} of ${steps.total} ${steps.total === 1 ? "step" : "steps"} done`;
+  // A goal of the owner's own has no number to reach: its plan is how far along it is.
+  const byPlan = goal.kind === "personal" && steps.total > 0;
   return (
     <div className="item" style={{ flexDirection: "column", gap: 8 }}>
       <div className="row between" style={{ width: "100%", gap: 12, alignItems: "flex-start" }}>
@@ -554,15 +559,17 @@ function GoalRow({ goal, onEdit }: { goal: Goal; onEdit?: () => void }) {
             {goal.due_on ? `. By ${day(goal.due_on)}` : ""}
           </div>
         </div>
-        <div className="row" style={{ gap: 6, flex: "none" }}>
-          {goal.kind === "personal" ? <button type="button" className="btn btn-small" onClick={() => void tick()}>{goal.done_at ? "Not done yet" : "Mark as done"}</button> : null}
-          {onEdit ? <button type="button" className="btn btn-small" onClick={onEdit}>Edit</button> : null}
-        </div>
+        {compact ? null : (
+          <div className="row" style={{ gap: 6, flex: "none" }}>
+            {goal.kind === "personal" ? <button type="button" className="btn btn-small" onClick={() => void tick()}>{goal.done_at ? "Not done yet" : "Mark as done"}</button> : null}
+            {onEdit ? <button type="button" className="btn btn-small" onClick={onEdit}>Edit</button> : null}
+          </div>
+        )}
       </div>
-      {goal.notes && hasList(goal.notes) ? (
-        // Steps written as a list show in full, and its boxes can be ticked right here.
-        <div className="small" style={{ width: "100%" }}><RichNote text={goal.notes} onChange={(notes) => void retick(notes)} /></div>
-      ) : goal.notes && goal.kind !== "personal" ? <div className="small soft clip" style={{ width: "100%" }}>{bareNote(goal.notes)}</div> : null}
+      {!compact && goal.notes && hasList(goal.notes) ? (
+        // Older goals kept their steps in the notes; those still tick right here.
+        <div className="small" style={{ width: "100%" }}><RichNote text={goal.notes} onChange={(notes) => void retick("notes", notes)} /></div>
+      ) : !compact && goal.notes && goal.kind !== "personal" ? <div className="small soft clip" style={{ width: "100%" }}>{bareNote(goal.notes)}</div> : null}
       {p.share !== null && goal.target !== null ? (
         <>
           <div className="run-track small" role="img" aria-label={`${Math.round(p.share * 100)}% of the way`}>
@@ -575,6 +582,30 @@ function GoalRow({ goal, onEdit }: { goal: Goal; onEdit?: () => void }) {
             </span>
           </div>
         </>
+      ) : byPlan ? (
+        <>
+          <div className="run-track small" role="img" aria-label={stepsWord}>
+            {Array.from({ length: 20 }, (_, i) => <i key={i} className={i < Math.round((steps.done / steps.total) * 20) ? "on" : ""} />)}
+          </div>
+          <div className="small muted">{stepsWord}</div>
+        </>
+      ) : null}
+      {p.done ? null : steps.total > 0 ? (
+        <div className="goal-next small">
+          {steps.next ? <><span className="muted">Next step: </span>{steps.next}</> : <span className="muted">Every step in the plan is ticked.</span>}
+          {!byPlan ? <span className="muted"> ({stepsWord})</span> : null}
+        </div>
+      ) : (
+        <div className="small muted">
+          No plan yet. {compact ? <a href="#/goals">Add one</a> : onEdit ? <button type="button" className="link-button" onClick={onEdit}>Write a plan</button> : null}
+        </div>
+      )}
+      {!compact && goal.plan?.trim() ? (
+        <div style={{ width: "100%" }}>
+          <Fold title="Plan" summary={steps.total ? stepsWord : "Your notes on how to get there"}>
+            <div className="small"><RichNote text={goal.plan} onChange={(plan) => void retick("plan", plan)} /></div>
+          </Fold>
+        </div>
       ) : null}
     </div>
   );
@@ -594,7 +625,7 @@ export function Goals() {
   return (
     <>
       <div className="row-wrap between" style={{ marginBottom: 14 }}>
-        <p className="soft grow" style={{ maxWidth: "70ch", margin: 0 }}>Set a subscriber goal, a view goal for one video, or a goal of your own such as landing a first sponsor.</p>
+        <p className="soft grow" style={{ maxWidth: "70ch", margin: 0 }}>Set a subscriber goal, a view goal, or a goal of your own such as landing a first sponsor. Each goal has a plan: the steps you tick off on the way.</p>
         <button type="button" className="btn btn-primary" onClick={() => setEditing({ kind: "subscribers", title: "", start_value: ctx.subscribers })}>New goal</button>
       </div>
       <div className="panel">
@@ -619,6 +650,8 @@ function GoalEditor(props: { draft: GoalDraft; videos: Video[]; subscribers: num
   const [find, setFind] = useState("");
   const [saving, setSaving] = useState(false);
   const set = <K extends keyof GoalDraft>(key: K, value: GoalDraft[K]) => setForm((f) => ({ ...f, [key]: value }));
+  // A drafted plan opens fresh in the plan box, as steps to tick rather than raw text.
+  const [planKey, setPlanKey] = useState(0);
   const picked = props.videos.find((v) => v.id === form.video_id);
   // A views goal is for one kind of video; Shorts never count towards a long-form goal.
   const format = form.format ?? "long";
@@ -716,10 +749,57 @@ function GoalEditor(props: { draft: GoalDraft; videos: Video[]; subscribers: num
         <input className="input" type="date" value={form.due_on ?? ""} onChange={(e) => set("due_on", e.target.value || null)} />
       </label>
       <div className="field">
-        <span>Notes</span>
-        <NotesBox label="Notes" value={form.notes ?? ""} onChange={(v) => set("notes", v || null)} minHeight={80} maxLength={1000} placeholder="Steps to get there work well as checkboxes" />
+        <span>Plan</span>
+        <PlanStarter form={form} title={form.title.trim() || auto} onUse={(plan) => { set("plan", plan); setPlanKey((k) => k + 1); }} />
+        <NotesBox
+          key={planKey} label="Plan" value={form.plan ?? ""} onChange={(v) => set("plan", v || null)} minHeight={140} maxLength={4000}
+          placeholder="The steps to get there, one per line, as checkboxes you tick off as you go"
+        />
+      </div>
+      <div className="field">
+        <span>Why it matters (optional)</span>
+        <NotesBox label="Why it matters" value={form.notes ?? ""} onChange={(v) => set("notes", v || null)} minHeight={60} maxLength={1000} placeholder="What reaching it would mean for you" />
       </div>
     </Drawer>
+  );
+}
+
+/** In the goal editor: the AI drafts a first plan from the goal and the channel's numbers, for a goal with no plan yet. */
+function PlanStarter({ form, title, onUse }: { form: GoalDraft; title: string; onUse: (plan: string) => void }) {
+  const connection = useConnection();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [reality, setReality] = useState<string | null>(null);
+  const ai = Boolean(connection.data?.ai);
+  const has = Boolean(form.plan?.trim());
+  const run = async () => {
+    setBusy(true);
+    try {
+      const out = await draftGoalPlan({
+        title, kind: form.kind, target: form.target ?? null, format: form.format ?? null, video_id: form.video_id ?? null,
+        due_on: form.due_on ?? null, notes: form.notes ?? null,
+      });
+      onUse(out.plan);
+      setReality(out.reality || null);
+      toast("Plan drafted. Make it yours, then save the goal.");
+    } catch (err) {
+      toast(message(err), { error: true });
+    }
+    setBusy(false);
+  };
+  return (
+    <div className="row-wrap" style={{ gap: 10, alignItems: "center" }}>
+      {has ? null : (
+        <button type="button" className="btn btn-small" disabled={busy || !ai || !title} onClick={() => void run()}>{busy ? "Writing a plan" : "Draft a plan"}</button>
+      )}
+      <small className="muted grow" style={{ minWidth: 0 }}>
+        {reality ?? (has ? "Tick steps off as you go. Empty the box to have a new plan drafted."
+          : !ai ? "Write the steps below, or add your Claude API key in Settings to have a first plan drafted."
+          : busy ? "This takes up to a minute."
+          : !title ? "Fill in the goal first, then a plan can be drafted from it."
+          : "A first plan from your goal and your numbers. You make it yours.")}
+      </small>
+    </div>
   );
 }
 
@@ -732,7 +812,7 @@ export function GoalsStrip() {
   if (goals.isLoading || goals.error || open.length === 0) return null;
   return (
     <Section title="Goals" aside={<a className="small" href="#/goals">{open.length > 2 ? `All ${open.length} goals` : "All goals"}</a>}>
-      <div className="panel">{open.slice(0, 2).map((g) => <GoalRow key={g.id} goal={g} />)}</div>
+      <div className="panel">{open.slice(0, 2).map((g) => <GoalRow key={g.id} goal={g} compact />)}</div>
     </Section>
   );
 }

@@ -744,6 +744,7 @@ button.nav-link { border: 0; background: none; font-family: inherit; font-size: 
 .rhythm-line { display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
 .rhythm-name { font-weight: 650; font-size: 14px; }
 .meter.thin { height: 5px; }
+.goal-next { line-height: 1.4; overflow-wrap: anywhere; }
 @media (max-width: 640px) { .rhythm-row { flex-wrap: wrap; } .rhythm-row .select { max-width: none; width: 100%; } }
 
 /* The emotions a title sparks, in the owner's own colour code (only the dot carries the colour). */

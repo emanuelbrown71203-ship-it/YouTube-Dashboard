@@ -37,7 +37,7 @@ research and the last sync. Every table and view has a comment explaining it;
 | `yt_v_ideas` | The ideas board (ideas in the bin, and suggestions still waiting in the Suggested tab, are left out). |
 | `yt_research_videos`, `yt_keywords`, `yt_research_channels`, `yt_research_runs` | Outliers found, phrases scored, channels watched, and every research run with what it returned. |
 | `yt_sync_runs` | Sync history. Check the newest row before trusting freshness. |
-| `yt_goals`, `yt_tests`, `yt_video_changes` | The owner's goals, their title and thumbnail tests (what they changed, what they expected, how it went), and every title or thumbnail change the sync noticed. |
+| `yt_goals`, `yt_tests`, `yt_video_changes` | The owner's goals (each with a `plan`: steps as checkboxes), their title and thumbnail tests (what they changed, what they expected, how it went), and every title or thumbnail change the sync noticed. |
 | `yt_video_reach_daily`, `yt_v_video_reach` | Impressions and click-through rate per video, per day and over the newest 28 days. From YouTube's bulk reach report, a day or two behind; empty until the YouTube Reporting API is on in Google Cloud. |
 | `yt_video_pulse` | The live public view count of each upload, noted about once an hour in its first 3 days. With `yt_videos.published_at` it gives views by hours since publishing: the first 48 hours tracker. Only exists for uploads after 2026-11-17; older uploads are compared through their first days in `yt_video_analytics_daily`. |
 | `yt_templates` | The owner's own templates: what a title, a thumbnail or an intro of theirs should have, plus `other` ones (storytelling, retention, Shorts, their checklists) (`kind`, `name`, `body`, usually one point per line). `active` ones are used: ideas are checked against the title, thumbnail and intro ones (the AI's reading is kept in `yt_ideas.template_check`), and the AI helpers follow all of them. Follow these when you suggest titles, thumbnails, openings or scripts. |
@@ -104,7 +104,9 @@ free and the owner has said to use them whenever a score needs them.
 - **Add a goal or a test**: insert into `public.yt_goals` (`kind`:
   `subscribers` | `video_views` | `personal`, with `target`, `start_value`,
   `video_id`; a `video_views` goal with no `video_id` is met by any video of
-  its `format`: `short` | `long` | `live`) or `public.yt_tests` (`video_id`, `kind`, `what`, `why`,
+  its `format`: `short` | `long` | `live`; `notes` = why it matters; `plan` =
+  the steps to get there as `- [ ] ` checkboxes under plain heading lines.
+  Every goal should have a plan, the owner's words: write one with it) or `public.yt_tests` (`video_id`, `kind`, `what`, `why`,
   `started_on`). Bin either with `trashed_at`.
 - **Let a new device in**: `select public.yt_create_access_code('note');`
   returns a one-time code that works for 24 hours (up to 7 days with a second
@@ -116,14 +118,14 @@ free and the owner has said to use them whenever a score needs them.
 
 - `src/`: Vite + React + TypeScript. Reads go straight to Supabase with the
   publishable key; row level security lets only owners in.
-- `supabase/migrations/`: eighteen files, all `yt_` objects. No statement in them
+- `supabase/migrations/`: nineteen files, all `yt_` objects. No statement in them
   removes a table, a column or a row (017 only lets `yt_idea_refs.video_id` be
   empty, for screenshots).
 - `supabase/functions/yt-api/`: one edge function, deployed with JWT
   verification off because it checks callers itself. Routes: `/auth/setup`,
   `/auth/start`, `/auth/callback`, `/auth/finish`, `/auth/disconnect`, `/sync`,
   `/sync/extras`, `/sync/pulse`, `/research`, `/ai/setup`, `/ai/titles`,
-  `/ai/check`, `/ai/import`, `/ai/script`, `/ideas/check`, `/ideas/suggest`,
+  `/ai/check`, `/ai/import`, `/ai/script`, `/ai/plan`, `/ideas/check`, `/ideas/suggest`,
   `/mcp/setup`, `/mcp/<secret>`, `/health`. `/sync/pulse` runs every hour (cron job `yt-pulse`, scheduler
   secret only): it spots a new upload and starts a sync, or notes the live
   view counts of uploads in their first 3 days; two lookups each time. A sync does the quick
@@ -214,6 +216,14 @@ free and the owner has said to use them whenever a score needs them.
   emotions they spark (curiosity, desire, fear: the owner colour-codes titles
   that way), and the title box in the editor counts against the length their
   own title template gives (`lengthRule` in `src/lib/emotions.ts`).
+- Goals carry a plan (`yt_goals.plan`): steps the owner ticks off, counted by
+  `planStatus` in `src/lib/growth.ts`. A goal row shows "Next step" and how
+  many steps are done (on Home only that line, never the whole plan); a goal
+  of their own, with no number to reach, shows its steps as its progress bar.
+  "Draft a plan" in the goal editor (`/ai/plan`, `draftGoalPlan` in
+  `growth.ts`) writes a first plan for a goal with none yet, from the
+  channel's numbers, one kind of video at a time, with the owner's templates
+  and lines, and says in one sentence how realistic the goal is.
 - The script starter (Script fold in the idea editor; `/ai/script`) drafts
   a hook, what happens and timed beats with a shots checklist, from the
   idea, the owner's intro templates, the idea's YouTube check, their best

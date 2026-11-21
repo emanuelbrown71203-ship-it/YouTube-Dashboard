@@ -15,6 +15,7 @@
 //   POST /ai/check          how an idea measures up to the owner's templates
 //   POST /ai/import         reads pasted text into ideas to look over
 //   POST /ai/script         a first draft of an idea's hook, what happens and beats
+//   POST /ai/plan           a first plan for a goal: steps to tick off, from the channel's own numbers
 //   POST /ideas/suggest     owner: write a batch of suggested ideas now; scheduler: follow-ups or the weekly batch, when due
 //   POST /mcp/setup         make or switch off the address of Claude's connector
 //   *    /mcp/<secret>      Claude's connector (Model Context Protocol)
@@ -26,7 +27,7 @@
 import {
   type Api, closeApi, COMMENTS_SCOPE, type Deps, EARNINGS_SCOPE, exchangeToken, fetchChannels, getConfig, HttpError, SCOPES, setConfig,
 } from "./google.ts";
-import { checkTemplates, readIdeas, suggestTitles } from "./growth.ts";
+import { checkTemplates, draftGoalPlan, readIdeas, suggestTitles } from "./growth.ts";
 import { draftScript, suggestIdeas } from "./ideas.ts";
 import { handleMcp, mcpSetup } from "./mcp.ts";
 import { research } from "./research.ts";
@@ -336,6 +337,9 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
       case "/ai/script":
         await requireOwner(req, deps);
         return json(await draftScript(deps, body ?? {}));
+      case "/ai/plan":
+        await requireOwner(req, deps);
+        return json(await draftGoalPlan(deps, body ?? {}));
       case "/ideas/suggest": {
         const scheduled = await isScheduler(req, deps);
         if (!scheduled) await requireOwner(req, deps);

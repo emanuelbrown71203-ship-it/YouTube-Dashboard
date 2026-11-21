@@ -298,6 +298,10 @@ export async function dismissSuggestion(id: string): Promise<void> {
 export const askForSuggestions = () =>
   callApi<{ made: "batch" | "follow_up" | "nothing"; added: { id: string; title: string }[]; dropped?: number; running?: boolean; checking?: boolean }>("/ideas/suggest", {});
 
+/** A first plan for a goal: steps to tick off, from the channel's own numbers. */
+export const draftGoalPlan = (body: { title: string; kind: string; target?: number | null; format?: string | null; video_id?: string | null; due_on?: string | null; notes?: string | null }) =>
+  callApi<{ plan: string; reality: string }>("/ai/plan", body);
+
 /** A first draft of an idea's hook, what happens and beats. */
 export const draftScript = (body: { idea_id?: string; title: string; game: string | null; format: string; hook?: string | null; concept?: string | null; outline?: string | null }) =>
   callApi<{ hook: string; concept: string; outline: string }>("/ai/script", body);

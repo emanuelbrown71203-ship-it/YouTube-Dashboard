@@ -996,6 +996,42 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     await sql`update public.yt_private set value = '' where key = 'anthropic_api_key'`;
   });
 
+  it("drafts a plan for a goal from the channel's own numbers", async () => {
+    const { call, deps } = setup();
+    expect((await call("POST", "/ai/plan", { user: STRANGER, body: { title: "x" } })).status).toBe(403);
+    expect((await call("POST", "/ai/plan", { user: OWNER, body: { title: " ", kind: "personal" } })).status).toBe(400);
+    await sql`insert into public.yt_private (key, value) values ('anthropic_api_key', 'sk-ant-test') on conflict (key) do update set value = excluded.value`;
+    // deno-lint-ignore no-explicit-any
+    let seen: any = null;
+    deps.claude = async (_key, req) => {
+      seen = JSON.parse(req.prompt);
+      return {
+        reality: "Your best long-form video has 34,532 views, so this needs a new best.",
+        sections: [
+          { heading: "First", steps: ["- [ ] Pick the strongest idea", "Set a date for it"] },
+          { heading: "", steps: ["Post it by December 10", "  "] },
+          { heading: "Empty", steps: [] },
+        ],
+      };
+    };
+    const out = await call("POST", "/ai/plan", {
+      user: OWNER, body: { title: "A long-form video with 50,000 views", kind: "video_views", format: "long", target: 50000, due_on: "2026-12-31", notes: "- By the end of the year" },
+    });
+    expect(out.status).toBe(200);
+    // Steps come back as the app's checkboxes under their headings, whatever markers the AI added.
+    expect(out.data.plan).toBe("First\n- [ ] Pick the strongest idea\n- [ ] Set a date for it\n\n- [ ] Post it by December 10");
+    expect(out.data.reality).toContain("34,532");
+    // It works from the goal and the channel's numbers, one kind of video at a time.
+    expect(seen.goal).toMatchObject({ title: "A long-form video with 50,000 views", kind: "views on any long-form video", target: 50000, due_on: "2026-12-31", why: "By the end of the year" });
+    expect(seen.goal.now).toBeGreaterThan(0);
+    expect(seen.subscribers_now).toBe(3880);
+    expect(new Set(seen.their_best_uploads_by_kind.map((b: { format: string }) => b.format)).size).toBeGreaterThan(1);
+    expect(Array.isArray(seen.last_upload_of_each_kind)).toBe(true);
+    await sql`update public.yt_private set value = '' where key = 'anthropic_api_key'`;
+    // Without the key it says how to switch it on.
+    expect((await call("POST", "/ai/plan", { user: OWNER, body: { title: "Land a sponsor", kind: "personal" } })).status).toBe(409);
+  });
+
   it("puts all of it in the one-call briefing for Claude", async () => {
     const [{ ctx }] = await sql`select public.yt_claude_context() as ctx`;
     expect(ctx.channel).toMatchObject({ id: MY_CHANNEL_ID, subscribers: 3880 });

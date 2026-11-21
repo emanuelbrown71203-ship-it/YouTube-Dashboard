@@ -236,6 +236,7 @@ export type Database = {
           updated_at: string;
           trashed_at: string | null;
           format: string | null;
+          plan: string | null;
         };
         Insert: {
           id?: string;
@@ -251,6 +252,7 @@ export type Database = {
           updated_at?: string;
           trashed_at?: string | null;
           format?: string | null;
+          plan?: string | null;
         };
         Update: {
           id?: string;
@@ -266,6 +268,7 @@ export type Database = {
           updated_at?: string;
           trashed_at?: string | null;
           format?: string | null;
+          plan?: string | null;
         };
         Relationships: [];
       };
