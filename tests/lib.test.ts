@@ -5,6 +5,7 @@ import { lengthRule } from "../src/lib/emotions.ts";
 import { byNewest, orderSections } from "../src/lib/ideaOrder.ts";
 import { daysSince, rhythmStatus, targetChoices, usualGap } from "../src/lib/rhythm.ts";
 import { cleanTitle, isRepeat, likeness, matchGame, pickTitle, titleProblems } from "../supabase/functions/yt-api/ideas.ts";
+import { lineByLine, sentences } from "../supabase/functions/yt-api/growth.ts";
 import { centreOn, clampCrop, defaultCrop, fitWithin, pictureFiles, resizeCrop, widestFrame } from "../src/lib/pictures.ts";
 import { auditAll, dominantTagWord } from "../src/lib/seo.ts";
 import { bucket, change, fillDays, headline, libraryComplete, myTopics, splitPeriod, timeline, titleStats, totals } from "../src/lib/stats.ts";
@@ -676,5 +677,18 @@ describe("side panel width", () => {
     expect(drawerScale(760)).toBe(1.25);
     expect(drawerScale(960)).toBe(1.5);
     expect(drawerScale(1600)).toBe(1.5);
+  });
+});
+
+describe("line by line", () => {
+  it("puts each sentence, and each shot direction in square brackets, on a line of its own", () => {
+    expect(lineByLine("[First frame: Margit] This whole build came out of a shop. Every weapon. [Quick cuts.] Can a shopping list beat Elden Ring?"))
+      .toBe("[First frame: Margit]\nThis whole build came out of a shop.\nEvery weapon.\n[Quick cuts.]\nCan a shopping list beat Elden Ring?");
+  });
+
+  it("keeps abbreviations, numbers and list items whole", () => {
+    expect(sentences("Every bite from Mr. X stays. It is 1.5x harder vs. Bayle! Is it?")).toEqual(["Every bite from Mr. X stays.", "It is 1.5x harder vs. Bayle!", "Is it?"]);
+    expect(lineByLine("- 0:00 Already a list. Two sentences.\n\nOne. Two.")).toBe("- 0:00 Already a list. Two sentences.\n\nOne.\nTwo.");
+    expect(lineByLine("")).toBe("");
   });
 });

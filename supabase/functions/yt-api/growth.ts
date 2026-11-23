@@ -46,6 +46,38 @@ export async function ask(deps: Deps, req: AiRequest): Promise<any> {
 // What the owner has written down
 // ---------------------------------------------------------------------------
 
+// Short words before a full stop that do not end a sentence ("Mr. X", "vs. Bayle").
+const NOT_AN_END = new Set(["mr", "mrs", "ms", "dr", "st", "vs", "etc", "e.g", "i.e", "approx", "no", "lvl", "pt"]);
+
+/** Splits running text into its sentences, keeping each one whole. */
+export function sentences(text: string): string[] {
+  const out: string[] = [];
+  let from = 0;
+  const end = /[.!?…]+["”')\]]*\s+(?=["“'(\[A-Z0-9])/g;
+  for (let m = end.exec(text); m; m = end.exec(text)) {
+    const word = (/([A-Za-z.]+)\.$/.exec(text.slice(from, m.index + 1))?.[1] ?? "").toLowerCase();
+    if (NOT_AN_END.has(word)) continue;
+    out.push(text.slice(from, m.index + m[0].trimEnd().length).trim());
+    from = m.index + m[0].length;
+  }
+  out.push(text.slice(from).trim());
+  return out.filter(Boolean);
+}
+
+/**
+ * Text the owner reads goes line by line, the way they write: each sentence on a line of its own, and
+ * a shot direction in [square brackets] on its own line. Lines that are already list items, and notes
+ * in (round brackets) at the end of a line, are left where they are.
+ */
+export function lineByLine(text: string): string {
+  return String(text ?? "").split("\n").flatMap((line) => {
+    const t = line.trim();
+    if (!t) return [""];
+    if (/^([-*•]|\d+[.)])\s/.test(t)) return [line.trimEnd()];
+    return t.replace(/\s*(\[[^\]]{2,}\])\s*/g, "\n$1\n").split("\n").flatMap((part) => sentences(part.trim()));
+  }).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 /** Emotions a title can spark, as the owner colour-codes them in their notes. */
 export const EMOTIONS = ["curiosity", "desire", "fear"] as const;
 export type Emotion = typeof EMOTIONS[number];

@@ -603,7 +603,7 @@ function GoalRow({ goal, onEdit, compact }: { goal: Goal; onEdit?: () => void; c
       {!compact && goal.plan?.trim() ? (
         <div style={{ width: "100%" }}>
           <Fold title="Plan" summary={steps.total ? stepsWord : "Your notes on how to get there"}>
-            <div className="small"><RichNote text={goal.plan} onChange={(plan) => void retick("plan", plan)} /></div>
+            <div className="goal-plan"><RichNote text={goal.plan} onChange={(plan) => void retick("plan", plan)} /></div>
           </Fold>
         </div>
       ) : null}
@@ -752,7 +752,7 @@ function GoalEditor(props: { draft: GoalDraft; videos: Video[]; subscribers: num
         <span>Plan</span>
         <PlanStarter form={form} title={form.title.trim() || auto} onUse={(plan) => { set("plan", plan); setPlanKey((k) => k + 1); }} />
         <NotesBox
-          key={planKey} label="Plan" value={form.plan ?? ""} onChange={(v) => set("plan", v || null)} minHeight={140} maxLength={4000}
+          key={planKey} label="Plan" value={form.plan ?? ""} onChange={(v) => set("plan", v || null)} minHeight={320} maxLength={4000} grow
           placeholder="The steps to get there, one per line, as checkboxes you tick off as you go"
         />
       </div>

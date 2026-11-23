@@ -41,6 +41,8 @@ export function NotesBox(props: {
   maxLength?: number;
   /** Open straight in the writing box even when the note has a list (an editor whose job is to edit). */
   alwaysEdit?: boolean;
+  /** The box grows with what is written in it, so a long plan reads without scrolling inside the box. */
+  grow?: boolean;
 }) {
   const [editing, setEditing] = useState(props.alwaysEdit || !hasList(props.value));
   const box = useRef<HTMLTextAreaElement>(null);
@@ -52,6 +54,13 @@ export function NotesBox(props: {
       place.current = null;
     }
   });
+  // Growing boxes fit their text: never shorter than their least height, never scrolling inside.
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!props.grow || !el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.max(props.minHeight ?? 110, el.scrollHeight + 2)}px`;
+  }, [props.grow, props.value, props.minHeight, editing]);
   const apply = (edit: Edit) => {
     place.current = { start: edit.start, end: edit.end };
     props.onChange(props.maxLength ? edit.value.slice(0, props.maxLength) : edit.value);

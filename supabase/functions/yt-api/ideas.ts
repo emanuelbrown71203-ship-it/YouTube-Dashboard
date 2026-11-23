@@ -13,7 +13,7 @@
 //
 // Runtime-agnostic, like the rest: the database and the AI come in through deps.
 
-import { aiReady, ask, EMOTIONS, emotionsOf, OWN_RULES, ownerGuidance } from "./growth.ts";
+import { aiReady, ask, EMOTIONS, emotionsOf, lineByLine, OWN_RULES, ownerGuidance, sentences } from "./growth.ts";
 import { type Deps, getConfig, HttpError, setConfig, type Sql } from "./google.ts";
 
 export const BATCH_SIZE = 10;
@@ -296,7 +296,8 @@ async function write(deps: Deps, ask_for: { count: number; longs: number; follow
   for (const raw of ((out?.suggestions ?? []) as any[]).slice(0, ask_for.count + 4) as Written[]) {
     const game = matchGame(String(raw.game ?? ""), games);
     const picked = game ? pickTitle([String(raw.title ?? ""), ...((raw.other_titles ?? []) as string[]).map(String)], game) : null;
-    const challenge = String(raw.challenge ?? "").trim().slice(0, 600);
+    // Line by line, the way the owner writes: each sentence of the challenge on its own line.
+    const challenge = lineByLine(String(raw.challenge ?? "").trim().slice(0, 600));
     const repeat = picked && isRepeat(picked.title, taken);
     if (!game || !picked || !challenge || repeat || added.length >= ask_for.count) { dropped++; continue; }
     const kind: Kind = ask_for.follow_up ? "follow_up" : KINDS.includes(raw.kind) ? raw.kind : "your_format";
@@ -424,9 +425,11 @@ export async function queueSuggestionsIfDue(deps: Deps): Promise<boolean> {
 const SCRIPT_SYSTEM =
   "You write the first draft of a script for one gaming creator's video: the hook, what happens, and the beats in order. They will rewrite it " +
   "in their own words, so make it concrete and useful rather than polished.\n\n" +
+  "Write everything line by line, the way they write: one short sentence per line, never a paragraph. " +
   "hook: the first 10 to 20 seconds, as they would say it on camera. State the challenge and the stakes straight away and show why it is hard. " +
+  "Put each shot direction in [square brackets] on a line of its own. " +
   "No greeting, no \"what's up guys\", no asking to subscribe at the start. If they have an intro template, follow it.\n" +
-  "what_happens: two to four plain sentences: the rules, how they win or lose, what makes it hard, and how it could end.\n" +
+  "what_happens: two to four short plain sentences, one per line: the rules, how they win or lose, what makes it hard, and how it could end.\n" +
   "beats: for a long-form video, 6 to 10 beats from the cold open to the ending, each with rough minute marks; for a Short, 4 to 6 beats inside " +
   "60 seconds with second marks. Each beat is a short label and one sentence on what happens or what to say. Build in moments of doubt and a " +
   "payoff at the end.\n" +
@@ -508,13 +511,16 @@ export async function draftScript(deps: Deps, body: Record<string, unknown>) {
       },
     },
   });
+  // Each beat on its own line, and what happens in it underneath, one sentence per line.
   // deno-lint-ignore no-explicit-any
-  const beats = ((out?.beats ?? []) as any[]).slice(0, 12)
-    .map((b) => `- ${[String(b.at ?? "").trim(), String(b.beat ?? "").trim()].filter(Boolean).join(" ")}: ${String(b.detail ?? "").trim()}`)
-    .filter((line) => line.length > 6);
+  const beats = ((out?.beats ?? []) as any[]).slice(0, 12).map((b) => {
+    const head = [String(b.at ?? "").trim(), String(b.beat ?? "").trim()].filter(Boolean).join(" ");
+    const detail = sentences(String(b.detail ?? "").replace(/\s+/g, " ").trim()).map((s) => `  - ${s}`);
+    return head ? [`- ${head}`, ...detail].join("\n") : detail.map((d) => d.trimStart()).join("\n");
+  }).filter((line) => line.length > 3);
   const shots = ((out?.shots ?? []) as unknown[]).slice(0, 6).map((s) => String(s).trim()).filter(Boolean);
-  const hook = String(out?.hook ?? "").trim().slice(0, 1200);
-  const concept = String(out?.what_happens ?? "").trim().slice(0, 1500);
+  const hook = lineByLine(String(out?.hook ?? "").trim().slice(0, 1200));
+  const concept = lineByLine(String(out?.what_happens ?? "").trim().slice(0, 1500));
   if (!hook && !concept && beats.length === 0) throw new HttpError(502, "ai_error", "The AI came back with an empty draft. Try again.");
   const outline = [beats.join("\n"), shots.length ? `Shots to get\n${shots.map((s) => `- [ ] ${s}`).join("\n")}` : ""].filter(Boolean).join("\n\n");
   return { hook, concept, outline };

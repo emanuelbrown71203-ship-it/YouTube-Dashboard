@@ -16,6 +16,7 @@ const INSTRUCTIONS =
   "The owner writes an idea most days, so a new idea is only an idea: it sits under its game. Set make_it only when they say they have decided to make that video; that puts it on their production board. " +
   "Save a line they want to remember with add_lines, and a title, thumbnail or intro standard with save_template. " +
   "In notes, outlines, lines and templates, a line that starts with \"- \" shows as a bullet and \"- [ ] \" as a checkbox the owner can tick; use them for steps and checklists. " +
+  "Write hooks, what happens, outlines and templates line by line, the way the owner writes: one short thought per line, never a paragraph, with shot directions in [square brackets] on their own lines. " +
   "Say what you saved in one short sentence. Write to the owner in plain language: they are a creator, not a developer.";
 
 async function sha256(text: string): Promise<string> {
@@ -77,8 +78,8 @@ const IDEA_FIELDS = {
   title: { type: "string", description: "The working title." },
   format: { type: "string", enum: ["long", "short"], description: "long = a long-form video, short = a YouTube Short. Default long." },
   game: { type: "string", description: "The game or topic the idea sits under, spelled as list_games gives it (\"Elden Ring\")." },
-  hook: { type: "string", description: "The first line or first five seconds." },
-  concept: { type: "string", description: "What happens: the challenge, the stakes, how it ends." },
+  hook: { type: "string", description: "The first five seconds, line by line: one short sentence per line, shot directions in [square brackets] on their own lines." },
+  concept: { type: "string", description: "What happens: the challenge, the stakes, how it ends. One short sentence per line." },
   outline: { type: "string", description: "Outline or script notes." },
   thumbnail_idea: { type: "string", description: "What the thumbnail shows and the words on it." },
   other_titles: { type: "array", items: { type: "string" }, description: "Up to five alternative titles." },

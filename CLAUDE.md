@@ -99,6 +99,13 @@ free and the owner has said to use them whenever a score needs them.
   rewrites that marker (`src/lib/notes.ts`, `src/components/notes.tsx`).
   When a template goes to the AI the markers are taken off, so a tick is
   never read as "this point is met".
+- **Line by line, always.** Anything written for the owner (templates,
+  hooks, what happens, outlines, scripts, plans, idea challenges) goes one
+  short thought per line, never a paragraph, with shot directions in
+  [square brackets] on their own lines: their words, it is "a lot easier to
+  digest". The backend enforces it on everything the AI writes
+  (`lineByLine` and `sentences` in `growth.ts`; script beats put each
+  sentence under the beat as a sub-bullet), and the connector is told to.
 - **Never hard-remove rows.** To bin an idea set `trashed_at = now()`. Browsers
   are switched off with `revoked_at`, codes with `used_at`.
 - **Never write the stats tables by hand.** They belong to the sync.

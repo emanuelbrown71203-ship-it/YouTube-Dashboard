@@ -896,7 +896,7 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     expect(seen.ideas_they_already_have).toContain("Can You Beat Elden Ring Using Only Merchant Items?");
     const rows = await sql`select title, topic, format, title_options, in_suggested, source, concept, suggestion from public.yt_ideas where source = 'suggested' order by created_at, title`;
     const dodging = rows.find((r: { title: string }) => r.title.includes("Dodging"));
-    expect(dodging).toMatchObject({ topic: "Elden Ring", format: "long", in_suggested: true, title_options: ["Elden Ring But I Can Never Dodge"], concept: "Beat the game with the rule. Break it and start over." });
+    expect(dodging).toMatchObject({ topic: "Elden Ring", format: "long", in_suggested: true, title_options: ["Elden Ring But I Can Never Dodge"], concept: "Beat the game with the rule.\nBreak it and start over." });
     expect(dodging.suggestion).toMatchObject({ kind: "your_format", made_by: "batch", why: "Your best video did 3 times your usual.", emotions: ["curiosity", "fear"] });
     expect(rows.find((r: { format: string }) => r.format === "short").suggestion.kind).toBe("your_format");
     // Waiting suggestions are not on the board, in the briefing or in the connector's list.
@@ -986,9 +986,9 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     const draft = await call("POST", "/ai/script", { user: OWNER, body: { title: "Can You Beat Elden Ring Without Ever Dodging?", game: "Elden Ring", format: "long", hook: "- My own opening" } });
     expect(draft.status).toBe(200);
     expect(draft.data).toEqual({
-      hook: "One rule: no dodging. One mistake and it is over.",
+      hook: "One rule: no dodging.\nOne mistake and it is over.",
       concept: "Beat Elden Ring without a single dodge roll.",
-      outline: "- 0:00 Cold open: The first death.\n- 1:00 The rule: Explain it.\n\nShots to get\n- [ ] The health bar at one hit",
+      outline: "- 0:00 Cold open\n  - The first death.\n- 1:00 The rule\n  - Explain it.\n\nShots to get\n- [ ] The health bar at one hit",
     });
     // What the owner already wrote goes to the AI without the bullet markers.
     expect(seen.video.what_they_wrote_so_far.hook).toBe("My own opening");

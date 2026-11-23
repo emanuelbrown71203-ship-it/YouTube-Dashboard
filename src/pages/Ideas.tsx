@@ -518,7 +518,7 @@ function IdeaEditor(props: { draft: IdeaDraft; games: string[]; onClose: () => v
         <ScriptStarter form={form} onUse={(part, value) => set(part, value)} />
         <label className="field">
           <span>Hook</span>
-          <textarea className="textarea" style={{ minHeight: 60 }} {...text("hook")} placeholder="The first line, or the first five seconds" />
+          <textarea className="textarea" style={{ minHeight: 140 }} {...text("hook")} placeholder="The first five seconds, line by line" />
           <TemplateHint kind="intro" />
         </label>
         <div className="field">
