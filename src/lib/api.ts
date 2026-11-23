@@ -298,6 +298,9 @@ export async function dismissSuggestion(id: string): Promise<void> {
 export const askForSuggestions = () =>
   callApi<{ made: "batch" | "follow_up" | "nothing"; added: { id: string; title: string }[]; dropped?: number; running?: boolean; checking?: boolean }>("/ideas/suggest", {});
 
+/** Puts a video's notes for the editor in its Google Doc: made the first time, rewritten after. */
+export const pushEditorDoc = (ideaId: string) => callApi<{ url: string; created: boolean; cuts: number }>("/editor/doc", { idea_id: ideaId });
+
 /** A first plan for a goal: steps to tick off, from the channel's own numbers. */
 export const draftGoalPlan = (body: { title: string; kind: string; target?: number | null; format?: string | null; video_id?: string | null; due_on?: string | null; notes?: string | null }) =>
   callApi<{ plan: string; reality: string }>("/ai/plan", body);

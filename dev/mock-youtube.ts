@@ -139,12 +139,14 @@ function apiError(status: number, reason: string, message: string): Response {
   return json({ error: { code: status, message, errors: [{ reason, message, domain: "youtube" }] } }, status);
 }
 
-export function createMockGoogle(options: MockOptions): { fetch: typeof fetch; universe: MockChannel[]; calls: string[]; searches: Record<string, string>[] } {
+export function createMockGoogle(options: MockOptions): { fetch: typeof fetch; universe: MockChannel[]; calls: string[]; searches: Record<string, string>[]; docs: Map<string, string> } {
   const universe = buildUniverse(options.now());
   const allVideos = universe.flatMap((c) => c.videos);
   const videoById = new Map(allVideos.map((v) => [v.id, v]));
   const channelById = new Map(universe.map((c) => [c.id, c]));
   const calls: string[] = [];
+  /** Google Docs made through the Drive upload, by id, with what was last sent. */
+  const docs = new Map<string, string>();
   /** The parameters of every search, newest last. */
   const searches: Record<string, string>[] = [];
   const signedIn = () => options.signedInChannelId ?? MY_CHANNEL_ID;
@@ -361,11 +363,25 @@ export function createMockGoogle(options: MockOptions): { fetch: typeof fetch; u
         scope: (options.grantedScopes ?? [
           "https://www.googleapis.com/auth/youtube.readonly", "https://www.googleapis.com/auth/yt-analytics.readonly",
           "https://www.googleapis.com/auth/yt-analytics-monetary.readonly", "https://www.googleapis.com/auth/youtube.force-ssl",
+          "https://www.googleapis.com/auth/drive.file",
         ]).join(" "),
         ...(body.get("grant_type") === "authorization_code" ? { refresh_token: "mock-refresh-token" } : {}),
       });
     }
     if (url.host === "oauth2.googleapis.com" && url.pathname === "/revoke") return json({});
+    // Google Docs, made through Drive: a new doc on POST, the same doc rewritten on PATCH.
+    if (url.host === "www.googleapis.com" && url.pathname.startsWith("/upload/drive/v3/files")) {
+      const id = url.pathname.split("/")[5];
+      const text = String(init?.body ?? "");
+      if (init?.method === "PATCH") {
+        if (!docs.has(id)) return json({ error: { code: 404, message: "File not found", errors: [{ reason: "notFound" }] } }, 404);
+        docs.set(id, text);
+        return json({ id, webViewLink: `https://docs.google.com/document/d/${id}/edit` });
+      }
+      const made = `mockdoc${docs.size + 1}`;
+      docs.set(made, text);
+      return json({ id: made, webViewLink: `https://docs.google.com/document/d/${made}/edit` });
+    }
     if (url.host === "www.googleapis.com" && url.pathname.startsWith("/youtube/v3/")) {
       return dataApi(url.pathname.slice("/youtube/v3/".length), url.searchParams);
     }
@@ -402,5 +418,5 @@ export function createMockGoogle(options: MockOptions): { fetch: typeof fetch; u
     return new Response("not mocked", { status: 404 });
   };
 
-  return { fetch: mockFetch as typeof fetch, universe, calls, searches };
+  return { fetch: mockFetch as typeof fetch, universe, calls, searches, docs };
 }

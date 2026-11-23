@@ -46,6 +46,7 @@ research and the last sync. Every table and view has a comment explaining it;
 | `yt_comments` | Recent comments with the AI's reading: `sentiment`, `theme`, `is_question`. `pinned` ones sit on the front page. |
 | `yt_scripts` | Scripts the owner wrote for past videos (`title`, `topic`, `body`, `source_url`): their intros, the beats they hand their editor with directions in brackets, and voiceover written against the cut. Playbook → My scripts. The script starter reads the two closest (same game first) to write in their voice. |
 | `yt_editor_notes` | Notes for the owner's editor, read from markers they export from Premiere Pro, kept per video idea (`idea_id`, `name` = which cut, `markers` = `{at, end, name, note, type}`). Idea editor → For my editor, and Ideas → For my editor. |
+| `yt_editor_docs` | The Google Doc each video's notes for the editor went into (`idea_id`, `doc_id`, `doc_url`, `pushed_at`). Written only by the server. |
 | `yt_rhythm` | The owner's upload rhythm: one target per format (`long`, `short`, `live`), "post at least every `every_days` days". `active = false` switches one off. Home shows the days since the last upload of that format against it. |
 
 `yt_v_videos` also carries `topic` (the game), `estimated_revenue` and `feeders`
@@ -127,14 +128,14 @@ free and the owner has said to use them whenever a score needs them.
 
 - `src/`: Vite + React + TypeScript. Reads go straight to Supabase with the
   publishable key; row level security lets only owners in.
-- `supabase/migrations/`: twenty-one files, all `yt_` objects. No statement in them
+- `supabase/migrations/`: twenty-two files, all `yt_` objects. No statement in them
   removes a table, a column or a row (017 only lets `yt_idea_refs.video_id` be
   empty, for screenshots).
 - `supabase/functions/yt-api/`: one edge function, deployed with JWT
   verification off because it checks callers itself. Routes: `/auth/setup`,
   `/auth/start`, `/auth/callback`, `/auth/finish`, `/auth/disconnect`, `/sync`,
   `/sync/extras`, `/sync/pulse`, `/research`, `/ai/setup`, `/ai/titles`,
-  `/ai/check`, `/ai/import`, `/ai/script`, `/ai/plan`, `/ideas/check`, `/ideas/suggest`,
+  `/ai/check`, `/ai/import`, `/ai/script`, `/ai/plan`, `/editor/doc`, `/ideas/check`, `/ideas/suggest`,
   `/mcp/setup`, `/mcp/<secret>`, `/health`. `/sync/pulse` runs every hour (cron job `yt-pulse`, scheduler
   secret only): it spots a new upload and starts a sync, or notes the live
   view counts of uploads in their first 3 days; two lookups each time. A sync does the quick
@@ -144,7 +145,7 @@ free and the owner has said to use them whenever a score needs them.
   anything is left, so no request runs out of time; their results are added
   to the same `yt_sync_runs` row under `games`, `comments_read`, `feeders`. Google sign-in only lets a browser in when the same
   browser that started it comes back with the secret it kept (`/auth/finish`);
-  do not weaken that. `index.ts` is the only Deno-specific file (nine files in the folder); the rest take their
+  do not weaken that. `index.ts` is the only Deno-specific file (ten files in the folder); the rest take their
   database client, `fetch` and clock as arguments so tests can replace them.
   Supabase stops accepting the older `anon` key at the end of 2026, so the app
   sends the publishable key from `.env` and `index.ts` reads the function's
@@ -250,7 +251,14 @@ free and the owner has said to use them whenever a score needs them.
   UTF-8 from other editors works too), kept in `yt_editor_notes`, and shown as
   a numbered list in time order: readable time ("1:05 to 1:20") with the
   exact timecode, the marker's name, and its note one sentence per line.
-  Copy, Share and Download give the editor the same list as plain text.
+  Put in Google Docs (`/editor/doc`, `docs.ts`) makes one Google Doc per
+  video in the owner's Drive with every cut in order, and rewrites that same
+  doc on the next send, so the editor keeps one link (`yt_editor_docs`).
+  It needs Google's optional `drive.file` permission (`DOCS_SCOPE`, asked
+  for at sign-in; Settings → Google permissions → Turn on Google Docs asks
+  again without disconnecting), which only reaches docs the dashboard made,
+  and the Google Drive API switched on in the owner's Google Cloud project.
+  Copy and Share give the same list as plain text.
   Cuts show in the order they were made (Cut 1 above Cut 2), the newest
   open, and the next one is brought in under the last.
 - Thumbnail references (Research, Thumbnails tab; `src/pages/Thumbnails.tsx`)

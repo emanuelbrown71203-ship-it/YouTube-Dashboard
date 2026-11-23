@@ -16,6 +16,7 @@
 //   POST /ai/import         reads pasted text into ideas to look over
 //   POST /ai/script         a first draft of an idea's hook, what happens and beats
 //   POST /ai/plan           a first plan for a goal: steps to tick off, from the channel's own numbers
+//   POST /editor/doc        put a video's notes for the editor in a Google Doc (made once, updated after)
 //   POST /ideas/suggest     owner: write a batch of suggested ideas now; scheduler: follow-ups or the weekly batch, when due
 //   POST /mcp/setup         make or switch off the address of Claude's connector
 //   *    /mcp/<secret>      Claude's connector (Model Context Protocol)
@@ -25,10 +26,11 @@
 // redirect and the scheduler carry no JWT; every route checks its caller here.
 
 import {
-  type Api, closeApi, COMMENTS_SCOPE, type Deps, EARNINGS_SCOPE, exchangeToken, fetchChannels, getConfig, HttpError, SCOPES, setConfig,
+  type Api, closeApi, COMMENTS_SCOPE, type Deps, DOCS_SCOPE, EARNINGS_SCOPE, exchangeToken, fetchChannels, getConfig, HttpError, SCOPES, setConfig,
 } from "./google.ts";
 import { checkTemplates, draftGoalPlan, readIdeas, suggestTitles } from "./growth.ts";
 import { draftScript, suggestIdeas } from "./ideas.ts";
+import { pushEditorDoc } from "./docs.ts";
 import { handleMcp, mcpSetup } from "./mcp.ts";
 import { research } from "./research.ts";
 import { runExtras, runPulse, runSync, startIdeaChecks } from "./sync.ts";
@@ -160,7 +162,7 @@ async function authStart(deps: Deps, userId: string, body: any) {
     client_id: cfg.google_client_id,
     redirect_uri: redirectUri(deps),
     response_type: "code",
-    scope: [...SCOPES, EARNINGS_SCOPE, ...(body.comments === false ? [] : [COMMENTS_SCOPE])].join(" "),
+    scope: [...SCOPES, EARNINGS_SCOPE, ...(body.comments === false ? [] : [COMMENTS_SCOPE]), ...(body.docs === false ? [] : [DOCS_SCOPE])].join(" "),
     access_type: "offline",
     prompt: "consent",
     include_granted_scopes: "true",
@@ -340,6 +342,9 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
       case "/ai/plan":
         await requireOwner(req, deps);
         return json(await draftGoalPlan(deps, body ?? {}));
+      case "/editor/doc":
+        await requireOwner(req, deps);
+        return json(await pushEditorDoc(deps, body ?? {}));
       case "/ideas/suggest": {
         const scheduled = await isScheduler(req, deps);
         if (!scheduled) await requireOwner(req, deps);

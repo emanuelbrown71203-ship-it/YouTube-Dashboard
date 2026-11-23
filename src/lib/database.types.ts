@@ -221,6 +221,27 @@ export type Database = {
         };
         Relationships: [];
       };
+      yt_editor_docs: {
+        Row: {
+          idea_id: string;
+          doc_id: string;
+          doc_url: string;
+          pushed_at: string;
+        };
+        Insert: {
+          idea_id: string;
+          doc_id: string;
+          doc_url: string;
+          pushed_at?: string;
+        };
+        Update: {
+          idea_id?: string;
+          doc_id?: string;
+          doc_url?: string;
+          pushed_at?: string;
+        };
+        Relationships: [];
+      };
       yt_editor_notes: {
         Row: {
           id: string;

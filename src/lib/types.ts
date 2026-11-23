@@ -187,6 +187,8 @@ export interface Connection {
   owner_channel_id: string | null;
   earnings?: boolean;
   comments?: boolean;
+  /** Google's permission to make Google Docs (only ones the dashboard creates). */
+  docs?: boolean;
   ai?: boolean;
   ai_error?: string | null;
   /** When the last batch of suggested ideas was written, and when one started being written (empty when none is). */

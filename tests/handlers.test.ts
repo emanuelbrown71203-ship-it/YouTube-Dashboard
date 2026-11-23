@@ -1042,6 +1042,42 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     expect((await call("POST", "/ai/plan", { user: OWNER, body: { title: "Land a sponsor", kind: "personal" } })).status).toBe(409);
   });
 
+  it("puts a video's notes for the editor in one Google Doc, every cut in order, and updates it after", async () => {
+    const mock = createMockGoogle({ now: () => new Date() });
+    const { call, deps } = setup();
+    deps.fetch = mock.fetch;
+    const [idea] = await sql`insert into public.yt_ideas (title, format, topic) values ('Merchant Items run', 'long', 'Elden Ring') returning id`;
+    expect((await call("POST", "/editor/doc", { user: STRANGER, body: { idea_id: idea.id } })).status).toBe(403);
+    // Without Google's Docs permission it says where to switch it on.
+    await sql`update public.yt_private set value = replace(value, ' https://www.googleapis.com/auth/drive.file', '') where key = 'google_scopes'`;
+    const off = await call("POST", "/editor/doc", { user: OWNER, body: { idea_id: idea.id } });
+    expect(off.status).toBe(409);
+    expect(off.data.error).toContain("Turn on Google Docs");
+    await sql`update public.yt_private set value = value || ' https://www.googleapis.com/auth/drive.file' where key = 'google_scopes'`;
+    expect((await call("POST", "/editor/doc", { user: OWNER, body: { idea_id: idea.id } })).data.error).toContain("Bring in the markers");
+    await sql`insert into public.yt_editor_notes (idea_id, name, markers, created_at) values
+      (${idea.id}, 'Cut 2', ${sql.json([{ at: "00:02:00:00", end: null, name: "", note: "Tighter here.", type: "Comment" }])}, now()),
+      (${idea.id}, 'Cut 1', ${sql.json([{ at: "00:01:05:12", end: "00:01:20:00", name: "Shop", note: "Cut this section. Too slow.", type: "Comment" }])}, now() - interval '1 day')`;
+    const first = await call("POST", "/editor/doc", { user: OWNER, body: { idea_id: idea.id } });
+    expect(first.status).toBe(200);
+    expect(first.data).toMatchObject({ url: "https://docs.google.com/document/d/mockdoc1/edit", created: true, cuts: 2 });
+    const sent = mock.docs.get("mockdoc1")!;
+    expect(sent).toContain('"mimeType":"application/vnd.google-apps.document"');
+    expect(sent).toContain("<h1>Notes for the editor: Merchant Items run</h1>");
+    expect(sent.indexOf("<h2>Cut 1</h2>")).toBeLessThan(sent.indexOf("<h2>Cut 2</h2>"));
+    expect(sent).toContain("<li><b>1:05 to 1:20</b> (timecode 00:01:05:12 to 00:01:20:00)<br><b>Shop</b><br>Cut this section.<br>Too slow.</li>");
+    // Sending again rewrites the same doc, so the editor keeps one link per video.
+    const again = await call("POST", "/editor/doc", { user: OWNER, body: { idea_id: idea.id } });
+    expect(again.data).toMatchObject({ url: "https://docs.google.com/document/d/mockdoc1/edit", created: false });
+    expect(mock.docs.size).toBe(1);
+    // A doc the owner deleted is made again.
+    mock.docs.clear();
+    expect((await call("POST", "/editor/doc", { user: OWNER, body: { idea_id: idea.id } })).data).toMatchObject({ created: true, url: "https://docs.google.com/document/d/mockdoc1/edit" });
+    const [row] = await sql`select doc_id from public.yt_editor_docs where idea_id = ${idea.id}`;
+    expect(row.doc_id).toBe("mockdoc1");
+    await sql`update public.yt_ideas set trashed_at = now() where id = ${idea.id}`;
+  });
+
   it("puts all of it in the one-call briefing for Claude", async () => {
     const [{ ctx }] = await sql`select public.yt_claude_context() as ctx`;
     expect(ctx.channel).toMatchObject({ id: MY_CHANNEL_ID, subscribers: 3880 });

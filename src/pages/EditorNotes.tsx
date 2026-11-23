@@ -5,9 +5,9 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { Drawer, ErrorNote, Fold, Icon, Loading, useToast } from "../components/ui.tsx";
-import { fail } from "../lib/api.ts";
+import { fail, pushEditorDoc } from "../lib/api.ts";
 import { ago } from "../lib/format.ts";
-import { useIdeas } from "../lib/hooks.ts";
+import { useConnection, useIdeas } from "../lib/hooks.ts";
 import { decodeFile, editorText, type Marker, markerWhen, noteLines, readMarkers } from "../lib/markers.ts";
 import { supabase } from "../lib/supabase.ts";
 import type { Json } from "../lib/database.types.ts";
@@ -41,9 +41,17 @@ async function binEditorNotes(id: string): Promise<void> {
 }
 
 const useEditorNotes = () => useQuery({ queryKey: notesKey, queryFn: getEditorNotes });
+
+/** The Google Doc each video's notes went into, by idea. */
+const docsKey = ["editor-docs"];
+async function getEditorDocs(): Promise<Map<string, { url: string; pushed_at: string }>> {
+  const { data, error } = await supabase.from("yt_editor_docs").select("idea_id, doc_url, pushed_at").limit(500);
+  fail(error);
+  return new Map((data ?? []).map((d) => [d.idea_id, { url: d.doc_url, pushed_at: d.pushed_at }]));
+}
+const useEditorDocs = () => useQuery({ queryKey: docsKey, queryFn: getEditorDocs });
 const message = (err: unknown) => (err instanceof Error ? err.message : "Something went wrong. Try again.");
 const count = (n: number) => `${n} ${n === 1 ? "note" : "notes"}`;
-const fileSafe = (text: string) => text.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) || "Editor notes";
 
 /** In the idea editor: the notes for the editor kept with this idea, and a way to bring in the next export. */
 export function EditorNotesFold({ ideaId, title }: { ideaId?: string; title: string }) {
@@ -137,28 +145,37 @@ function ImportMarkers({ ideaId, nextName }: { ideaId: string; nextName: string 
 function EditorSheet({ sheet, title, open }: { sheet: EditorNotes; title: string; open?: boolean }) {
   const toast = useToast();
   const queryClient = useQueryClient();
+  const connection = useConnection();
+  const docs = useEditorDocs();
+  const doc = docs.data?.get(sheet.idea_id);
   const [shown, setShown] = useState(Boolean(open));
+  const [sending, setSending] = useState(false);
   const text = editorText(title, sheet);
+  const allowed = Boolean(connection.data?.docs);
+  // One doc per video: every cut in order. Sending again rewrites it, so the editor keeps the same link.
+  const toDocs = async () => {
+    setSending(true);
+    try {
+      const out = await pushEditorDoc(sheet.idea_id);
+      await queryClient.invalidateQueries({ queryKey: docsKey });
+      toast(out.created ? "Made a Google Doc with these notes. Open it to share it with your editor." : "Updated the Google Doc. Your editor's link stays the same.");
+    } catch (err) {
+      toast(message(err), { error: true });
+    }
+    setSending(false);
+  };
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(text);
       toast("Copied. Paste it to your editor.");
     } catch {
-      toast("This browser would not copy it. Use Download instead.", { error: true });
+      toast("This browser would not copy it. Use Google Doc instead.", { error: true });
     }
   };
   const share = async () => {
     try {
       await navigator.share({ title: `Notes for the editor: ${title}`, text });
     } catch { /* closed without sharing */ }
-  };
-  const download = () => {
-    const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${fileSafe(`${title} - ${sheet.name}`)}.txt`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   const bin = async () => {
     try {
@@ -183,12 +200,24 @@ function EditorSheet({ sheet, title, open }: { sheet: EditorNotes; title: string
       {shown ? (
         <>
           <div className="row-wrap" style={{ gap: 8 }}>
-            <button type="button" className="btn btn-primary btn-small" onClick={() => void copy()}>Copy for my editor</button>
+            <button type="button" className="btn btn-primary btn-small" disabled={sending || !allowed} onClick={() => void toDocs()}>
+              {sending ? "Sending to Google Docs" : doc ? "Update the Google Doc" : "Put in Google Docs"}
+            </button>
+            {doc ? <a className="btn btn-small" href={doc.url} target="_blank" rel="noreferrer">Open the Google Doc</a> : null}
+            <button type="button" className="btn btn-small" onClick={() => void copy()}>Copy</button>
             {typeof navigator !== "undefined" && "share" in navigator ? <button type="button" className="btn btn-small" onClick={() => void share()}>Share</button> : null}
-            <button type="button" className="btn btn-small" onClick={download}>Download</button>
             <span className="grow" />
             <button type="button" className="btn btn-quiet btn-small" onClick={() => void bin()}>Move to bin</button>
           </div>
+          {!allowed && connection.data ? (
+            <p className="small muted" style={{ margin: 0 }}>
+              To send these to Google Docs, turn on Google Docs in <a href="#/settings">Settings</a>, under Google permissions.
+            </p>
+          ) : doc ? (
+            <p className="small muted" style={{ margin: 0 }}>
+              One Google Doc holds every cut of this video, in order. Updated {ago(doc.pushed_at)}. Share it with your editor once; the link never changes.
+            </p>
+          ) : null}
           <ol className="marker-list">
             {sheet.markers.map((m, i) => (
               <li key={`${m.at}-${i}`}>

@@ -45,6 +45,11 @@ export const EARNINGS_SCOPE = "https://www.googleapis.com/auth/yt-analytics-mone
  * which Google words as managing the account; this app never writes with it.
  */
 export const COMMENTS_SCOPE = "https://www.googleapis.com/auth/youtube.force-ssl";
+/**
+ * Also optional: lets the dashboard make Google Docs of the owner's notes for their editor. It only
+ * reaches files the dashboard itself created, never the rest of the owner's Drive.
+ */
+export const DOCS_SCOPE = "https://www.googleapis.com/auth/drive.file";
 
 // ---------------------------------------------------------------------------
 // Server-only settings (public.yt_private)

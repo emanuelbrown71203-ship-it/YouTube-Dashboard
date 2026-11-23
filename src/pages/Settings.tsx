@@ -92,7 +92,8 @@ export function Settings({ onSignedOut }: { onSignedOut: () => void }) {
               <p><strong>Almost there.</strong> <span className="soft">Sign in with the Google account that runs your channel.</span></p>
               <p className="soft small" style={{ maxWidth: "70ch" }}>
                 Google will warn that the app is not verified. That is normal for an app only you use: choose Advanced, then continue.
-                Leave every box ticked. Two are needed for your stats; one adds estimated earnings and one adds comments.
+                Leave every box ticked. Two are needed for your stats; one adds estimated earnings, one adds comments, and one lets
+                the dashboard make Google Docs of your notes for your editor (it only ever sees docs it made itself).
                 Google words the comments one as managing your account, because it has no read-only version, but the dashboard only ever reads:
                 it never posts, edits or removes anything. Untick it if you would rather not, and comments simply stay off.
               </p>
@@ -125,11 +126,28 @@ export function Settings({ onSignedOut }: { onSignedOut: () => void }) {
           </div>
         </Fold>
         {c.youtube_connected ? (
-          <Fold title="Earnings and comments" summary={c.earnings && c.comments ? "Both on" : c.earnings ? "Earnings only" : c.comments ? "Comments only" : "Both off"}>
-            <p className="soft" style={{ margin: 0, maxWidth: "70ch" }}>
-              Estimated earnings are <strong>{c.earnings ? "on" : "off"}</strong> and comments are <strong>{c.comments ? "on" : "off"}</strong>.
-              {c.earnings && c.comments ? " Nothing to do." : " To switch one on, press Disconnect above, then sign in with Google again and leave every box ticked."}
-            </p>
+          <Fold
+            title="Google permissions"
+            summary={[c.earnings ? "Earnings on" : "Earnings off", c.comments ? "comments on" : "comments off", c.docs ? "Google Docs on" : "Google Docs off"].join(", ")}
+            open={!c.docs}
+          >
+            <div className="stack" style={{ gap: 10 }}>
+              <p className="soft" style={{ margin: 0, maxWidth: "70ch" }}>
+                Estimated earnings are <strong>{c.earnings ? "on" : "off"}</strong>, comments are <strong>{c.comments ? "on" : "off"}</strong>
+                {" "}and Google Docs is <strong>{c.docs ? "on" : "off"}</strong>.
+                {" "}Google Docs lets the dashboard put your notes for your editor in a Google Doc in your Drive. It only ever sees the docs it made itself, never the rest of your Drive.
+              </p>
+              {c.earnings && c.comments && c.docs ? (
+                <p className="soft small" style={{ margin: 0 }}>Nothing to do.</p>
+              ) : (
+                <div className="row-wrap" style={{ gap: 10, alignItems: "center" }}>
+                  <button type="button" className="btn btn-primary" disabled={busy !== null} onClick={() => void run("google", async () => { window.location.assign((await startGoogleSignIn()).url); })}>
+                    {busy === "google" ? "Opening Google" : c.docs ? "Ask Google again" : "Turn on Google Docs"}
+                  </button>
+                  <small className="muted grow" style={{ minWidth: 0 }}>Google asks you again. Leave every box ticked. Your stats keep syncing the whole time.</small>
+                </div>
+              )}
+            </div>
           </Fold>
         ) : null}
       </div>
