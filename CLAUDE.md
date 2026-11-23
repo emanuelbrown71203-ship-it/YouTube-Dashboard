@@ -251,6 +251,8 @@ free and the owner has said to use them whenever a score needs them.
   a numbered list in time order: readable time ("1:05 to 1:20") with the
   exact timecode, the marker's name, and its note one sentence per line.
   Copy, Share and Download give the editor the same list as plain text.
+  Cuts show in the order they were made (Cut 1 above Cut 2), the newest
+  open, and the next one is brought in under the last.
 - Thumbnail references (Research, Thumbnails tab; `src/pages/Thumbnails.tsx`)
   are long-form videos in `yt_research_videos` from the last year that did
   at least 3x their channel's usual, split into the owner's games (open

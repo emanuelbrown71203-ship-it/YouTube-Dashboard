@@ -25,7 +25,7 @@ const COLUMNS = "id, idea_id, name, file_name, markers, created_at";
 const notesKey = ["editor-notes"];
 
 async function getEditorNotes(): Promise<EditorNotes[]> {
-  const { data, error } = await supabase.from("yt_editor_notes").select(COLUMNS).is("trashed_at", null).order("created_at", { ascending: false }).limit(300);
+  const { data, error } = await supabase.from("yt_editor_notes").select(COLUMNS).is("trashed_at", null).order("created_at", { ascending: true }).limit(300);
   fail(error);
   return (data ?? []) as unknown as EditorNotes[];
 }
@@ -48,19 +48,21 @@ const fileSafe = (text: string) => text.replace(/[\\/:*?"<>|]+/g, " ").replace(/
 /** In the idea editor: the notes for the editor kept with this idea, and a way to bring in the next export. */
 export function EditorNotesFold({ ideaId, title }: { ideaId?: string; title: string }) {
   const notes = useEditorNotes();
+  // In the order they were made: Cut 1, then Cut 2. The newest is open, and the next one goes in under it.
   const mine = (notes.data ?? []).filter((n) => n.idea_id === ideaId);
-  const summary = !ideaId ? "Save the idea first" : mine.length ? `${count(mine[0].markers.length)} from ${mine[0].name}` : "Bring in your Premiere markers";
+  const latest = mine[mine.length - 1];
+  const summary = !ideaId ? "Save the idea first" : latest ? `${count(latest.markers.length)} from ${latest.name}` : "Bring in your Premiere markers";
   return (
     <Fold title="For my editor" summary={summary}>
       {!ideaId ? (
         <p className="small muted" style={{ margin: 0 }}>Save the idea first, then bring in the markers from your cut here.</p>
       ) : (
         <div className="stack" style={{ gap: 14 }}>
-          <ImportMarkers ideaId={ideaId} nextName={`Cut ${mine.length + 1}`} />
           {notes.isLoading ? <Loading label="Loading your notes" /> : null}
-          {mine.map((sheet, i) => (
-            <EditorSheet key={sheet.id} sheet={sheet} title={title} open={i === 0} />
+          {mine.map((sheet) => (
+            <EditorSheet key={sheet.id} sheet={sheet} title={title} open={sheet === latest} />
           ))}
+          <ImportMarkers ideaId={ideaId} nextName={`Cut ${mine.length + 1}`} />
         </div>
       )}
     </Fold>
@@ -218,8 +220,11 @@ export function EditorNotesPage() {
   if (notes.isLoading || ideas.isLoading) return <Loading label="Loading your notes for the editor" />;
   if (notes.error) return <ErrorNote error={notes.error} retry={() => void notes.refetch()} />;
   const titleOf = new Map((ideas.data ?? []).map((i) => [i.id, i.title]));
-  const groups = new Map<string, EditorNotes[]>();
-  for (const n of notes.data ?? []) groups.set(n.idea_id, [...(groups.get(n.idea_id) ?? []), n]);
+  // Each video's cuts in order (Cut 1, then Cut 2); the video worked on most recently comes first.
+  const byIdea = new Map<string, EditorNotes[]>();
+  for (const n of notes.data ?? []) byIdea.set(n.idea_id, [...(byIdea.get(n.idea_id) ?? []), n]);
+  const newest = (sheets: EditorNotes[]) => sheets[sheets.length - 1].created_at;
+  const groups = new Map([...byIdea.entries()].sort((a, b) => newest(b[1]).localeCompare(newest(a[1]))));
   return (
     <>
       <p className="soft" style={{ maxWidth: "70ch", margin: "0 0 14px" }}>
