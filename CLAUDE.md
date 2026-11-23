@@ -45,6 +45,7 @@ research and the last sync. Every table and view has a comment explaining it;
 | `yt_notes` | Lines the owner wants to remember (from a podcast, a video, anywhere): `text`, `source`, `source_url`, `topic`. `on_front` ones show on the front page. |
 | `yt_comments` | Recent comments with the AI's reading: `sentiment`, `theme`, `is_question`. `pinned` ones sit on the front page. |
 | `yt_scripts` | Scripts the owner wrote for past videos (`title`, `topic`, `body`, `source_url`): their intros, the beats they hand their editor with directions in brackets, and voiceover written against the cut. Playbook → My scripts. The script starter reads the two closest (same game first) to write in their voice. |
+| `yt_editor_notes` | Notes for the owner's editor, read from markers they export from Premiere Pro, kept per video idea (`idea_id`, `name` = which cut, `markers` = `{at, end, name, note, type}`). Idea editor → For my editor, and Ideas → For my editor. |
 | `yt_rhythm` | The owner's upload rhythm: one target per format (`long`, `short`, `live`), "post at least every `every_days` days". `active = false` switches one off. Home shows the days since the last upload of that format against it. |
 
 `yt_v_videos` also carries `topic` (the game), `estimated_revenue` and `feeders`
@@ -126,7 +127,7 @@ free and the owner has said to use them whenever a score needs them.
 
 - `src/`: Vite + React + TypeScript. Reads go straight to Supabase with the
   publishable key; row level security lets only owners in.
-- `supabase/migrations/`: twenty files, all `yt_` objects. No statement in them
+- `supabase/migrations/`: twenty-one files, all `yt_` objects. No statement in them
   removes a table, a column or a row (017 only lets `yt_idea_refs.video_id` be
   empty, for screenshots).
 - `supabase/functions/yt-api/`: one edge function, deployed with JWT
@@ -241,6 +242,15 @@ free and the owner has said to use them whenever a score needs them.
   short spoken lines, a viewer's doubt in quotes answered straight after,
   callbacks, named threats, and directions for the editor in brackets. It fills empty parts and only offers
   the rest: it never overwrites what the owner wrote.
+- Notes for the editor (idea editor → For my editor; Ideas → For my editor;
+  `src/pages/EditorNotes.tsx`, `src/lib/markers.ts`): the owner leaves
+  markers with comments on a cut in Premiere, exports them (Markers panel,
+  File, Export, Markers) and brings the file in on the video's idea. It is
+  read in the browser (Premiere writes tab-separated UTF-16; comma-separated
+  UTF-8 from other editors works too), kept in `yt_editor_notes`, and shown as
+  a numbered list in time order: readable time ("1:05 to 1:20") with the
+  exact timecode, the marker's name, and its note one sentence per line.
+  Copy, Share and Download give the editor the same list as plain text.
 - Thumbnail references (Research, Thumbnails tab; `src/pages/Thumbnails.tsx`)
   are long-form videos in `yt_research_videos` from the last year that did
   at least 3x their channel's usual, split into the owner's games (open
@@ -275,7 +285,7 @@ free and the owner has said to use them whenever a score needs them.
   Shorts suggests the idea could carry a long video (`shortsWorthAVideo`).
   The same goes when answering the owner's questions from the data.
 - **Sections** (`NAV` in `src/App.tsx`): Home, Videos (all videos, title
-  and thumbnail tests), Ideas (board, suggested, planner), Research (outliers,
+  and thumbnail tests), Ideas (board, suggested, planner, for my editor), Research (outliers,
   thumbnails, search phrases, channels), Stats (charts,
   monthly recap, by game, Shorts to long), Goals, Comments, Playbook
   (templates, lines to remember, my scripts), Settings. A phone shows the first four

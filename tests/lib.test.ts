@@ -692,3 +692,60 @@ describe("line by line", () => {
     expect(lineByLine("")).toBe("");
   });
 });
+
+describe("Premiere markers for the editor", () => {
+  // Premiere's export: tab-separated, UTF-16 with a byte order mark.
+  const premiere = "Marker Name\tDescription\tIn\tOut\tDuration\tMarker Type\r\n"
+    + "\tCut this whole section. Too slow vs. the rest.\t00:01:05:12\t00:01:20:00\t00:00:14:12\tComment\r\n"
+    + "Intro\tStart the video here\t00:00:12:00\t00:00:12:00\t00:00:00:00\tComment\r\n"
+    + "Chapter 2\t\t01:02:05:00\t01:02:05:00\t00:00:00:00\tChapter\r\n";
+  const utf16 = (text: string) => {
+    const bytes = new Uint8Array(2 + text.length * 2);
+    bytes[0] = 0xff; bytes[1] = 0xfe;
+    for (let i = 0; i < text.length; i++) { bytes[2 + i * 2] = text.charCodeAt(i) & 0xff; bytes[3 + i * 2] = text.charCodeAt(i) >> 8; }
+    return bytes;
+  };
+
+  it("reads Premiere's own export, in time order", async () => {
+    const { decodeFile, readMarkers } = await import("../src/lib/markers.ts");
+    const { markers, problem } = readMarkers(decodeFile(utf16(premiere)));
+    expect(problem).toBeNull();
+    expect(markers).toEqual([
+      { at: "00:00:12:00", end: null, name: "Intro", note: "Start the video here", type: "Comment" },
+      { at: "00:01:05:12", end: "00:01:20:00", name: "", note: "Cut this whole section. Too slow vs. the rest.", type: "Comment" },
+      { at: "01:02:05:00", end: null, name: "Chapter 2", note: "", type: "Chapter" },
+    ]);
+  });
+
+  it("reads a comma-separated file with quotes, and says what is wrong with others", async () => {
+    const { readMarkers } = await import("../src/lib/markers.ts");
+    const csv = 'Name,Comments,Start,End\n"Boss","Add the boss card, then cut ""fast""",0:45,0:45\n';
+    expect(readMarkers(csv).markers).toEqual([{ at: "0:45", end: null, name: "Boss", note: 'Add the boss card, then cut "fast"', type: null }]);
+    expect(readMarkers("Title,Views\nA,1\n").problem).toContain("no In column");
+    expect(readMarkers("").problem).toContain("no markers");
+  });
+
+  it("writes a numbered list the editor can follow, one thought per line", async () => {
+    const { decodeFile, readMarkers, editorText, shortTime } = await import("../src/lib/markers.ts");
+    expect(shortTime("00:01:05:12")).toBe("1:05");
+    expect(shortTime("01:02:05:00")).toBe("1:02:05");
+    const { markers } = readMarkers(decodeFile(utf16(premiere)));
+    expect(editorText("Merchant Items", { name: "Rough cut 1", markers })).toBe([
+      "Notes for the editor: Merchant Items",
+      "Rough cut 1: 3 notes, in order",
+      "",
+      "1. 0:12 (timecode 00:00:12:00)",
+      "   Intro",
+      "   Start the video here",
+      "",
+      "2. 1:05 to 1:20 (timecode 00:01:05:12 to 00:01:20:00)",
+      "   Cut this whole section.",
+      "   Too slow vs. the rest.",
+      "",
+      "3. 1:02:05 (timecode 01:02:05:00)",
+      "   Chapter",
+      "   Chapter 2",
+      "",
+    ].join("\n"));
+  });
+});

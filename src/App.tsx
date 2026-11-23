@@ -9,6 +9,7 @@ import { Comments, Funnel, Games, Goals, IDEA_TABS, Planner, PLAYBOOK_TABS, Reca
 import { Ideas } from "./pages/Ideas.tsx";
 import { Notes } from "./pages/Notes.tsx";
 import { Scripts } from "./pages/Scripts.tsx";
+import { EditorNotesPage } from "./pages/EditorNotes.tsx";
 import { Overview } from "./pages/Overview.tsx";
 import { Research } from "./pages/Research.tsx";
 import { Settings } from "./pages/Settings.tsx";
@@ -219,6 +220,13 @@ function Shell(props: { google: GoogleResult | null; clearGoogle: () => void; on
               <div className="page-head"><h1>Ideas</h1></div>
               <Tabs label="Ideas" base="/ideas" current={sub} tabs={IDEA_TABS} />
               <Planner />
+            </>
+          )
+          : section === "ideas" && sub === "editor" ? (
+            <>
+              <div className="page-head"><h1>Ideas</h1></div>
+              <Tabs label="Ideas" base="/ideas" current={sub} tabs={IDEA_TABS} />
+              <EditorNotesPage />
             </>
           )
           : section === "ideas" ? <Ideas />

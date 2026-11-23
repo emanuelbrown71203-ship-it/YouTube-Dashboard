@@ -771,6 +771,16 @@ button.nav-link { border: 0; background: none; font-family: inherit; font-size: 
 .meter.thin { height: 5px; }
 .goal-next { line-height: 1.4; overflow-wrap: anywhere; }
 .goal-plan { line-height: 1.5; overflow-wrap: anywhere; }
+.marker-import { padding: 10px 12px; border: 1px dashed var(--line-2); border-radius: var(--radius-s); }
+.editor-sheet { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
+.editor-sheet-head { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: none; font: inherit; color: inherit; padding: 0; cursor: pointer; text-align: left; }
+.marker-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.marker-list li { padding: 10px 0; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
+.marker-when { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.marker-when strong { font-size: 1.1em; font-variant-numeric: tabular-nums; }
+.marker-n { min-width: 22px; height: 22px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); font-size: 12px; font-weight: 700; display: inline-grid; place-items: center; }
+.marker-note { padding-left: 30px; line-height: 1.45; overflow-wrap: anywhere; }
+.marker-name { font-weight: 650; }
 .script-row { width: 100%; border: 0; background: none; font: inherit; color: inherit; cursor: pointer; }
 .script-body { margin-top: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 @media (max-width: 640px) { .rhythm-row { flex-wrap: wrap; } .rhythm-row .select { max-width: none; width: 100%; } }

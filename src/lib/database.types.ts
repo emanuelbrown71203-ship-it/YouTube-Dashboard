@@ -221,6 +221,39 @@ export type Database = {
         };
         Relationships: [];
       };
+      yt_editor_notes: {
+        Row: {
+          id: string;
+          idea_id: string;
+          name: string;
+          file_name: string | null;
+          markers: Json;
+          created_at: string;
+          updated_at: string;
+          trashed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          idea_id: string;
+          name: string;
+          file_name?: string | null;
+          markers?: Json;
+          created_at?: string;
+          updated_at?: string;
+          trashed_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          idea_id?: string;
+          name?: string;
+          file_name?: string | null;
+          markers?: Json;
+          created_at?: string;
+          updated_at?: string;
+          trashed_at?: string | null;
+        };
+        Relationships: [];
+      };
       yt_goals: {
         Row: {
           id: string;

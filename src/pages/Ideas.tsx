@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { IDEA_TABS, Tabs } from "./Growth.tsx";
 import { ScoreChips, ScorePanel, TitleHelper, useAutoResearch, useCovered, useDraftScores, useFound, useIdeaChecking, useIdeaScores } from "./Pulse.tsx";
 import { ScriptStarter } from "./ScriptStarter.tsx";
+import { EditorNotesFold } from "./EditorNotes.tsx";
 import { bareNote, checkCount } from "../lib/notes.ts";
 import { scoreIdea } from "../lib/ideaScore.ts";
 import { ImportIdeas, TemplateHint, TemplateScore, useTemplates } from "./Templates.tsx";
@@ -530,6 +531,8 @@ function IdeaEditor(props: { draft: IdeaDraft; games: string[]; onClose: () => v
           <NotesBox label="Outline or script notes" value={form.outline ?? ""} onChange={(v) => set("outline", v || null)} minHeight={140} placeholder="Beats, lines, shots to get. Use bullets, or checkboxes to tick off as you go" />
         </div>
       </Fold>
+
+      <EditorNotesFold ideaId={form.id} title={form.title} />
 
       <Fold title="Thumbnail" summary={thumbSummary}>
         {form.format !== "short" ? (
