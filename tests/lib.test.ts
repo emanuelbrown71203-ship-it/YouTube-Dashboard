@@ -667,3 +667,14 @@ describe("ideas board order", () => {
     expect(orderSections(groups).map(([game]) => game)).toEqual(["Elden Ring", "Valheim", ""]);
   });
 });
+
+describe("side panel width", () => {
+  it("grows the text with the panel, from 1x at the usual width up to 1.5x", async () => {
+    const { drawerScale, DRAWER_DEFAULT } = await import("../src/components/ui.tsx");
+    expect(drawerScale(DRAWER_DEFAULT)).toBe(1);
+    expect(drawerScale(420)).toBe(1);
+    expect(drawerScale(760)).toBe(1.25);
+    expect(drawerScale(960)).toBe(1.5);
+    expect(drawerScale(1600)).toBe(1.5);
+  });
+});

@@ -293,6 +293,12 @@ free and the owner has said to use them whenever a score needs them.
   under "Show N older ideas". `sort_order` is when an idea joined the
   board; keeping a suggestion resets it to that moment. Filters are dropdowns, not rows of
   chips.
+- On a wider screen the side panel (`Drawer`: the idea editor and every
+  other editor) can be dragged wider by the bar on its left edge, or with
+  the arrow keys; double-tap resets it. Its text grows with it (`drawerScale`
+  in `src/components/ui.tsx`: 1x at 560px, up to 1.5x at 960px), and the
+  width is remembered in that browser. A phone shows it full screen, at the
+  usual size, with no bar.
 - On a phone nothing may be wider than the screen, the idea editor
   included: it only ever moves up and down. Switches (`Segmented`) side by
   side in a `.field-row` go one under the other on a phone. Every text box

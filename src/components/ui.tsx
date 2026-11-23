@@ -1,7 +1,7 @@
 // Small shared pieces: icons, buttons that pick one of a few options, the
 // "times the usual" pill, thumbnails, the side drawer and toasts.
 
-import { Component, createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { Component, createContext, type CSSProperties, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { duration, FORMAT_LABEL, multiple, percentChange } from "../lib/format.ts";
 
 const PATHS: Record<string, string> = {
@@ -238,8 +238,79 @@ export function CopyLine({ value, label = "Copy" }: { value: string; label?: str
   );
 }
 
+/** The side panel's width the owner dragged it to, kept between visits. Unknown or unreadable = the default. */
+export const DRAWER_DEFAULT = 560;
+const DRAWER_MIN = 420;
+const DRAWER_KEY = "yt-drawer-width";
+/** As the panel widens, its text grows with it: 1x at the default width, up to 1.5x at 960 pixels and wider. */
+export const drawerScale = (width: number) => Math.round(Math.min(1.5, Math.max(1, 1 + (width - DRAWER_DEFAULT) / 800)) * 100) / 100;
+const roomFor = () => Math.max(DRAWER_MIN, (typeof window === "undefined" ? 1200 : window.innerWidth) - 24);
+const fitWidth = (w: number) => Math.round(Math.min(roomFor(), Math.max(DRAWER_MIN, w)));
+function storedWidth(): number {
+  try {
+    const w = Number(localStorage.getItem(DRAWER_KEY));
+    return w > 0 ? fitWidth(w) : DRAWER_DEFAULT;
+  } catch {
+    return DRAWER_DEFAULT;
+  }
+}
+function storeWidth(w: number) {
+  try { localStorage.setItem(DRAWER_KEY, String(w)); } catch { /* private mode: it just will not be remembered */ }
+}
+
+/**
+ * The bar on the side panel's left edge: drag it left to widen the panel (the text grows with it), drag it
+ * right to narrow it, double-tap it to put it back. Arrow keys move it too. A phone shows the panel full
+ * screen, so it has no bar.
+ */
+function DrawerGrip({ width, onWidth }: { width: number; onWidth: (w: number, done: boolean) => void }) {
+  const start = useRef<{ x: number; w: number } | null>(null);
+  return (
+    <div
+      className="drawer-grip" role="separator" aria-orientation="vertical" tabIndex={0}
+      aria-label="Drag to make the panel wider or narrower" aria-valuenow={width} aria-valuemin={DRAWER_MIN} aria-valuemax={roomFor()}
+      title="Drag to make the panel wider. Double-tap to reset."
+      onPointerDown={(e) => {
+        e.preventDefault();
+        e.currentTarget.setPointerCapture(e.pointerId);
+        start.current = { x: e.clientX, w: width };
+      }}
+      onPointerMove={(e) => {
+        if (start.current) onWidth(fitWidth(start.current.w + start.current.x - e.clientX), false);
+      }}
+      onPointerUp={(e) => {
+        if (!start.current) return;
+        start.current = null;
+        e.currentTarget.releasePointerCapture(e.pointerId);
+        onWidth(width, true);
+      }}
+      onPointerCancel={() => { start.current = null; onWidth(width, true); }}
+      onDoubleClick={() => onWidth(DRAWER_DEFAULT, true)}
+      onKeyDown={(e) => {
+        if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+          e.preventDefault();
+          onWidth(fitWidth(width + (e.key === "ArrowLeft" ? 40 : -40)), true);
+        }
+      }}
+    >
+      <span />
+    </div>
+  );
+}
+
 export function Drawer(props: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(storedWidth);
+  const resize = useCallback((w: number, done: boolean) => {
+    setWidth(w);
+    if (done) storeWidth(w);
+  }, []);
+  // A smaller window can no longer hold a panel dragged wide: it shrinks to fit.
+  useEffect(() => {
+    const fit = () => setWidth((w) => fitWidth(w));
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, []);
   // The newest onClose is kept to one side, so the set-up below runs once, when the drawer opens.
   // Running it again on every redraw would move the cursor out of whatever box is being typed in.
   const latest = useRef(props.onClose);
@@ -262,7 +333,11 @@ export function Drawer(props: { title: string; onClose: () => void; children: Re
   return (
     <>
       <div className="scrim" onClick={onClose} />
-      <div className="drawer" role="dialog" aria-modal="true" aria-label={props.title} tabIndex={-1} ref={ref}>
+      <div
+        className="drawer" role="dialog" aria-modal="true" aria-label={props.title} tabIndex={-1} ref={ref}
+        style={{ "--dw": `${width}px`, "--dz": drawerScale(width) } as CSSProperties}
+      >
+        <DrawerGrip width={width} onWidth={resize} />
         <div className="drawer-head">
           <h2 className="clip">{props.title}</h2>
           <button type="button" className="btn btn-quiet btn-small" onClick={onClose} aria-label="Close">

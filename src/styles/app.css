@@ -415,8 +415,33 @@ button.item:hover, a.item:hover { background: var(--surface-2); }
 
 .scrim { position: fixed; inset: 0; background: rgba(8, 12, 20, 0.45); z-index: 40; }
 .drawer {
-  position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 100vw); background: var(--surface); z-index: 41;
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(var(--dw, 560px), 100vw); background: var(--surface); z-index: 41;
   display: flex; flex-direction: column; box-shadow: var(--shadow);
+}
+/* The bar to drag the panel wider; --dz grows the text with the panel (set from its width). */
+.drawer-grip {
+  position: absolute; top: 0; bottom: 0; left: -8px; width: 16px; z-index: 2; cursor: col-resize; touch-action: none;
+  display: flex; align-items: center; justify-content: center;
+}
+.drawer-grip span { width: 6px; height: 56px; border-radius: 999px; background: var(--line-2); box-shadow: 0 0 0 2px var(--surface); transition: background 0.15s; }
+.drawer-grip:hover span, .drawer-grip:focus-visible span, .drawer-grip:active span { background: var(--accent); }
+.drawer-grip:focus-visible { outline: none; }
+.drawer-head, .drawer-body, .drawer-foot { font-size: calc(15px * var(--dz, 1)); }
+.drawer .drawer-head h2 { font-size: calc(17px * var(--dz, 1)); }
+.drawer h3 { font-size: calc(15px * var(--dz, 1)); }
+.drawer .small, .drawer .btn-small, .drawer .field > span, .drawer .item .meta, .drawer .template-hint, .drawer .ref-note,
+.drawer .thumb-card-title, .drawer .score-examples a, .drawer .seg button, .drawer .chip, .drawer .fold-sum { font-size: calc(13px * var(--dz, 1)); }
+.drawer .line-note .line-text { font-size: calc(16px * var(--dz, 1)); }
+.drawer .field > small { font-size: calc(12.5px * var(--dz, 1)); }
+.drawer .tag, .drawer .score-chip, .drawer .score-chip b { font-size: calc(12px * var(--dz, 1)); }
+.drawer .input, .drawer .select, .drawer .textarea { font-size: calc(15px * var(--dz, 1)); }
+@media (pointer: coarse) {
+  .drawer input, .drawer select, .drawer textarea, .drawer .input, .drawer .select, .drawer .textarea, .drawer .ref-note { font-size: max(16px, calc(15px * var(--dz, 1))) !important; }
+}
+/* A phone shows the panel full screen at the usual text size, with nothing to drag. */
+@media (max-width: 640px) {
+  .drawer { width: 100vw !important; --dz: 1 !important; }
+  .drawer-grip { display: none; }
 }
 .drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
 .drawer-body { padding: 18px; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; flex: 1; display: flex; flex-direction: column; gap: 16px; }
