@@ -989,6 +989,7 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
       hook: "One rule: no dodging.\nOne mistake and it is over.",
       concept: "Beat Elden Ring without a single dodge roll.",
       outline: "- 0:00 Cold open\n  - The first death.\n- 1:00 The rule\n  - Explain it.\n\nShots to get\n- [ ] The health bar at one hit",
+      from_cut: null,
     });
     // What the owner already wrote goes to the AI without the bullet markers.
     expect(seen.video.what_they_wrote_so_far.hook).toBe("My own opening");
@@ -999,6 +1000,23 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     expect(seen.their_past_scripts[0].opening.length).toBe(2500);
     expect(seen.their_past_scripts[0].ending).toContain("Make sure to watch the next chapter.");
     expect(seen.their_past_scripts[1].ending).toBeNull();
+    expect(seen.their_cut).toBeNull();
+    expect(draft.data.from_cut).toBeNull();
+    // With cuts brought in from Premiere, the draft builds on the newest cut's timeline and notes.
+    const [cutIdea] = await sql`insert into public.yt_ideas (title, format, topic) values ('Cut-based idea', 'long', 'Elden Ring') returning id`;
+    await sql`insert into public.yt_editor_notes (idea_id, name, markers, created_at) values
+      (${cutIdea.id}, 'Cut 1', ${sql.json([{ at: "00:00:30:00", end: null, name: "", note: "Too slow", type: "Comment" }])}, now() - interval '2 days'),
+      (${cutIdea.id}, 'Cut 2', ${sql.json([{ at: "00:01:05:12", end: "00:01:20:00", name: "Shop", note: "Cut this section.", type: "Comment" }, { at: "01:02:05:00", end: null, name: "", note: "", type: "Chapter" }])}, now())`;
+    const fromCut = await call("POST", "/ai/script", { user: OWNER, body: { idea_id: cutIdea.id, title: "Cut-based idea", game: "Elden Ring", format: "long" } });
+    expect(fromCut.data.from_cut).toBe("Cut 2");
+    expect(seen.their_cut).toEqual({
+      newest: "Cut 2",
+      cuts: [
+        { name: "Cut 1", notes: [{ at: "0:30", note: "Too slow" }] },
+        { name: "Cut 2", notes: [{ at: "1:05", until: "1:20", note: "Shop: Cut this section." }, { at: "1:02:05", note: "(no note)" }] },
+      ],
+    });
+    await sql`update public.yt_ideas set trashed_at = now() where id = ${cutIdea.id}`;
     await sql`update public.yt_scripts set trashed_at = now()`;
     await sql`update public.yt_templates set trashed_at = now() where id in (${rules.id}, ${story.id})`;
     await sql`update public.yt_notes set trashed_at = now() where id = ${line.id}`;

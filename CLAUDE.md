@@ -242,7 +242,11 @@ free and the owner has said to use them whenever a score needs them.
   opening and the ending of each), so the draft takes their voice and habits:
   short spoken lines, a viewer's doubt in quotes answered straight after,
   callbacks, named threats, and directions for the editor in brackets. It fills empty parts and only offers
-  the rest: it never overwrites what the owner wrote.
+  the rest: it never overwrites what the owner wrote. Once the idea has cuts
+  brought in from Premiere (`cutNotes` in `ideas.ts`), the button reads
+  "Draft from Cut N": the beats follow the newest cut's own timeline, every
+  note left on it becomes a direction for the editor or the voiceover for
+  that stretch, and earlier cuts count only where the newest repeats them.
 - Notes for the editor (idea editor → For my editor; Ideas → For my editor;
   `src/pages/EditorNotes.tsx`, `src/lib/markers.ts`): the owner leaves
   markers with comments on a cut in Premiere, exports them (Markers panel,

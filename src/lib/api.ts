@@ -307,7 +307,7 @@ export const draftGoalPlan = (body: { title: string; kind: string; target?: numb
 
 /** A first draft of an idea's hook, what happens and beats. */
 export const draftScript = (body: { idea_id?: string; title: string; game: string | null; format: string; hook?: string | null; concept?: string | null; outline?: string | null }) =>
-  callApi<{ hook: string; concept: string; outline: string }>("/ai/script", body);
+  callApi<{ hook: string; concept: string; outline: string; from_cut: string | null }>("/ai/script", body);
 
 export async function saveIdea(draft: IdeaDraft): Promise<Idea> {
   // The AI's reading against the templates is written by the server only, never from here, and

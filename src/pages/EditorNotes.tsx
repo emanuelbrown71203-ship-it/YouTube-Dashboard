@@ -42,6 +42,12 @@ async function binEditorNotes(id: string): Promise<void> {
 
 const useEditorNotes = () => useQuery({ queryKey: notesKey, queryFn: getEditorNotes });
 
+/** The cuts brought in for one idea, oldest first: the script starter builds on the newest. */
+export function useCuts(ideaId?: string): EditorNotes[] {
+  const notes = useEditorNotes();
+  return ideaId ? (notes.data ?? []).filter((n) => n.idea_id === ideaId) : [];
+}
+
 /** The Google Doc each video's notes went into, by idea. */
 const docsKey = ["editor-docs"];
 async function getEditorDocs(): Promise<Map<string, { url: string; pushed_at: string }>> {

@@ -435,6 +435,11 @@ const SCRIPT_SYSTEM =
   "payoff at the end.\n" +
   "shots: up to 6 specific things to capture while playing.\n\n" +
   "Use what worked for the same idea on other channels and the creator's own best titles as evidence of what viewers want, without copying. " +
+  "their_cut, when given, means the video is already cut and the creator has left notes on it in Premiere. Then build the beats on the " +
+  "newest cut's own timeline: use its marker times as the beat times, in order, and work every one of its notes into the beat it belongs to. " +
+  "What they want changed becomes a direction for their editor in (round brackets); what needs saying becomes the voiceover lines for that " +
+  "stretch. A note to cut a section means that beat gets shorter or goes, said so. Earlier cuts show notes they already gave: follow them only " +
+  "where the newest cut repeats them. The hook still comes first, and the draft should read like a tighter, clearer version of that cut. " +
   "their_past_scripts are scripts this creator wrote for earlier videos: write the way they write. Take their voice and habits, not their " +
   "content: short spoken lines, a viewer's doubt in quotes answered straight after (\"Okay Zay, that doesn't sound that bad.\"), callbacks to " +
   "earlier moments, giving the big threats a name, the rules and stakes said again partway through, and directions for their editor in " +
@@ -459,6 +464,36 @@ export async function pastScripts(sql: Sql, game: string | null) {
   });
 }
 
+/** "1:05" for a timecode, the way a person reads it. */
+function readableTime(tc: unknown): string {
+  const parts = String(tc ?? "").trim().split(/[:;]/);
+  if (!parts.length || parts.some((p) => !/^\d+(\.\d+)?$/.test(p))) return String(tc ?? "");
+  const n = parts.map(Number);
+  const s = Math.floor(n.length >= 3 ? n[0] * 3600 + n[1] * 60 + n[2] : n.length === 2 ? n[0] * 60 + n[1] : n[0]);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  return h ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}` : `${m}:${String(sec).padStart(2, "0")}`;
+}
+
+/**
+ * The notes the owner left on this video's cuts in Premiere (yt_editor_notes), oldest cut first and the
+ * newest last, for the script starter to build on. Null when the idea has no cuts yet.
+ */
+export async function cutNotes(sql: Sql, ideaId: string) {
+  if (!/^[0-9a-f-]{36}$/i.test(ideaId)) return null;
+  const rows = await sql`
+    select name, markers from public.yt_editor_notes where idea_id = ${ideaId} and trashed_at is null order by created_at`;
+  if (rows.length === 0) return null;
+  // deno-lint-ignore no-explicit-any
+  const cuts = (rows as { name: string; markers: any[] }[]).slice(-3).map((r) => ({
+    name: r.name,
+    notes: (Array.isArray(r.markers) ? r.markers : []).slice(0, 60).map((m) => ({
+      at: readableTime(m.at), ...(m.end ? { until: readableTime(m.end) } : {}),
+      note: [String(m.name ?? "").trim(), String(m.note ?? "").trim()].filter(Boolean).join(": ").slice(0, 400) || "(no note)",
+    })),
+  }));
+  return { cuts, newest: cuts[cuts.length - 1].name };
+}
+
 export async function draftScript(deps: Deps, body: Record<string, unknown>) {
   const { sql } = deps;
   const title = String(body.title ?? "").trim().slice(0, 200);
@@ -468,6 +503,7 @@ export async function draftScript(deps: Deps, body: Record<string, unknown>) {
   const id = String(body.idea_id ?? "");
   const guidance = await ownerGuidance(sql, ["intro", "other"]);
   const scripts = await pastScripts(sql, game);
+  const cut = await cutNotes(sql, id);
   const best = await sql`
     select title, round(vs_typical::numeric, 1) as times_usual from public.yt_v_videos
     where content_type = ${format} and privacy = 'public' and vs_typical is not null and age_days > 7 order by vs_typical desc limit 8`;
@@ -497,6 +533,7 @@ export async function draftScript(deps: Deps, body: Record<string, unknown>) {
       their_best_titles: (best as { title: string; times_usual: number }[]).map((b) => ({ title: b.title, times_usual: Number(b.times_usual) })),
       lines_they_want_to_remember: guidance.notes,
       their_past_scripts: scripts,
+      their_cut: cut,
     }),
     schema: {
       type: "object", additionalProperties: false, required: ["hook", "what_happens", "beats", "shots"],
@@ -513,7 +550,7 @@ export async function draftScript(deps: Deps, body: Record<string, unknown>) {
   });
   // Each beat on its own line, and what happens in it underneath, one sentence per line.
   // deno-lint-ignore no-explicit-any
-  const beats = ((out?.beats ?? []) as any[]).slice(0, 12).map((b) => {
+  const beats = ((out?.beats ?? []) as any[]).slice(0, cut ? 24 : 12).map((b) => {
     const head = [String(b.at ?? "").trim(), String(b.beat ?? "").trim()].filter(Boolean).join(" ");
     const detail = sentences(String(b.detail ?? "").replace(/\s+/g, " ").trim()).map((s) => `  - ${s}`);
     return head ? [`- ${head}`, ...detail].join("\n") : detail.map((d) => d.trimStart()).join("\n");
@@ -523,5 +560,5 @@ export async function draftScript(deps: Deps, body: Record<string, unknown>) {
   const concept = lineByLine(String(out?.what_happens ?? "").trim().slice(0, 1500));
   if (!hook && !concept && beats.length === 0) throw new HttpError(502, "ai_error", "The AI came back with an empty draft. Try again.");
   const outline = [beats.join("\n"), shots.length ? `Shots to get\n${shots.map((s) => `- [ ] ${s}`).join("\n")}` : ""].filter(Boolean).join("\n\n");
-  return { hook, concept, outline };
+  return { hook, concept, outline, from_cut: cut ? cut.cuts[cut.cuts.length - 1].name : null };
 }

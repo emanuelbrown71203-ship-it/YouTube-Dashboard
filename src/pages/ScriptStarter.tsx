@@ -7,6 +7,7 @@ import { useToast } from "../components/ui.tsx";
 import { draftScript } from "../lib/api.ts";
 import { useConnection } from "../lib/hooks.ts";
 import type { IdeaDraft } from "../lib/types.ts";
+import { useCuts } from "./EditorNotes.tsx";
 
 type Part = "hook" | "concept" | "outline";
 const LABEL: Record<Part, string> = { hook: "Hook", concept: "What happens", outline: "Outline" };
@@ -16,7 +17,11 @@ export function ScriptStarter({ form, onUse }: { form: IdeaDraft; onUse: (part: 
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState<Partial<Record<Part, string>> | null>(null);
+  const [fromCut, setFromCut] = useState<string | null>(null);
   const ai = Boolean(connection.data?.ai);
+  // With cuts brought in from Premiere, the draft is built on the newest cut and the notes left on it.
+  const cuts = useCuts(form.id);
+  const cut = cuts[cuts.length - 1];
 
   const run = async () => {
     setBusy(true);
@@ -33,7 +38,9 @@ export function ScriptStarter({ form, onUse }: { form: IdeaDraft; onUse: (part: 
         else onUse(part, out[part]);
       }
       setDraft(Object.keys(held).length ? held : null);
-      toast(Object.keys(held).length ? "Draft ready. Pick which parts to use below." : "Draft added. Make it yours: rewrite it in your own words.");
+      setFromCut(out.from_cut);
+      const from = out.from_cut ? `Built from ${out.from_cut}. ` : "";
+      toast(Object.keys(held).length ? `${from}Pick which parts to use below.` : `${from}Draft added. Make it yours: rewrite it in your own words.`);
     } catch (err) {
       toast(err instanceof Error ? err.message : "The draft could not be written. Try again.", { error: true });
     }
@@ -44,18 +51,19 @@ export function ScriptStarter({ form, onUse }: { form: IdeaDraft; onUse: (part: 
     <div className="script-starter">
       <div className="row-wrap" style={{ gap: 10, alignItems: "center" }}>
         <button type="button" className="btn btn-small" disabled={busy || !ai || !form.title.trim()} onClick={() => void run()}>
-          {busy ? "Writing a draft" : "Draft a script"}
+          {busy ? "Writing a draft" : cut ? `Draft from ${cut.name}` : "Draft a script"}
         </button>
         <small className="muted grow" style={{ minWidth: 0 }}>
           {!ai ? "Add your Claude API key in Settings to switch this on."
             : busy ? "This takes up to a minute."
+            : cut ? `Lays the outline on ${cut.name}'s timeline, works in the ${cut.markers.length} ${cut.markers.length === 1 ? "note" : "notes"} you left on it, and writes the voiceover in your voice. You rewrite it.`
             : "A first draft from your idea, your templates and what worked for others. You rewrite it."}
         </small>
       </div>
       {draft ? (
         <div className="script-draft">
           <div className="row between" style={{ gap: 8 }}>
-            <strong>Draft for the parts you already wrote</strong>
+            <strong>{fromCut ? `Built from ${fromCut}, for the parts you already wrote` : "Draft for the parts you already wrote"}</strong>
             <button type="button" className="btn btn-quiet btn-small" onClick={() => setDraft(null)}>Keep mine</button>
           </div>
           {(Object.keys(draft) as Part[]).map((part) => (
