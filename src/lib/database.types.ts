@@ -884,6 +884,39 @@ export type Database = {
         };
         Relationships: [];
       };
+      yt_scripts: {
+        Row: {
+          id: string;
+          title: string;
+          body: string;
+          topic: string | null;
+          source_url: string | null;
+          created_at: string;
+          updated_at: string;
+          trashed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          title: string;
+          body: string;
+          topic?: string | null;
+          source_url?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          trashed_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          title?: string;
+          body?: string;
+          topic?: string | null;
+          source_url?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          trashed_at?: string | null;
+        };
+        Relationships: [];
+      };
       yt_sync_runs: {
         Row: {
           id: number;

@@ -8,6 +8,7 @@ import { navigate, useRoute } from "./lib/router.ts";
 import { Comments, Funnel, Games, Goals, IDEA_TABS, Planner, PLAYBOOK_TABS, Recap, STATS_TABS, Tabs, Tests, VIDEO_TABS } from "./pages/Growth.tsx";
 import { Ideas } from "./pages/Ideas.tsx";
 import { Notes } from "./pages/Notes.tsx";
+import { Scripts } from "./pages/Scripts.tsx";
 import { Overview } from "./pages/Overview.tsx";
 import { Research } from "./pages/Research.tsx";
 import { Settings } from "./pages/Settings.tsx";
@@ -223,11 +224,11 @@ function Shell(props: { google: GoogleResult | null; clearGoogle: () => void; on
           : section === "ideas" ? <Ideas />
           : section === "goals" ? <><div className="page-head"><h1>Goals</h1></div><Goals /></>
           : section === "comments" ? <><div className="page-head"><h1>Comments</h1></div><Comments /></>
-          : section === "playbook" && (sub === "" || sub === "lines") ? (
+          : section === "playbook" && (sub === "" || sub === "lines" || sub === "scripts") ? (
             <>
               <div className="page-head"><h1>Playbook</h1></div>
               <Tabs label="Playbook" base="/playbook" current={sub} tabs={PLAYBOOK_TABS} />
-              {sub === "lines" ? <Notes /> : <Templates />}
+              {sub === "lines" ? <Notes /> : sub === "scripts" ? <Scripts /> : <Templates />}
             </>
           )
           : section === "research" ? <Research />

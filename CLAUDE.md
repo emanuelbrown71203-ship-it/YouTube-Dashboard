@@ -44,6 +44,7 @@ research and the last sync. Every table and view has a comment explaining it;
 | `yt_idea_refs` | Thumbnail references kept with an idea: other people's videos (`video_id`, with title, channel, views and `outlier_score` copied in), or a screenshot the owner added (no `video_id`; `image` and `image_small` hold it as JPEG data, framed to the thumbnail in the browser by `src/lib/pictures.ts`), and the owner's `note` on what to take from each. A video's picture is `https://i.ytimg.com/vi/<video_id>/mqdefault.jpg`. Lists never select the two image columns: read one row's picture at a time. |
 | `yt_notes` | Lines the owner wants to remember (from a podcast, a video, anywhere): `text`, `source`, `source_url`, `topic`. `on_front` ones show on the front page. |
 | `yt_comments` | Recent comments with the AI's reading: `sentiment`, `theme`, `is_question`. `pinned` ones sit on the front page. |
+| `yt_scripts` | Scripts the owner wrote for past videos (`title`, `topic`, `body`, `source_url`): their intros, the beats they hand their editor with directions in brackets, and voiceover written against the cut. Playbook → My scripts. The script starter reads the two closest (same game first) to write in their voice. |
 | `yt_rhythm` | The owner's upload rhythm: one target per format (`long`, `short`, `live`), "post at least every `every_days` days". `active = false` switches one off. Home shows the days since the last upload of that format against it. |
 
 `yt_v_videos` also carries `topic` (the game), `estimated_revenue` and `feeders`
@@ -118,7 +119,7 @@ free and the owner has said to use them whenever a score needs them.
 
 - `src/`: Vite + React + TypeScript. Reads go straight to Supabase with the
   publishable key; row level security lets only owners in.
-- `supabase/migrations/`: nineteen files, all `yt_` objects. No statement in them
+- `supabase/migrations/`: twenty files, all `yt_` objects. No statement in them
   removes a table, a column or a row (017 only lets `yt_idea_refs.video_id` be
   empty, for screenshots).
 - `supabase/functions/yt-api/`: one edge function, deployed with JWT
@@ -227,7 +228,11 @@ free and the owner has said to use them whenever a score needs them.
 - The script starter (Script fold in the idea editor; `/ai/script`) drafts
   a hook, what happens and timed beats with a shots checklist, from the
   idea, the owner's intro templates, the idea's YouTube check, their best
-  titles and their lines to remember. It fills empty parts and only offers
+  titles, their lines to remember, and the two closest of their own past
+  scripts (`pastScripts` in `ideas.ts`: same game first, then newest; the
+  opening and the ending of each), so the draft takes their voice and habits:
+  short spoken lines, a viewer's doubt in quotes answered straight after,
+  callbacks, named threats, and directions for the editor in brackets. It fills empty parts and only offers
   the rest: it never overwrites what the owner wrote.
 - Thumbnail references (Research, Thumbnails tab; `src/pages/Thumbnails.tsx`)
   are long-form videos in `yt_research_videos` from the last year that did
@@ -266,7 +271,7 @@ free and the owner has said to use them whenever a score needs them.
   and thumbnail tests), Ideas (board, suggested, planner), Research (outliers,
   thumbnails, search phrases, channels), Stats (charts,
   monthly recap, by game, Shorts to long), Goals, Comments, Playbook
-  (templates, lines to remember), Settings. A phone shows the first four
+  (templates, lines to remember, my scripts), Settings. A phone shows the first four
   and a More menu. Put a new page in the section it belongs to; when it
   fits none of them, give it a section of its own. Never tuck it under
   whichever section is handy.

@@ -978,6 +978,11 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
         shots: ["The health bar at one hit", " "],
       };
     };
+    // The owner's own scripts teach the starter their voice: the same game first, then the newest.
+    await sql`insert into public.yt_scripts (title, topic, body, created_at) values
+      ('Cuphead 1HP', 'Cuphead', 'At the bottom left you can see my health is permanently flashing 1 HP.', now() - interval '2 days'),
+      ('Elden Ring DLC', 'Elden Ring', ${"We have NOTHING. " + "x".repeat(4000) + " Make sure to watch the next chapter."}, now() - interval '30 days'),
+      ('Duo Honour Act 2', 'Baldur''s Gate 3', 'Two characters. That''s it.', now() - interval '1 day')`;
     const draft = await call("POST", "/ai/script", { user: OWNER, body: { title: "Can You Beat Elden Ring Without Ever Dodging?", game: "Elden Ring", format: "long", hook: "- My own opening" } });
     expect(draft.status).toBe(200);
     expect(draft.data).toEqual({
@@ -990,6 +995,11 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     expect(seen.their_templates.map((t: { name: string }) => t.name)).toContain("Storytelling");
     expect(seen.their_templates.map((t: { kind: string }) => t.kind).every((k: string) => k === "intro" || k === "other")).toBe(true);
     expect(seen.lines_they_want_to_remember).toContain("The algorithm is tailored to the audience");
+    expect(seen.their_past_scripts.map((x: { title: string }) => x.title)).toEqual(["Elden Ring DLC", "Duo Honour Act 2"]);
+    expect(seen.their_past_scripts[0].opening.length).toBe(2500);
+    expect(seen.their_past_scripts[0].ending).toContain("Make sure to watch the next chapter.");
+    expect(seen.their_past_scripts[1].ending).toBeNull();
+    await sql`update public.yt_scripts set trashed_at = now()`;
     await sql`update public.yt_templates set trashed_at = now() where id in (${rules.id}, ${story.id})`;
     await sql`update public.yt_notes set trashed_at = now() where id = ${line.id}`;
     await sql`update public.yt_ideas set trashed_at = now() where source = 'suggested' or title = 'Can You Beat Elden Ring Using Only Merchant Items?'`;

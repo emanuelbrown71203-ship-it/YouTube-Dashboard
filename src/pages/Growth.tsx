@@ -27,7 +27,7 @@ const message = (err: unknown) => (err instanceof Error ? err.message : "That di
 export const STATS_TABS = [{ key: "", label: "Charts" }, { key: "recap", label: "Monthly recap" }, { key: "games", label: "By game" }, { key: "funnel", label: "Shorts to long" }];
 export const VIDEO_TABS = [{ key: "", label: "All videos" }, { key: "tests", label: "Title and thumbnail tests" }];
 export const IDEA_TABS = [{ key: "", label: "Board" }, { key: "suggested", label: "Suggested" }, { key: "planner", label: "Planner" }];
-export const PLAYBOOK_TABS = [{ key: "", label: "Templates" }, { key: "lines", label: "Lines to remember" }];
+export const PLAYBOOK_TABS = [{ key: "", label: "Templates" }, { key: "lines", label: "Lines to remember" }, { key: "scripts", label: "My scripts" }];
 
 export function Tabs(props: { label: string; base: string; current: string; tabs: { key: string; label: string }[] }) {
   return (
