@@ -792,3 +792,21 @@ button.nav-link { border: 0; background: none; font-family: inherit; font-size: 
 .dot.emo-curiosity { background: var(--emo-curiosity); }
 .dot.emo-desire { background: var(--emo-desire); }
 .dot.emo-fear { background: var(--emo-fear); }
+
+/* The intro score under the hook box: each spoken line marked with the emotions it sparks (only the dots carry the colour). */
+.dot.emo-none { background: transparent; box-shadow: inset 0 0 0 1.5px var(--line-2); }
+.intro-score { margin-top: 4px; }
+.intro-emotions { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 4px; }
+.intro-changed { margin-top: 6px; }
+.intro-list { margin-top: 10px; }
+.intro-list ul { margin: 4px 0 0; padding-left: 18px; }
+.intro-list li { margin: 2px 0; }
+.intro-more { margin-top: 10px; }
+.intro-more > summary { cursor: pointer; font-size: 13.5px; font-weight: 600; }
+.intro-lines { margin-top: 6px; display: grid; gap: 3px; }
+.intro-line { display: flex; gap: 8px; align-items: baseline; min-width: 0; overflow-wrap: anywhere; }
+.intro-dots { flex: none; display: inline-flex; gap: 3px; width: 26px; }
+.intro-dots .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.intro-dir { padding-left: 34px; font-style: italic; overflow-wrap: anywhere; }
+.intro-tries { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 10px; }
+.intro-try { white-space: pre-line; overflow-wrap: anywhere; }

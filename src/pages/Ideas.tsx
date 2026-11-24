@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { IDEA_TABS, Tabs } from "./Growth.tsx";
 import { ScoreChips, ScorePanel, TitleHelper, useAutoResearch, useCovered, useDraftScores, useFound, useIdeaChecking, useIdeaScores } from "./Pulse.tsx";
+import { IntroScore } from "./IntroScore.tsx";
 import { ScriptStarter } from "./ScriptStarter.tsx";
 import { EditorNotesFold } from "./EditorNotes.tsx";
 import { bareNote, checkCount } from "../lib/notes.ts";
@@ -522,6 +523,7 @@ function IdeaEditor(props: { draft: IdeaDraft; games: string[]; onClose: () => v
           <textarea className="textarea" style={{ minHeight: 140 }} {...text("hook")} placeholder="The first five seconds, line by line" />
           <TemplateHint kind="intro" />
         </label>
+        <IntroScore form={form} onScored={(check, at) => { setForm((f) => ({ ...f, intro_check: check, intro_checked_at: at })); void props.onChanged(); }} />
         <div className="field">
           <span>What happens</span>
           <NotesBox label="What happens" value={form.concept ?? ""} onChange={(v) => set("concept", v || null)} placeholder="The challenge, the stakes, how it ends" />

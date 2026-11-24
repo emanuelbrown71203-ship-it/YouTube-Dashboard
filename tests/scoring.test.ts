@@ -244,6 +244,18 @@ describe("checking one idea against YouTube", () => {
     expect(shorts.examples.map((e) => e.video_id)).toEqual(["s2"]);
   });
 
+  it("reads an intro's spoken lines apart from its directions, and weighs its parts the owner's way", async () => {
+    const { introLayout, introLines, introTotal, INTRO_PARTS } = await import("../supabase/functions/yt-api/scoring.ts");
+    const intro = "[First frame: merchant gear facing Margit]\nMeet Patty Mills.\n\n[Walks past a glowing weapon] Patty doesn't open chests.\n- Subscribe!\n[Radahn charges]\n  ";
+    expect(introLines(intro)).toEqual(["Meet Patty Mills.", "Patty doesn't open chests.", "Subscribe!"]);
+    expect(introLayout(intro).map((l) => l.n)).toEqual([null, 1, 2, 3, null]);
+    expect(introLayout(intro)[2].text).toBe("[Walks past a glowing weapon] Patty doesn't open chests.");
+    expect(INTRO_PARTS.reduce((n, p) => n + p.max, 0)).toBe(100);
+    expect(introTotal([{ key: "premise", score: 60 }, { key: "problem", score: 75 }, { key: "plug", score: 80 }, { key: "payoff", score: 60 }, { key: "emotions", score: 55 }, { key: "hooks", score: 80 }, { key: "show", score: 50 }])).toBe(64);
+    expect(introTotal([])).toBe(0);
+    expect(introTotal(INTRO_PARTS.map((p) => ({ key: p.key, score: 250 })))).toBe(100);
+  });
+
   it("only calls a video a breakout when it reached a real audience", async () => {
     const { isBreakout, bigEnough } = await import("../supabase/functions/yt-api/scoring.ts");
     expect(isBreakout(7.2, 504, "long")).toBe(false);

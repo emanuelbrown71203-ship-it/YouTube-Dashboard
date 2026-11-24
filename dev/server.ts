@@ -256,6 +256,19 @@ const deps: Deps = {
         }),
       };
     }
+    if (props.to_try) {
+      // An intro score: every part read, a line or two with each emotion, and something to change.
+      const sent = JSON.parse(req.prompt) as { spoken_lines: { n: number; line: string }[] };
+      const keys = ["premise", "problem", "plug", "payoff", "emotions", "hooks", "show"];
+      const cycle = [["curiosity"], ["desire"], ["fear"], [], ["curiosity", "fear"]];
+      return {
+        parts: keys.map((key, i) => ({ key, score: 40 + ((i * 13) % 55), note: `(made-up) What the ${key} has, and what it lacks.` })),
+        lines: sent.spoken_lines.map((l, i) => ({ n: l.n, emotions: cycle[i % cycle.length] })),
+        missing: ["(made-up) The premise is not said in the first 5 seconds", "(made-up) No named threat"],
+        better: ["(made-up) Move the rule to line 2", "(made-up) Say the stakes as a number"],
+        to_try: [{ instead_of: sent.spoken_lines[0]?.line ?? "", line: "(made-up) A sharper first line. [Show the rule on screen] Then the stakes." }],
+      };
+    }
     if (props.sections) {
       // A plan for a goal: a few headings with steps, built on the goal it was given.
       const goal = (JSON.parse(req.prompt) as { goal: { title: string } }).goal;

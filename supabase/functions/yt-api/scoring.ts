@@ -503,3 +503,44 @@ export function summariseMarket(searched: number, judged: MarketVideo[], format:
     examples: [...best(same), ...best(close)].slice(0, 4), min_views: minOutlierViews(format),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Intro score
+// ---------------------------------------------------------------------------
+
+/**
+ * The parts of an intro score, in the order of the owner's intro formula (premise, problem, plug,
+ * payoff), then the emotions it sparks like a title does, its hooks and what is shown. `max` is what
+ * each part is worth out of 100.
+ */
+export const INTRO_PARTS = [
+  { key: "premise", label: "Premise", max: 20, asks: "The challenge stated right away: said and shown in the first 5 seconds, matching the title and thumbnail, and restated early so viewers know it is the video they clicked." },
+  { key: "problem", label: "Problem", max: 20, asks: "What makes it hard and why it matters: the stakes, the restrictions, the stats." },
+  { key: "plug", label: "Plug", max: 5, asks: "A call to action." },
+  { key: "payoff", label: "Payoff", max: 15, asks: "What viewers get for staying to the end: a question they need answered, said specifically." },
+  { key: "emotions", label: "Emotions", max: 20, asks: "Lines that spark curiosity, desire or fear, the way a title should. Two or three different emotions across the intro is strongest." },
+  { key: "hooks", label: "Hooks", max: 10, asks: "A barrage of hooks so one latches, each one specific, never vague." },
+  { key: "show", label: "Show it", max: 10, asks: "Shown, not told: a first frame that matters, real visuals for the hooks, a new shot every couple of seconds." },
+] as const;
+export type IntroPartKey = typeof INTRO_PARTS[number]["key"];
+
+/** The intro as written, line by line: each line's spoken words (directions in [brackets] taken out) and its number among the spoken lines. */
+export function introLayout(text: string): { text: string; said: string; n: number | null }[] {
+  let n = 0;
+  return String(text ?? "").split(/\r?\n/)
+    .map((raw) => raw.replace(/^\s*[-*•]\s+(?:\[[ xX]\]\s+)?/, "").trim())
+    .filter(Boolean)
+    .map((line) => {
+      const said = line.replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim();
+      return { text: line, said, n: /[\p{L}\p{N}]/u.test(said) ? ++n : null };
+    });
+}
+
+/** The spoken lines of an intro, in order: what the score numbers from 1. */
+export const introLines = (text: string): string[] => introLayout(text).filter((l) => l.n !== null).map((l) => l.said);
+
+/** The intro score out of 100 from each part's 0 to 100, weighted by what the part is worth. */
+export function introTotal(parts: { key: string; score: number }[]): number {
+  const by = new Map(parts.map((p) => [p.key, p.score]));
+  return Math.round(INTRO_PARTS.reduce((sum, p) => sum + (Math.max(0, Math.min(100, by.get(p.key) ?? 0)) * p.max) / 100, 0));
+}

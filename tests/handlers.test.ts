@@ -1080,6 +1080,66 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     expect((await call("POST", "/ai/plan", { user: OWNER, body: { title: "Land a sponsor", kind: "personal" } })).status).toBe(409);
   });
 
+  it("scores an intro the way the owner's intro template asks, with the emotions of each line, and keeps it on the idea", async () => {
+    const { call, deps } = setup();
+    const intro = "[First frame: merchant gear facing Margit]\nMeet Patty Mills.\n\n[Walks past a glowing weapon]\nPatty doesn't touch ground loot.\nThat's for peasants\nSubscribe and hype this video up!";
+    const [idea] = await sql`insert into public.yt_ideas (title, format, topic, title_options, thumbnail_concept) values ('Can You Beat Elden Ring Using Only Merchant Items?', 'long', 'Elden Ring', ${["Elden Ring But Every Weapon Comes From a Shop"]}, 'Patty with a receipt') returning id::text as id`;
+    expect((await call("POST", "/ai/intro", { user: STRANGER, body: { intro } })).status).toBe(403);
+    expect((await call("POST", "/ai/intro", { user: OWNER, body: { intro: "[Only a direction]\n\n" } })).status).toBe(400);
+    expect((await call("POST", "/ai/intro", { user: OWNER, body: { intro: "x\n".repeat(2100) } })).status).toBe(400);
+    await sql`insert into public.yt_private (key, value) values ('anthropic_api_key', '') on conflict (key) do update set value = ''`;
+    // Without the key it says how to switch it on.
+    expect((await call("POST", "/ai/intro", { user: OWNER, body: { intro, idea_id: idea.id } })).status).toBe(409);
+    await sql`insert into public.yt_private (key, value) values ('anthropic_api_key', 'sk-ant-test') on conflict (key) do update set value = excluded.value`;
+    // deno-lint-ignore no-explicit-any
+    let seen: any = null, system = "";
+    deps.claude = async (_key, req) => {
+      seen = JSON.parse(req.prompt);
+      system = req.system;
+      return {
+        parts: [
+          { key: "premise", score: 60, note: "The rule lands late." }, { key: "problem", score: 75, note: "Good stats." },
+          { key: "plug", score: 80, note: "There." }, { key: "payoff", score: 60, note: "Vague." },
+          { key: "emotions", score: 55, note: "Curiosity only." }, { key: "hooks", score: 140, note: "A barrage." },
+          // "show" is left out: it counts as nothing, and says so.
+        ],
+        lines: [{ n: 1, emotions: ["curiosity"] }, { n: 2, emotions: ["curiosity", "nonsense"] }, { n: 2, emotions: ["fear"] }, { n: 9, emotions: ["fear"] }, { n: 4, emotions: [] }],
+        missing: ["The word merchant in the first 5 seconds", "  ", "A named threat"],
+        better: ["Move \"Patty pays for everything\" to line 2"],
+        to_try: [{ instead_of: "Meet Patty Mills.", line: "Meet Patty Mills. Patty pays for everything. [Show the shop menu] Ground loot? That's for peasants." }, { instead_of: "", line: "" }],
+      };
+    };
+    const out = await call("POST", "/ai/intro", { user: OWNER, body: { intro, idea_id: idea.id, title: "Can You Beat Elden Ring Using Only Merchant Items?", game: "Elden Ring", format: "long" } });
+    expect(out.status).toBe(200);
+    // Weighted the owner's way: premise 20, problem 20, plug 5, payoff 15, emotions 20, hooks 10, show 10.
+    expect(out.data.score).toBe(12 + 15 + 4 + 9 + 11 + 10 + 0);
+    expect(out.data.parts.map((p: { key: string }) => p.key)).toEqual(["premise", "problem", "plug", "payoff", "emotions", "hooks", "show"]);
+    expect(out.data.parts.find((p: { key: string }) => p.key === "show")).toMatchObject({ score: 0, note: "Not read this time." });
+    // Spoken lines only, numbered from 1; unknown emotions, repeats and lines that do not exist are dropped.
+    expect(seen.spoken_lines).toEqual([
+      { n: 1, line: "Meet Patty Mills." }, { n: 2, line: "Patty doesn't touch ground loot." }, { n: 3, line: "That's for peasants" }, { n: 4, line: "Subscribe and hype this video up!" },
+    ]);
+    expect(out.data.lines).toEqual([{ n: 1, emotions: ["curiosity"] }, { n: 2, emotions: ["curiosity"] }, { n: 4, emotions: [] }]);
+    expect(out.data.missing).toEqual(["The word merchant in the first 5 seconds", "A named threat"]);
+    // Lines to try come back line by line, with directions on their own lines.
+    expect(out.data.to_try).toEqual([{ instead_of: "Meet Patty Mills.", line: "Meet Patty Mills.\nPatty pays for everything.\n[Show the shop menu]\nGround loot?\nThat's for peasants." }]);
+    // It reads the idea it is for and the owner's own intro template, and is told the facts are theirs.
+    expect(seen.idea).toMatchObject({ title: "Can You Beat Elden Ring Using Only Merchant Items?", game: "Elden Ring", format: "long-form video", thumbnail_idea: "Patty with a receipt" });
+    expect(seen.idea.other_titles).toContain("Elden Ring But Every Weapon Comes From a Shop");
+    expect(system).toContain("premise");
+    expect(system).toContain("never invent rules, numbers, bosses");
+    // Kept on the idea, with the intro it scored.
+    const [kept] = await sql`select intro_check, intro_checked_at from public.yt_ideas where id = ${idea.id}`;
+    expect(kept.intro_check).toMatchObject({ score: out.data.score, intro });
+    expect(kept.intro_checked_at).not.toBeNull();
+    // A Short is scored as a Short; an unsaved intro is scored without being kept anywhere.
+    const short = await call("POST", "/ai/intro", { user: OWNER, body: { intro: "Patty pays for everything.", title: "Merchant only", format: "short" } });
+    expect(short.data.idea_id).toBeNull();
+    expect(system).toContain("This is a Short");
+    await sql`update public.yt_private set value = '' where key = 'anthropic_api_key'`;
+    await sql`update public.yt_ideas set trashed_at = now() where id = ${idea.id}`;
+  });
+
   it("puts a video's notes for the editor in one Google Doc, every cut in order, and updates it after", async () => {
     const mock = createMockGoogle({ now: () => new Date() });
     const { call, deps } = setup();

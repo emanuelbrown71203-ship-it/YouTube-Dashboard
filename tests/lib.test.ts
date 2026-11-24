@@ -335,6 +335,21 @@ describe("growth", () => {
     expect(a).not.toBe(b);
   });
 
+  it("shows an intro score line by line with the emotions each line sparks, and notices when the intro changed", async () => {
+    const { introChanged, scoredLines, emotionCounts, emotionSummary } = await import("../src/lib/intro.ts");
+    const check = {
+      intro: "[First frame]\nMeet Patty Mills.\nPatty pays for everything.\n[Map]\n4 bosses. 5 weapons. No repeats.\nSubscribe!",
+      lines: [{ n: 1, emotions: ["curiosity" as const] }, { n: 3, emotions: ["fear" as const, "curiosity" as const] }],
+    };
+    expect(scoredLines(check).map((l) => [l.n, l.emotions.join("+")])).toEqual([[null, ""], [1, "curiosity"], [2, ""], [null, ""], [3, "fear+curiosity"], [4, ""]]);
+    const counts = emotionCounts(check);
+    expect(counts).toEqual({ curiosity: 2, desire: 0, fear: 1, none: 2, spoken: 4 });
+    expect(emotionSummary(counts)).toBe("Curiosity in 2 of 4 lines, desire in none, fear in 1.");
+    // Spacing does not count as a change; a new word does.
+    expect(introChanged(check, `  ${check.intro.replace(/\n/g, "\n\n")}  `)).toBe(false);
+    expect(introChanged(check, check.intro.replace("Subscribe!", "Hype this video up!"))).toBe(true);
+  });
+
   it("reads bullets and checkboxes out of a note, and ticks them", async () => {
     const { parseNote, toggleCheck, untickAll, checkCount, plainNote, bareNote, hasList } = await import("../src/lib/notes.ts");
     const note = "Before I film:\n- [ ] Write the hook\n- [x] Pick the build\n  - [ ] Test it once\n\nThings to say\n- The rule\n* The stakes\nA last line";

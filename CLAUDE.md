@@ -135,14 +135,14 @@ free and the owner has said to use them whenever a score needs them.
 
 - `src/`: Vite + React + TypeScript. Reads go straight to Supabase with the
   publishable key; row level security lets only owners in.
-- `supabase/migrations/`: twenty-two files, all `yt_` objects. No statement in them
+- `supabase/migrations/`: twenty-three files, all `yt_` objects. No statement in them
   removes a table, a column or a row (017 only lets `yt_idea_refs.video_id` be
   empty, for screenshots).
 - `supabase/functions/yt-api/`: one edge function, deployed with JWT
   verification off because it checks callers itself. Routes: `/auth/setup`,
   `/auth/start`, `/auth/callback`, `/auth/finish`, `/auth/disconnect`, `/sync`,
   `/sync/extras`, `/sync/pulse`, `/research`, `/ai/setup`, `/ai/titles`,
-  `/ai/check`, `/ai/import`, `/ai/script`, `/ai/plan`, `/editor/doc`, `/ideas/check`, `/ideas/suggest`,
+  `/ai/check`, `/ai/import`, `/ai/script`, `/ai/plan`, `/ai/intro`, `/editor/doc`, `/ideas/check`, `/ideas/suggest`,
   `/mcp/setup`, `/mcp/<secret>`, `/health`. `/sync/pulse` runs every hour (cron job `yt-pulse`, scheduler
   secret only): it spots a new upload and starts a sync, or notes the live
   view counts of uploads in their first 3 days; two lookups each time. A sync does the quick
@@ -258,6 +258,20 @@ free and the owner has said to use them whenever a score needs them.
   "Draft from Cut N": the beats follow the newest cut's own timeline, every
   note left on it becomes a direction for the editor or the voiceover for
   that stretch, and earlier cuts count only where the newest repeats them.
+- The intro score (idea editor → Script, under the Hook box; `/ai/intro`,
+  `scoreIntro` in `growth.ts`, `src/pages/IntroScore.tsx`): the AI scores
+  the intro as it stands in the box, saved or not, the way the owner's
+  intro template asks: premise 20, problem 20, plug 5, payoff 15 (their
+  formula), emotions 20 (curiosity, desire or fear on each spoken line,
+  like their titles: "just like a title it should hook with emotions"),
+  hooks 10 and show it 10 (`INTRO_PARTS` and `introTotal` in `scoring.ts`:
+  the AI scores each part 0 to 100, the weights are worked out in code).
+  Spoken lines are numbered without the [directions] (`introLayout`). It
+  says what is missing and what could be better and offers lines to try,
+  line by line, and never rewrites the hook. The reading is kept in
+  `yt_ideas.intro_check` with the intro it scored, so the editor says when
+  the intro has changed since. When the owner asks you to rate an intro,
+  use the same parts and weights.
 - Notes for the editor (idea editor → For my editor; Ideas → For my editor;
   `src/pages/EditorNotes.tsx`, `src/lib/markers.ts`): the owner leaves
   markers with comments on a cut in Premiere, exports them (Markers panel,

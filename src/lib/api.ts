@@ -1,7 +1,8 @@
 // Every read and write the screens make. Table and column names are checked
 // against the generated database types at compile time.
 
-import { MIN_OUTLIER_VIEWS } from "../../supabase/functions/yt-api/scoring.ts";
+import { type IntroPartKey, MIN_OUTLIER_VIEWS } from "../../supabase/functions/yt-api/scoring.ts";
+import type { Emotion } from "./emotions.ts";
 import { FUNCTION_URL, supabase, SUPABASE_KEY } from "./supabase.ts";
 import type {
   Channel, Connection, DailyRow, FormatDailyRow, Idea, IdeaDraft, KeywordResponse, KeywordRow, MyFormat,
@@ -168,6 +169,21 @@ export interface TemplateCheck {
   checks: { template_id: string; name: string; kind: string; score: number; met: string[]; missing: string[]; fix: string }[];
 }
 export const checkIdea = (idea_id: string) => callApi<TemplateCheck & { idea_id: string }>("/ai/check", { idea_id });
+/** The AI's score of an intro: the owner's intro formula, the emotions each spoken line sparks, and what to change. */
+export interface IntroCheck {
+  score: number;
+  parts: { key: IntroPartKey; score: number; note: string }[];
+  /** `n` counts the spoken lines, leaving out [directions] (introLayout in scoring.ts). */
+  lines: { n: number; emotions: Emotion[] }[];
+  missing: string[];
+  better: string[];
+  to_try: { instead_of: string; line: string }[];
+  /** The intro that was scored. */
+  intro: string;
+}
+/** Scores the intro as it stands in the box, saved or not; with an idea, the reading is kept on it. */
+export const scoreIntro = (body: { idea_id?: string; intro: string; title: string; game: string | null; format: string; thumbnail: string | null }) =>
+  callApi<IntroCheck & { idea_id: string | null; checked_at: string }>("/ai/intro", body);
 export interface PastedIdea {
   title: string;
   format: "long" | "short";
@@ -265,7 +281,7 @@ export async function getBriefing(): Promise<unknown> {
 // ---------------------------------------------------------------------------
 
 const IDEA_COLUMNS =
-  "id, format, status, discovery, title, title_options, target_keyword, hook, concept, outline, thumbnail_concept, priority, target_date, inspiration_url, inspiration_video_id, notes, video_id, parent_id, sort_order, source, created_at, updated_at, topic, template_check, template_checked_at, picked_at, in_suggested, suggested_at, suggestion";
+  "id, format, status, discovery, title, title_options, target_keyword, hook, concept, outline, thumbnail_concept, priority, target_date, inspiration_url, inspiration_video_id, notes, video_id, parent_id, sort_order, source, created_at, updated_at, topic, template_check, template_checked_at, intro_check, intro_checked_at, picked_at, in_suggested, suggested_at, suggestion";
 
 export async function getIdeas(): Promise<Idea[]> {
   const { data, error } = await supabase.from("yt_ideas").select(IDEA_COLUMNS)
@@ -311,9 +327,9 @@ export const draftScript = (body: { idea_id?: string; title: string; game: strin
   callApi<{ hook: string; concept: string; outline: string; from_cut: string | null }>("/ai/script", body);
 
 export async function saveIdea(draft: IdeaDraft): Promise<Idea> {
-  // The AI's reading against the templates is written by the server only, never from here, and
+  // The AI's readings (against the templates, and of the intro) are written by the server only, never from here, and
   // references waiting for the idea to be saved go in their own table once it is.
-  const { id, template_check: _check, template_checked_at: _checkedAt, pending_refs: _refs, in_suggested: _waiting, suggested_at: _suggested, suggestion: _why, ...fields } = draft;
+  const { id, template_check: _check, template_checked_at: _checkedAt, intro_check: _intro, intro_checked_at: _introAt, pending_refs: _refs, in_suggested: _waiting, suggested_at: _suggested, suggestion: _why, ...fields } = draft;
   const clean = { ...fields, title: fields.title.trim() };
   if (!clean.title) throw new ApiError("Give the idea a title first.", "bad_request");
   const query = id

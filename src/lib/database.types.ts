@@ -412,6 +412,8 @@ export type Database = {
           in_suggested: boolean;
           suggested_at: string | null;
           suggestion: Json | null;
+          intro_check: Json | null;
+          intro_checked_at: string | null;
         };
         Insert: {
           id?: string;
@@ -447,6 +449,8 @@ export type Database = {
           in_suggested?: boolean;
           suggested_at?: string | null;
           suggestion?: Json | null;
+          intro_check?: Json | null;
+          intro_checked_at?: string | null;
         };
         Update: {
           id?: string;
@@ -482,6 +486,8 @@ export type Database = {
           in_suggested?: boolean;
           suggested_at?: string | null;
           suggestion?: Json | null;
+          intro_check?: Json | null;
+          intro_checked_at?: string | null;
         };
         Relationships: [];
       };

@@ -102,6 +102,9 @@ export interface Idea {
   /** The AI's reading of the idea against the owner's templates, and when it was made. */
   template_check: import("./api.ts").TemplateCheck | null;
   template_checked_at: string | null;
+  /** The AI's score of the intro in the hook box, and when it was made (the hook may have changed since). */
+  intro_check: import("./api.ts").IntroCheck | null;
+  intro_checked_at: string | null;
   title_options: string[];
   target_keyword: string | null;
   hook: string | null;
