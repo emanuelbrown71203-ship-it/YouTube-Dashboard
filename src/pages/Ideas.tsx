@@ -2,6 +2,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { IDEA_TABS, Tabs } from "./Growth.tsx";
 import { ScoreChips, ScorePanel, TitleHelper, useAutoResearch, useCovered, useDraftScores, useFound, useIdeaChecking, useIdeaScores } from "./Pulse.tsx";
 import { IntroScore } from "./IntroScore.tsx";
+import { MyThumbnails } from "./MyThumbnails.tsx";
+import { ScriptScore, TitleScore } from "./PieceScores.tsx";
 import { ScriptStarter } from "./ScriptStarter.tsx";
 import { EditorNotesFold } from "./EditorNotes.tsx";
 import { bareNote, checkCount } from "../lib/notes.ts";
@@ -404,6 +406,8 @@ function IdeaEditor(props: { draft: IdeaDraft; games: string[]; onClose: () => v
   const hashtags = (title.match(/#\S+/g) ?? []).length;
   const inspiration = saved.data?.find((v) => v.id === form.inspiration_video_id);
   const options = form.title_options ?? [];
+  // A title box added with "Add a title" takes the cursor, so typing goes straight into it.
+  const [addedTitle, setAddedTitle] = useState(false);
   const found = useFound();
   const game = useMemo(
     () => scoreIdea({ title, format: form.format ?? "long", target_keyword: form.target_keyword ?? null, concept: form.concept ?? null, hook: form.hook ?? null, topic: form.topic ?? null }, videos.data ?? [], found.data ?? [], "2000-01-01").game,
@@ -532,6 +536,7 @@ function IdeaEditor(props: { draft: IdeaDraft; games: string[]; onClose: () => v
           <span>Outline or script notes</span>
           <NotesBox label="Outline or script notes" value={form.outline ?? ""} onChange={(v) => set("outline", v || null)} minHeight={140} placeholder="Beats, lines, shots to get. Use bullets, or checkboxes to tick off as you go" />
         </div>
+        <ScriptScore form={form} onScored={(check) => { setForm((f) => ({ ...f, script_check: check })); void props.onChanged(); }} />
       </Fold>
 
       <EditorNotesFold ideaId={form.id} title={form.title} />
@@ -544,6 +549,7 @@ function IdeaEditor(props: { draft: IdeaDraft; games: string[]; onClose: () => v
             <TemplateHint kind="thumbnail" />
           </label>
         ) : null}
+        {form.format !== "short" ? <MyThumbnails idea={form} /> : null}
         <IdeaRefs idea={form} onPending={(refs) => set("pending_refs", refs)} />
       </Fold>
 
@@ -557,12 +563,17 @@ function IdeaEditor(props: { draft: IdeaDraft; games: string[]; onClose: () => v
           <span>Other titles to try</span>
           {options.map((option, i) => (
             <div className="row" key={i}>
-              <input className="input" value={option} aria-label={`Other title ${i + 1}`} onChange={(e) => set("title_options", options.map((o, j) => (j === i ? e.target.value : o)))} />
+              <input className="input" value={option} aria-label={`Other title ${i + 1}`} autoFocus={addedTitle && i === options.length - 1} onChange={(e) => set("title_options", options.map((o, j) => (j === i ? e.target.value : o)))} />
               <button type="button" className="btn btn-quiet btn-small" aria-label={`Remove other title ${i + 1}`} onClick={() => set("title_options", options.filter((_, j) => j !== i))}><Icon name="close" /></button>
             </div>
           ))}
-          {options.length < 5 ? <div><button type="button" className="btn btn-small" onClick={() => set("title_options", [...options, ""])}><Icon name="plus" />Add a title</button></div> : null}
+          {options.length < 5 ? <div><button type="button" className="btn btn-small" onClick={() => { set("title_options", [...options, ""]); setAddedTitle(true); }}><Icon name="plus" />Add a title</button></div> : null}
         </div>
+        <TitleScore
+          form={form} kept={[title, ...options]}
+          onScored={(check) => { setForm((f) => ({ ...f, title_check: check })); void props.onChanged(); }}
+          onKeep={(t) => { if (options.length < 5) set("title_options", [...options.filter((o) => o.trim()), t]); }}
+        />
       </Fold>
 
       <Fold title="Plan" summary={planSummary}>

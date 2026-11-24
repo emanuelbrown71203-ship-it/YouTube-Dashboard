@@ -377,6 +377,42 @@ export type Database = {
         };
         Relationships: [];
       };
+      yt_idea_thumbs: {
+        Row: {
+          id: string;
+          idea_id: string;
+          name: string | null;
+          image: string;
+          image_small: string;
+          score: Json | null;
+          created_at: string;
+          updated_at: string;
+          trashed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          idea_id: string;
+          name?: string | null;
+          image: string;
+          image_small: string;
+          score?: Json | null;
+          created_at?: string;
+          updated_at?: string;
+          trashed_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          idea_id?: string;
+          name?: string | null;
+          image?: string;
+          image_small?: string;
+          score?: Json | null;
+          created_at?: string;
+          updated_at?: string;
+          trashed_at?: string | null;
+        };
+        Relationships: [];
+      };
       yt_ideas: {
         Row: {
           id: string;
@@ -414,6 +450,8 @@ export type Database = {
           suggestion: Json | null;
           intro_check: Json | null;
           intro_checked_at: string | null;
+          title_check: Json | null;
+          script_check: Json | null;
         };
         Insert: {
           id?: string;
@@ -451,6 +489,8 @@ export type Database = {
           suggestion?: Json | null;
           intro_check?: Json | null;
           intro_checked_at?: string | null;
+          title_check?: Json | null;
+          script_check?: Json | null;
         };
         Update: {
           id?: string;
@@ -488,6 +528,8 @@ export type Database = {
           suggestion?: Json | null;
           intro_check?: Json | null;
           intro_checked_at?: string | null;
+          title_check?: Json | null;
+          script_check?: Json | null;
         };
         Relationships: [];
       };
@@ -954,6 +996,7 @@ export type Database = {
           created_at: string;
           updated_at: string;
           trashed_at: string | null;
+          video_id: string | null;
         };
         Insert: {
           id?: string;
@@ -964,6 +1007,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           trashed_at?: string | null;
+          video_id?: string | null;
         };
         Update: {
           id?: string;
@@ -974,6 +1018,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           trashed_at?: string | null;
+          video_id?: string | null;
         };
         Relationships: [];
       };

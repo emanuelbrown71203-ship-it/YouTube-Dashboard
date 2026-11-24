@@ -105,6 +105,9 @@ export interface Idea {
   /** The AI's score of the intro in the hook box, and when it was made (the hook may have changed since). */
   intro_check: import("./api.ts").IntroCheck | null;
   intro_checked_at: string | null;
+  /** Two-way scores of the title and the other titles, and of the script (hook, what happens and outline). */
+  title_check: import("./api.ts").TitleCheck | null;
+  script_check: import("./api.ts").PieceReading | null;
   title_options: string[];
   target_keyword: string | null;
   hook: string | null;

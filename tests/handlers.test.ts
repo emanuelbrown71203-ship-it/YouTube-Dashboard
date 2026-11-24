@@ -1128,6 +1128,9 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     expect(seen.idea.other_titles).toContain("Elden Ring But Every Weapon Comes From a Shop");
     expect(system).toContain("premise");
     expect(system).toContain("never invent rules, numbers, bosses");
+    // Scored two ways as well: the formula is half of "Your history", worked out from its own parts.
+    expect(out.data.yours.parts[0]).toMatchObject({ key: "formula", score: out.data.score, max: 60 });
+    expect(out.data.recommended.parts.map((p: { key: string }) => p.key)).toEqual(["new_viewer", "promise"]);
     // Kept on the idea, with the intro it scored.
     const [kept] = await sql`select intro_check, intro_checked_at from public.yt_ideas where id = ${idea.id}`;
     expect(kept.intro_check).toMatchObject({ score: out.data.score, intro });
@@ -1137,6 +1140,119 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     expect(short.data.idea_id).toBeNull();
     expect(system).toContain("This is a Short");
     await sql`update public.yt_private set value = '' where key = 'anthropic_api_key'`;
+    await sql`update public.yt_ideas set trashed_at = now() where id = ${idea.id}`;
+  });
+
+  it("scores titles, the script and a thumbnail two ways: your history and what is working on YouTube", async () => {
+    const { call, deps } = setup();
+    const { textKey } = await import("../supabase/functions/yt-api/scoring.ts");
+    const { scriptKeyText } = await import("../supabase/functions/yt-api/pieces.ts");
+    await sql`insert into public.yt_private (key, value) values ('anthropic_api_key', 'sk-ant-test') on conflict (key) do update set value = excluded.value`;
+    await sql`insert into public.yt_templates (kind, name, body) values ('title', 'Title rules (test)', '- 45 to 55 characters\n- Name the game'), ('thumbnail', 'Thumbnail rules (test)', '- Few words\n- Show the challenge in hand'), ('other', 'Storytelling (test)', '- But brings conflict, so resolves it')`;
+    const [idea] = await sql`insert into public.yt_ideas (title, format, topic, title_options) values ('Can You Beat Elden Ring Using Only Merchant Items?', 'long', 'Elden Ring', ${["Elden Ring But Every Weapon Comes From a Shop"]}) returning id::text as id`;
+    // The idea's own check on YouTube: one real breakout, and a tiny channel's 504 views that must not count.
+    await sql`insert into public.yt_research_runs (kind, query, params, results, summary) values ('outliers', 'Elden Ring Using Only Merchant Items', ${sql.json({ mode: "idea", idea_id: idea.id, format: "long" })}, ${sql.json([
+      { video_id: "bushy000001", title: "Can I Beat Elden Ring With Only Merchants?", channel: "Bushy", subscribers: 900000, views: 1700000, score: 4.6, published: "2025-09-01T00:00:00Z", match: "same" },
+      { video_id: "tiny0000001", title: "Can You Beat Elden Ring With Only Merchant Bought Items?", channel: "Tiny", subscribers: 70, views: 504, score: 7.2, published: "2026-10-01T00:00:00Z", match: "same" },
+    ])}, ${sql.json({ searched: 30, same: { n: 2 }, close: { n: 0 }, examples: [] })})`;
+    // deno-lint-ignore no-explicit-any
+    let seen: any = null, system = "", images: { label: string; data: string }[] = [], schema: any = null;
+    // deno-lint-ignore no-explicit-any
+    const keysOf = (side: any): string[] => side?.items?.properties?.key?.enum ?? [];
+    const parts = (keys: string[], score: number) => keys.map((key) => ({ key, score, note: `About ${key}.` }));
+    deps.claude = async (_key, req) => {
+      seen = JSON.parse(req.prompt); system = req.system; images = req.images ?? []; schema = req.schema;
+      // deno-lint-ignore no-explicit-any
+      const p = req.schema.properties as any;
+      if (p.titles) {
+        return {
+          titles: seen.titles_to_score.map((t: { n: number }) => ({ n: t.n, yours: parts(keysOf(p.titles.items.properties.yours), 60 + t.n * 10), recommended: parts(keysOf(p.titles.items.properties.recommended), 50), note: "Clear.", emotions: ["curiosity", "nonsense"] })),
+          missing: ["Says merchant late"], better: ["Name a boss"],
+          to_try: [{ line: "ELDEN RING BUT SHOPS ONLY LOL", emotions: [] }, { line: "Can You Beat Elden Ring With Only Shop Items?", emotions: ["curiosity", "desire"] }, { line: "Elden Ring But Every Weapon Comes From a Shop", emotions: [] }],
+        };
+      }
+      return {
+        yours: parts(keysOf(p.yours), 70), recommended: parts(keysOf(p.recommended), 40), missing: ["A named threat"], better: ["Show the stats"],
+        to_try: p.to_try.items.type === "string" ? ["Make the receipt bigger: it is the challenge in hand"] : [{ instead_of: "", line: "Patty pays for everything. [Show the shop] Then the rule." }],
+      };
+    };
+    expect((await call("POST", "/ai/score", { user: STRANGER, body: { kind: "title", titles: ["x"] } })).status).toBe(403);
+    expect((await call("POST", "/ai/score", { user: OWNER, body: { kind: "poem" } })).status).toBe(400);
+
+    // Titles: every title, each scored two ways, the same title written twice only once.
+    const titles = ["Can You Beat Elden Ring Using Only Merchant Items?", "Elden Ring But Every Weapon Comes From a Shop", "can you beat elden ring using only merchant items?"];
+    const t = await call("POST", "/ai/score", { user: OWNER, body: { kind: "title", idea_id: idea.id, titles, title: titles[0], game: "Elden Ring", format: "long" } });
+    expect(t.status).toBe(200);
+    expect(t.data.titles.map((x: { title: string }) => x.title)).toEqual(titles.slice(0, 2));
+    expect(t.data.titles[0].emotions).toEqual(["curiosity"]);
+    expect(t.data.titles[0].yours.parts.find((x: { key: string }) => x.key === "rules")).toMatchObject({ score: 70, max: 50, label: "Your title rules" });
+    expect(t.data.titles[1].yours.parts.find((x: { key: string }) => x.key === "rules").score).toBe(80);
+    // Only the breakout with a real audience is set against it.
+    expect(seen.this_idea_on_youtube.map((v: { channel: string }) => v.channel)).toEqual(["Bushy"]);
+    expect(t.data.titles[0].recommended.parts.find((x: { key: string }) => x.key === "same_idea").score).toBe(50);
+    expect(seen.their_title_rules.some((r: { name: string }) => r.name === "Title rules (test)")).toBe(true);
+    // A title to try that shouts or that is already there is dropped.
+    expect(t.data.to_try).toEqual([{ line: "Can You Beat Elden Ring With Only Shop Items?", emotions: ["curiosity", "desire"] }]);
+    const [stored] = await sql`select title_check from public.yt_ideas where id = ${idea.id}`;
+    expect(stored.title_check.key).toBe(textKey(titles.slice(0, 2).join("\n")));
+    expect(stored.title_check.titles).toHaveLength(2);
+
+    // The script: with no past script tied to its video, the track record is left out and says how to fix that.
+    expect((await call("POST", "/ai/score", { user: OWNER, body: { kind: "script", idea_id: idea.id, hook: "Meet Patty.", concept: "", outline: "  " } })).status).toBe(400);
+    await sql`update public.yt_scripts set video_id = null`;
+    const script = { kind: "script", idea_id: idea.id, title: titles[0], game: "Elden Ring", format: "long", hook: "Meet Patty Mills.", concept: "- Only merchant weapons\n- A new weapon every boss", outline: "Margit\nGodrick" };
+    const s1 = await call("POST", "/ai/score", { user: OWNER, body: script });
+    expect(s1.status).toBe(200);
+    expect(s1.data.yours.parts.find((x: { key: string }) => x.key === "record")).toMatchObject({ score: null });
+    expect(s1.data.yours.parts.find((x: { key: string }) => x.key === "record").note).toContain("My scripts");
+    // Half of "Your history" is still enough for a number.
+    expect(s1.data.yours.score).toBe(70);
+    expect(keysOf(schema.properties.yours)).toEqual(["rules"]);
+    expect(seen.script.what_happens).toBe("Only merchant weapons\nA new weapon every boss");
+    // Tied to the video it was for, a past script counts, with how that video did.
+    const [video] = await sql`select id, title from public.yt_v_videos where content_type = 'long' and vs_typical is not null order by vs_typical desc limit 1`;
+    await sql`insert into public.yt_scripts (title, body, video_id) values ('Past run', ${"The rule.\nThe stakes.\nAct 1\nThe first boss."}, ${video.id})`;
+    const s2 = await call("POST", "/ai/score", { user: OWNER, body: script });
+    expect(s2.data.yours.parts.find((x: { key: string }) => x.key === "record").score).toBe(70);
+    expect(seen.their_past_scripts_and_how_those_videos_did[0]).toMatchObject({ script: "Past run", for_video: video.title });
+    expect(s2.data.to_try[0].line).toBe("Patty pays for everything.\n[Show the shop]\nThen the rule.");
+    const [kept] = await sql`select script_check from public.yt_ideas where id = ${idea.id}`;
+    expect(kept.script_check.key).toBe(textKey(scriptKeyText(script.hook, script.concept, script.outline)));
+
+    // A thumbnail: the owner's picture first, then their own past thumbnails and the breakout, any that will not load left out.
+    const jpeg = (fill: number) => new Uint8Array([0xff, 0xd8, ...Array.from({ length: 600 }, () => fill)]);
+    const mine = `data:image/jpeg;base64,${Buffer.from(jpeg(7)).toString("base64")}`;
+    const [thumb] = await sql`insert into public.yt_idea_thumbs (idea_id, image, image_small) values (${idea.id}, ${mine}, ${mine}) returning id::text as id`;
+    const realFetch = deps.fetch;
+    deps.fetch = async (input, init) => {
+      const url = String(input);
+      if (!url.startsWith("https://i.ytimg.com/")) return realFetch(input, init);
+      return /tiny0000001/.test(url) ? new Response("nope", { status: 404 }) : new Response(jpeg(9), { status: 200, headers: { "content-type": "image/jpeg" } });
+    };
+    const th = await call("POST", "/ai/score", { user: OWNER, body: { kind: "thumbnail", idea_id: idea.id, thumb_id: thumb.id, title: titles[0], game: "Elden Ring", format: "long" } });
+    expect(th.status).toBe(200);
+    expect(images[0]).toMatchObject({ label: "Image 1: the creator's new thumbnail for this video.", data: Buffer.from(jpeg(7)).toString("base64") });
+    expect(images.some((i) => i.label.includes("Bushy"))).toBe(true);
+    expect(images.some((i) => i.label.includes("Tiny"))).toBe(false);
+    expect(images.filter((i) => i.label.includes("their own past thumbnail")).length).toBeGreaterThan(0);
+    expect(th.data.to_try).toEqual([{ line: "Make the receipt bigger: it is the challenge in hand" }]);
+    expect(th.data.recommended.parts.find((x: { key: string }) => x.key === "stands_out").score).toBe(40);
+    const [scored] = await sql`select score from public.yt_idea_thumbs where id = ${thumb.id}`;
+    const breakoutImages = images.filter((i) => i.label.includes("its channel's usual")).length;
+    expect(breakoutImages).toBeGreaterThanOrEqual(1);
+    expect(scored.score).toMatchObject({ yours: { score: th.data.yours.score }, compared_with: { breakouts: breakoutImages } });
+    // When no breakout picture loads, "stands out" is left out and says why, instead of guessing.
+    deps.fetch = async (input, init) => (String(input).startsWith("https://i.ytimg.com/") ? new Response("down", { status: 503 }) : realFetch(input, init));
+    const th2 = await call("POST", "/ai/score", { user: OWNER, body: { kind: "thumbnail", idea_id: idea.id, thumb_id: thumb.id } });
+    expect(th2.data.recommended.parts.find((x: { key: string }) => x.key === "stands_out")).toMatchObject({ score: null });
+    expect(th2.data.yours.parts.find((x: { key: string }) => x.key === "record").note).toContain("could not be loaded");
+    expect(system).toContain("Image 1");
+    expect((await call("POST", "/ai/score", { user: OWNER, body: { kind: "thumbnail", thumb_id: "00000000-0000-0000-0000-000000000000" } })).status).toBe(404);
+
+    deps.fetch = realFetch;
+    await sql`update public.yt_private set value = '' where key = 'anthropic_api_key'`;
+    await sql`update public.yt_templates set trashed_at = now() where name like '%(test)'`;
+    await sql`update public.yt_scripts set trashed_at = now() where title = 'Past run'`;
     await sql`update public.yt_ideas set trashed_at = now() where id = ${idea.id}`;
   });
 

@@ -11,6 +11,7 @@ import { ago } from "../lib/format.ts";
 import { useConnection } from "../lib/hooks.ts";
 import { emotionCounts, emotionSummary, introChanged, scoredLines } from "../lib/intro.ts";
 import type { IdeaDraft } from "../lib/types.ts";
+import { PieceFigures, PieceParts } from "./PieceScore.tsx";
 
 const band = (score: number) => (score >= 75 ? "high" : score >= 55 ? "mid" : score >= 40 ? "even" : "low");
 
@@ -44,9 +45,9 @@ export function IntroScore(props: { form: IdeaDraft; onScored: (check: IntroChec
       <div className="row between" style={{ alignItems: "flex-end", gap: 10 }}>
         <div>
           <div style={{ fontWeight: 650 }}>Intro score</div>
-          <div className="small muted">Your intro formula, and the emotions each line sparks, like a title</div>
+          <div className="small muted">{check?.yours ? "Scored two ways, with the emotions each line sparks, like a title" : "Your intro formula, and the emotions each line sparks, like a title"}</div>
         </div>
-        {check ? (
+        {check && !check.yours ? (
           <div style={{ textAlign: "right", flex: "none" }}>
             <div className={`score-figure fig ${band(check.score)}`}>{check.score}</div>
             <div className="small muted">out of 100</div>
@@ -57,6 +58,7 @@ export function IntroScore(props: { form: IdeaDraft; onScored: (check: IntroChec
       {check && counts ? (
         <>
           {changed ? <div className="small soft intro-changed">You changed the intro since this score. Score it again to see the new one.</div> : null}
+          {check.yours && check.recommended ? <PieceFigures reading={{ yours: check.yours, recommended: check.recommended }} /> : null}
           <div className="intro-emotions small">
             {(["curiosity", "desire", "fear"] as const).map((e) => (
               <span key={e} className="tag emotion"><span className={`dot emo-${e}`} />{EMOTION_LABEL[e]} {counts[e]}</span>
@@ -65,6 +67,8 @@ export function IntroScore(props: { form: IdeaDraft; onScored: (check: IntroChec
           </div>
           <div className="small soft">{emotionSummary(counts)}</div>
 
+          {check.yours && check.recommended ? <PieceParts reading={{ yours: check.yours, recommended: check.recommended }} /> : null}
+          <div className="small" style={{ fontWeight: 650, marginTop: 10 }}>Your intro formula: {check.score} of 100</div>
           <ul className="score-parts">
             {INTRO_PARTS.map((p) => {
               const part = check.parts.find((x) => x.key === p.key);

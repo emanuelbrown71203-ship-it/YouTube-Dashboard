@@ -54,8 +54,9 @@ const deps: Deps = {
     if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(work);
   },
   log: (...args) => console.log(...args),
-  // The AI that reads text for the owner (video descriptions, comments). The key is
-  // the owner's own and comes from yt_private on every call.
+  // The AI that reads text for the owner (video descriptions, comments) and looks at the pictures they
+  // ask it to score (a thumbnail). It never sees video. The key is the owner's own and comes from
+  // yt_private on every call.
   claude: async (apiKey, req) => {
     // One try with a firm time limit: the caller works to a deadline and comes back for the rest.
     const client = new Anthropic({ apiKey, timeout: 80_000, maxRetries: 0 });
@@ -71,7 +72,19 @@ const deps: Deps = {
           effort: (req.effort ?? "low") as "low" | "medium" | "high",
           format: { type: "json_schema", schema: req.schema },
         },
-        messages: [{ role: "user", content: req.prompt }],
+        // Pictures go first, each after the line that says what it is; then what to do with them.
+        messages: [{
+          role: "user",
+          content: req.images?.length
+            ? [
+              ...req.images.flatMap((img) => [
+                { type: "text" as const, text: img.label },
+                { type: "image" as const, source: { type: "base64" as const, media_type: img.media_type, data: img.data } },
+              ]),
+              { type: "text" as const, text: req.prompt },
+            ]
+            : req.prompt,
+        }],
       });
       if (res.stop_reason === "refusal") throw new HttpError(422, "ai_declined", "The AI declined to read this one.");
       if (res.stop_reason === "max_tokens") throw new HttpError(502, "ai_error", "The AI's answer was cut short. Try again.");

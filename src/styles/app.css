@@ -810,3 +810,17 @@ button.nav-link { border: 0; background: none; font-family: inherit; font-size: 
 .intro-dir { padding-left: 34px; font-style: italic; overflow-wrap: anywhere; }
 .intro-tries { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 10px; }
 .intro-try { white-space: pre-line; overflow-wrap: anywhere; }
+
+/* Two-way scores for a title, the intro, the script or a thumbnail: two figures side by side. */
+.piece-score { margin-top: 4px; }
+.piece-figures { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.piece-figure { display: flex; gap: 8px; align-items: flex-start; min-width: 0; }
+.piece-figure .score-figure { flex: none; }
+.piece-titles { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.piece-title { border: 1px solid var(--line); border-radius: var(--radius-s); padding: 8px 10px; background: var(--surface); }
+.piece-title.best { border-color: var(--seq-3); }
+.piece-title-head { display: flex; gap: 8px; align-items: flex-start; justify-content: space-between; }
+.piece-title-text { font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; min-width: 0; }
+.piece-thumbs { display: grid; gap: 12px; margin-top: 8px; }
+.piece-thumb { border: 1px solid var(--line); border-radius: var(--radius-s); padding: 10px; background: var(--surface); display: grid; gap: 8px; }
+@media (max-width: 460px) { .piece-figure { flex-direction: column; gap: 4px; } .piece-figure .muted { display: none; } }

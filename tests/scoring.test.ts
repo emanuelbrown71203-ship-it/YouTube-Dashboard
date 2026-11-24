@@ -256,6 +256,26 @@ describe("checking one idea against YouTube", () => {
     expect(introTotal(INTRO_PARTS.map((p) => ({ key: p.key, score: 250 })))).toBe(100);
   });
 
+  it("adds up a piece's two scores the way idea scores do, leaving out what has nothing to go on", async () => {
+    const { pieceSide, PIECE_PARTS, textKey } = await import("../supabase/functions/yt-api/scoring.ts");
+    for (const kind of ["title", "intro", "script", "thumbnail"] as const) {
+      expect(PIECE_PARTS[kind].yours.reduce((n, p) => n + p.max, 0)).toBe(100);
+      expect(PIECE_PARTS[kind].recommended.reduce((n, p) => n + p.max, 0)).toBe(100);
+    }
+    const defs = PIECE_PARTS.title.recommended;
+    const all = new Map([["same_idea", { score: 80, note: "a" }], ["breakouts", { score: 50, note: "b" }], ["click", { score: 140, note: "c" }]]);
+    expect(pieceSide(defs, all, {})).toMatchObject({ score: Math.round((80 * 40 + 50 * 30 + 100 * 30) / 100) });
+    // A part with nothing to go on is left out, said so, and the rest is weighed on its own.
+    const side = pieceSide(defs, all, { same_idea: "Not counted: no check yet." });
+    expect(side.parts[0]).toMatchObject({ score: null, note: "Not counted: no check yet." });
+    expect(side.score).toBe(Math.round((50 * 30 + 100 * 30) / 60));
+    // Under half of it counted: no number at all. A part the AI skipped is not a zero.
+    expect(pieceSide(defs, new Map([["click", { score: 90, note: "" }]]), {}).score).toBeNull();
+    expect(pieceSide(defs, new Map([["click", { score: 90, note: "" }]]), {}).parts[0]).toMatchObject({ score: null, note: "Not read this time." });
+    expect(textKey("Meet  Patty\n Mills.")).toBe(textKey("Meet Patty Mills."));
+    expect(textKey("Meet Patty Mills.")).not.toBe(textKey("Meet Patty Mills!"));
+  });
+
   it("only calls a video a breakout when it reached a real audience", async () => {
     const { isBreakout, bigEnough } = await import("../supabase/functions/yt-api/scoring.ts");
     expect(isBreakout(7.2, 504, "long")).toBe(false);

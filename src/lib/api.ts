@@ -171,7 +171,12 @@ export interface TemplateCheck {
 export const checkIdea = (idea_id: string) => callApi<TemplateCheck & { idea_id: string }>("/ai/check", { idea_id });
 /** The AI's score of an intro: the owner's intro formula, the emotions each spoken line sparks, and what to change. */
 export interface IntroCheck {
+  /** The intro formula's own total (premise, problem, plug, payoff, emotions, hooks, show it). */
   score: number;
+  /** The two-way reading (Your history, Recommended); missing on intros scored before it existed. */
+  yours?: PieceSide;
+  recommended?: PieceSide;
+  checked_at?: string;
   parts: { key: IntroPartKey; score: number; note: string }[];
   /** `n` counts the spoken lines, leaving out [directions] (introLayout in scoring.ts). */
   lines: { n: number; emotions: Emotion[] }[];
@@ -181,6 +186,53 @@ export interface IntroCheck {
   /** The intro that was scored. */
   intro: string;
 }
+// ---------------------------------------------------------------------------
+// Two-way scores for the pieces of a video: "Your history" and "Recommended"
+// ---------------------------------------------------------------------------
+
+/** One part of a score. `score` is 0 to 100, or null when there was too little to go on (left out and said so). */
+export interface PiecePart { key: string; label: string; max: number; score: number | null; note: string }
+export interface PieceSide { score: number | null; parts: PiecePart[] }
+/** The AI's two-way reading of a piece: your rules and track record, and what is working on YouTube now. */
+export interface PieceReading {
+  yours: PieceSide;
+  recommended: PieceSide;
+  missing: string[];
+  better: string[];
+  to_try: { instead_of?: string; line: string }[];
+  checked_at: string;
+  /** textKey of what was scored, to notice when it changed since. */
+  key?: string;
+}
+export interface TitleReading { title: string; emotions: Emotion[]; yours: PieceSide; recommended: PieceSide; note: string }
+export interface TitleCheck { titles: TitleReading[]; missing: string[]; better: string[]; to_try: { line: string; emotions?: Emotion[] }[]; checked_at: string; key: string }
+export interface IdeaThumb { id: string; idea_id: string; name: string | null; score: PieceReading | null; created_at: string }
+
+type ScoreBody = { idea_id?: string; title: string; game: string | null; format: string };
+export const scoreTitles = (body: ScoreBody & { titles: string[]; thumbnail: string | null; concept: string | null }) =>
+  callApi<TitleCheck & { idea_id: string | null }>("/ai/score", { kind: "title", ...body });
+export const scoreScript = (body: ScoreBody & { hook: string | null; concept: string | null; outline: string | null }) =>
+  callApi<PieceReading & { idea_id: string | null }>("/ai/score", { kind: "script", ...body });
+export const scoreThumb = (body: ScoreBody & { thumb_id: string }) =>
+  callApi<PieceReading & { thumb_id: string }>("/ai/score", { kind: "thumbnail", ...body });
+
+const THUMB_COLUMNS = "id, idea_id, name, score, created_at";
+export async function getIdeaThumbs(ideaId: string): Promise<IdeaThumb[]> {
+  const { data, error } = await supabase.from("yt_idea_thumbs").select(THUMB_COLUMNS).eq("idea_id", ideaId).is("trashed_at", null).order("created_at").limit(20);
+  fail(error);
+  return (data ?? []) as unknown as IdeaThumb[];
+}
+export async function addIdeaThumb(ideaId: string, picture: { image: string; image_small: string }, name: string | null): Promise<string> {
+  const { data, error } = await supabase.from("yt_idea_thumbs").insert({ idea_id: ideaId, name, image: picture.image, image_small: picture.image_small }).select("id");
+  if (error && /check constraint/.test(error.message)) throw new ApiError("That picture is too large to keep. Try framing a smaller part of it.", "too_large");
+  fail(error);
+  return (data?.[0] as { id: string }).id;
+}
+export async function patchIdeaThumb(id: string, fields: { name?: string | null; trashed_at?: string | null }): Promise<void> {
+  const { error } = await supabase.from("yt_idea_thumbs").update(fields).eq("id", id);
+  fail(error);
+}
+
 /** Scores the intro as it stands in the box, saved or not; with an idea, the reading is kept on it. */
 export const scoreIntro = (body: { idea_id?: string; intro: string; title: string; game: string | null; format: string; thumbnail: string | null }) =>
   callApi<IntroCheck & { idea_id: string | null; checked_at: string }>("/ai/intro", body);
@@ -281,7 +333,7 @@ export async function getBriefing(): Promise<unknown> {
 // ---------------------------------------------------------------------------
 
 const IDEA_COLUMNS =
-  "id, format, status, discovery, title, title_options, target_keyword, hook, concept, outline, thumbnail_concept, priority, target_date, inspiration_url, inspiration_video_id, notes, video_id, parent_id, sort_order, source, created_at, updated_at, topic, template_check, template_checked_at, intro_check, intro_checked_at, picked_at, in_suggested, suggested_at, suggestion";
+  "id, format, status, discovery, title, title_options, target_keyword, hook, concept, outline, thumbnail_concept, priority, target_date, inspiration_url, inspiration_video_id, notes, video_id, parent_id, sort_order, source, created_at, updated_at, topic, template_check, template_checked_at, intro_check, intro_checked_at, title_check, script_check, picked_at, in_suggested, suggested_at, suggestion";
 
 export async function getIdeas(): Promise<Idea[]> {
   const { data, error } = await supabase.from("yt_ideas").select(IDEA_COLUMNS)
@@ -329,7 +381,7 @@ export const draftScript = (body: { idea_id?: string; title: string; game: strin
 export async function saveIdea(draft: IdeaDraft): Promise<Idea> {
   // The AI's readings (against the templates, and of the intro) are written by the server only, never from here, and
   // references waiting for the idea to be saved go in their own table once it is.
-  const { id, template_check: _check, template_checked_at: _checkedAt, intro_check: _intro, intro_checked_at: _introAt, pending_refs: _refs, in_suggested: _waiting, suggested_at: _suggested, suggestion: _why, ...fields } = draft;
+  const { id, template_check: _check, template_checked_at: _checkedAt, intro_check: _intro, intro_checked_at: _introAt, title_check: _titles, script_check: _script, pending_refs: _refs, in_suggested: _waiting, suggested_at: _suggested, suggestion: _why, ...fields } = draft;
   const clean = { ...fields, title: fields.title.trim() };
   if (!clean.title) throw new ApiError("Give the idea a title first.", "bad_request");
   const query = id
@@ -478,9 +530,10 @@ export async function addIdeaRef(ideaId: string, ref: RefInput): Promise<string 
 }
 
 /** A picture the owner added as a reference, small (for cards) or large. Read one at a time: lists leave it out. */
-export async function getRefPicture(id: string, size: "small" | "large"): Promise<string | null> {
+/** One picture, by itself: lists never carry them. `table` says whose: a reference, or one of the owner's own thumbnails. */
+export async function getRefPicture(id: string, size: "small" | "large", table: "refs" | "thumbs" = "refs"): Promise<string | null> {
   const column = size === "large" ? "image" : "image_small";
-  const { data, error } = await supabase.from("yt_idea_refs").select(column).eq("id", id).limit(1);
+  const { data, error } = await supabase.from(table === "thumbs" ? "yt_idea_thumbs" : "yt_idea_refs").select(column).eq("id", id).limit(1);
   fail(error);
   return ((data ?? [])[0] as Record<string, string | null> | undefined)?.[column] ?? null;
 }

@@ -6,24 +6,25 @@ import { useNear } from "../components/ui.tsx";
 import { getRefPicture } from "../lib/api.ts";
 import { centreOn, clampCrop, type Crop, defaultCrop, encodePicture, loadPicture, resizeCrop, widestFrame } from "../lib/pictures.ts";
 
-export const pictureKey = (id: string, size: "small" | "large") => ["ref-picture", id, size];
+export const pictureKey = (id: string, size: "small" | "large", table: "refs" | "thumbs" = "refs") => [table === "thumbs" ? "thumb-picture" : "ref-picture", id, size];
 
 /**
  * A picture the owner added. A saved one is fetched by itself once it is near the screen (lists
  * leave the pictures out); one not saved yet comes in as `src`. The large view shows the small
  * picture until the sharp one arrives.
  */
-export function RefPicture(props: { id?: string; src?: string; size?: "small" | "large"; className?: string }) {
+export function RefPicture(props: { id?: string; src?: string; size?: "small" | "large"; className?: string; table?: "refs" | "thumbs" }) {
   const size = props.size ?? "small";
+  const table = props.table ?? "refs";
   const [ref, near] = useNear<HTMLSpanElement>();
   const queryClient = useQueryClient();
   const picture = useQuery({
-    queryKey: pictureKey(props.id ?? "", size),
-    queryFn: () => getRefPicture(props.id!, size),
+    queryKey: pictureKey(props.id ?? "", size, table),
+    queryFn: () => getRefPicture(props.id!, size, table),
     enabled: Boolean(props.id) && !props.src && (near || size === "large"),
     staleTime: Infinity,
   });
-  const fallback = size === "large" && props.id ? queryClient.getQueryData<string | null>(pictureKey(props.id, "small")) : null;
+  const fallback = size === "large" && props.id ? queryClient.getQueryData<string | null>(pictureKey(props.id, "small", table)) : null;
   const src = props.src ?? picture.data ?? fallback ?? null;
   return (
     <span ref={ref} className={`${size === "large" ? "ref-picture-large" : "wide-thumb ref-picture"}${props.className ? ` ${props.className}` : ""}`}>

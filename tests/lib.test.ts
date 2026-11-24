@@ -350,6 +350,26 @@ describe("growth", () => {
     expect(introChanged(check, check.intro.replace("Subscribe!", "Hype this video up!"))).toBe(true);
   });
 
+  it("offers the video a past script was for only when it is a clear match, and keys pieces the way the server does", async () => {
+    const { guessVideo } = await import("../src/lib/scriptMatch.ts");
+    const { titlesOf, scriptText } = await import("../src/pages/PieceScores.tsx");
+    const { scriptKeyText } = await import("../supabase/functions/yt-api/pieces.ts");
+    const v = (title: string, topic: string) => ({ id: title.slice(0, 10), title, topic, content_type: "long", privacy: "public", published_at: "2026-01-01" }) as never;
+    const videos = [
+      v("Honour Mode But I Only Use 2 Characters - Act 2", "Baldur's Gate 3"), v("Can I Beat Honour Mode With Half a Party? | Act 1", "Baldur's Gate 3"),
+      v("Can You Beat Cuphead With Only 1 HP?", "Cuphead"), v("I Attempted Elden Ring DLC With One Restriction", "Elden Ring"), v("Elden Ring DLC But I've Never Beaten A Souls Game Before!", "Elden Ring"),
+    ];
+    const pick = (title: string, topic: string) => (guessVideo({ title, topic }, videos) as { title: string } | null)?.title ?? null;
+    expect(pick("Duo Honour Mode, Act 2", "Baldur's Gate 3")).toBe("Honour Mode But I Only Use 2 Characters - Act 2");
+    expect(pick("Duo Honour Mode, Act 1", "Baldur's Gate 3")).toBe("Can I Beat Honour Mode With Half a Party? | Act 1");
+    expect(pick("Cuphead 1 HP", "Cuphead")).toBe("Can You Beat Cuphead With Only 1 HP?");
+    // Two Elden Ring DLC videos: the owner says which.
+    expect(pick("Elden Ring DLC", "Elden Ring")).toBeNull();
+    expect(pick("Inscryption outline", "Inscryption")).toBeNull();
+    expect(titlesOf({ title: " A title ", title_options: ["a title", "", "Another"] })).toEqual(["A title", "Another"]);
+    expect(scriptText({ hook: " Hi ", concept: null, outline: "Beat 1" })).toBe(scriptKeyText(" Hi ", null, "Beat 1"));
+  });
+
   it("reads bullets and checkboxes out of a note, and ticks them", async () => {
     const { parseNote, toggleCheck, untickAll, checkCount, plainNote, bareNote, hasList } = await import("../src/lib/notes.ts");
     const note = "Before I film:\n- [ ] Write the hook\n- [x] Pick the build\n  - [ ] Test it once\n\nThings to say\n- The rule\n* The stakes\nA last line";

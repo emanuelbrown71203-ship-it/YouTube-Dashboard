@@ -257,16 +257,34 @@ const deps: Deps = {
       };
     }
     if (props.to_try) {
-      // An intro score: every part read, a line or two with each emotion, and something to change.
-      const sent = JSON.parse(req.prompt) as { spoken_lines: { n: number; line: string }[] };
-      const keys = ["premise", "problem", "plug", "payoff", "emotions", "hooks", "show"];
-      const cycle = [["curiosity"], ["desire"], ["fear"], [], ["curiosity", "fear"]];
+      // A two-way score (a title, the intro, the script or a thumbnail): every part it was asked for, and something to change.
+      // deno-lint-ignore no-explicit-any
+      const keysOf = (side: any): string[] => side?.items?.properties?.key?.enum ?? [];
+      const made = (keys: string[], base: number) => keys.filter((k) => k !== "none").map((key, i) => ({ key, score: base + ((i * 17) % 35), note: `(made-up) What the ${key.replace("_", " ")} part has, and what it lacks.` }));
+      const missing = ["(made-up) The rule is not said in the first 5 seconds", "(made-up) No named threat"];
+      const better = ["(made-up) Move the rule up front", "(made-up) Say the stakes as a number"];
+      // deno-lint-ignore no-explicit-any
+      const p = props as any;
+      if (p.titles) {
+        const sent = JSON.parse(req.prompt) as { titles_to_score: { n: number; title: string }[] };
+        const yk = keysOf(p.titles.items.properties.yours), rk = keysOf(p.titles.items.properties.recommended);
+        return {
+          titles: sent.titles_to_score.map((t, i) => ({ n: t.n, yours: made(yk, 50 + i * 7), recommended: made(rk, 45 + i * 9), note: `(made-up) How "${t.title}" reads.`, emotions: i % 2 ? ["curiosity"] : ["curiosity", "fear"] })),
+          missing, better, to_try: [{ line: "Can You Beat Elden Ring With Only Shop Items?", emotions: ["curiosity", "desire"] }],
+        };
+      }
+      if (p.parts) {
+        const sent = JSON.parse(req.prompt) as { spoken_lines: { n: number; line: string }[] };
+        const cycle = [["curiosity"], ["desire"], ["fear"], [], ["curiosity", "fear"]];
+        return {
+          parts: made(keysOf(p.parts), 40), yours: made(keysOf(p.yours), 55), recommended: made(keysOf(p.recommended), 50),
+          lines: sent.spoken_lines.map((l, i) => ({ n: l.n, emotions: cycle[i % cycle.length] })),
+          missing, better, to_try: [{ instead_of: sent.spoken_lines[0]?.line ?? "", line: "(made-up) A sharper first line. [Show the rule on screen] Then the stakes." }],
+        };
+      }
       return {
-        parts: keys.map((key, i) => ({ key, score: 40 + ((i * 13) % 55), note: `(made-up) What the ${key} has, and what it lacks.` })),
-        lines: sent.spoken_lines.map((l, i) => ({ n: l.n, emotions: cycle[i % cycle.length] })),
-        missing: ["(made-up) The premise is not said in the first 5 seconds", "(made-up) No named threat"],
-        better: ["(made-up) Move the rule to line 2", "(made-up) Say the stakes as a number"],
-        to_try: [{ instead_of: sent.spoken_lines[0]?.line ?? "", line: "(made-up) A sharper first line. [Show the rule on screen] Then the stakes." }],
+        yours: made(keysOf(p.yours), 52), recommended: made(keysOf(p.recommended), 47), missing, better,
+        to_try: p.to_try.items.type === "string" ? ["(made-up) Make the challenge bigger in the picture"] : [{ instead_of: "", line: "(made-up) A new beat. [Show it] Then the turn." }],
       };
     }
     if (props.sections) {

@@ -16,7 +16,8 @@
 //   POST /ai/import         reads pasted text into ideas to look over
 //   POST /ai/script         a first draft of an idea's hook, what happens and beats
 //   POST /ai/plan           a first plan for a goal: steps to tick off, from the channel's own numbers
-//   POST /ai/intro          scores an intro: the owner's intro formula, the emotions each line sparks, what is missing
+//   POST /ai/score          scores a title, the intro, the script or a thumbnail two ways: Your history and Recommended
+//   POST /ai/intro          the same for the intro (the route the intro score first used)
 //   POST /editor/doc        put a video's notes for the editor in a Google Doc (made once, updated after)
 //   POST /ideas/suggest     owner: write a batch of suggested ideas now; scheduler: follow-ups or the weekly batch, when due
 //   POST /mcp/setup         make or switch off the address of Claude's connector
@@ -29,7 +30,8 @@
 import {
   type Api, closeApi, COMMENTS_SCOPE, type Deps, DOCS_SCOPE, EARNINGS_SCOPE, exchangeToken, fetchChannels, getConfig, HttpError, SCOPES, setConfig,
 } from "./google.ts";
-import { checkTemplates, draftGoalPlan, readIdeas, scoreIntro, suggestTitles } from "./growth.ts";
+import { checkTemplates, draftGoalPlan, readIdeas, suggestTitles } from "./growth.ts";
+import { scorePiece } from "./pieces.ts";
 import { draftScript, suggestIdeas } from "./ideas.ts";
 import { pushEditorDoc } from "./docs.ts";
 import { handleMcp, mcpSetup } from "./mcp.ts";
@@ -343,9 +345,12 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
       case "/ai/plan":
         await requireOwner(req, deps);
         return json(await draftGoalPlan(deps, body ?? {}));
+      case "/ai/score":
+        await requireOwner(req, deps);
+        return json(await scorePiece(deps, body ?? {}));
       case "/ai/intro":
         await requireOwner(req, deps);
-        return json(await scoreIntro(deps, body ?? {}));
+        return json(await scorePiece(deps, { ...(body ?? {}), kind: "intro" }));
       case "/editor/doc":
         await requireOwner(req, deps);
         return json(await pushEditorDoc(deps, body ?? {}));

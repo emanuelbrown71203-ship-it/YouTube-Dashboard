@@ -544,3 +544,90 @@ export function introTotal(parts: { key: string; score: number }[]): number {
   const by = new Map(parts.map((p) => [p.key, p.score]));
   return Math.round(INTRO_PARTS.reduce((sum, p) => sum + (Math.max(0, Math.min(100, by.get(p.key) ?? 0)) * p.max) / 100, 0));
 }
+
+// ---------------------------------------------------------------------------
+// Two-way scores for the pieces of a video
+// ---------------------------------------------------------------------------
+
+/** One part of a piece's score: what it is called, what it is worth and what the AI is asked to judge. */
+export interface PartDef { key: string; label: string; max: number; asks: string }
+export type PieceKind = "title" | "intro" | "script" | "thumbnail";
+
+/**
+ * What each piece of a video is scored on, two ways: "yours" (Your history: the owner's own rules and
+ * their track record) and "recommended" (what is working on YouTube now). Each side adds up to 100.
+ */
+export const PIECE_PARTS: Record<PieceKind, { yours: readonly PartDef[]; recommended: readonly PartDef[] }> = {
+  title: {
+    yours: [
+      { key: "rules", label: "Your title rules", max: 50, asks: "Follows the creator's own title rules (their title templates): length, naming the game, the emotions it sparks, one subject." },
+      { key: "record", label: "Your track record", max: 50, asks: "Reads like their titles that beat their usual, and unlike the ones that fell flat." },
+    ],
+    recommended: [
+      { key: "same_idea", label: "This idea on YouTube", max: 40, asks: "Holds up next to the titles of the videos that broke out on this same idea: as clear, as strong a pull, without copying them." },
+      { key: "breakouts", label: "What breaks out", max: 30, asks: "Uses what the titles breaking out in their game have in common." },
+      { key: "click", label: "A new viewer", max: 30, asks: "Someone who has never seen the channel, scrolling the home page, would click: one clear premise, curiosity, stakes." },
+    ],
+  },
+  intro: {
+    yours: [
+      { key: "formula", label: "Your intro formula", max: 60, asks: "The creator's intro formula: premise, problem, plug and payoff, with its emotions, hooks and shots." },
+      { key: "record", label: "Your track record", max: 40, asks: "Opens like the intros of their past videos that did well (beat their usual, held viewers), not like the ones that did not." },
+    ],
+    recommended: [
+      { key: "new_viewer", label: "A new viewer", max: 50, asks: "A viewer who clicked from the home page and has never seen the channel stays past 30 seconds: they know at once it is the video they clicked, and have a reason to stay." },
+      { key: "promise", label: "The promise", max: 50, asks: "Delivers fast on what the videos that broke out on this idea promised in their titles, and gives something they did not." },
+    ],
+  },
+  script: {
+    yours: [
+      { key: "rules", label: "Your script rules", max: 50, asks: "Follows the creator's own storytelling, retention and script rules (their templates): sub-plots, open loops, calls to action, expectations beaten." },
+      { key: "record", label: "Your track record", max: 50, asks: "Built like their past scripts whose videos did well, not like the ones whose videos did not." },
+    ],
+    recommended: [
+      { key: "holds", label: "Holds to the end", max: 50, asks: "Would hold viewers to the end: stakes that rise, sub-plots that start later, open loops, a payoff worth waiting for, nothing that drags." },
+      { key: "delivers", label: "Delivers more", max: 50, asks: "Gives more than the videos that broke out on this idea: a different angle, expectations beaten, a length that fits what is working." },
+    ],
+  },
+  thumbnail: {
+    yours: [
+      { key: "rules", label: "Your thumbnail rules", max: 50, asks: "Follows the creator's own thumbnail rules (their thumbnail templates)." },
+      { key: "record", label: "Your track record", max: 50, asks: "Looks like their past thumbnails that beat their usual, not like the ones that fell flat." },
+    ],
+    recommended: [
+      { key: "stands_out", label: "Stands out", max: 50, asks: "Would stand out next to the thumbnails that broke out on this idea and game, at the size of a phone's home feed." },
+      { key: "reads", label: "Reads at a glance", max: 50, asks: "Says what the video is in a glance and goes with the title: few words, a clear subject, the challenge in hand." },
+    ],
+  },
+};
+
+export interface PiecePart { key: string; label: string; max: number; score: number | null; note: string }
+
+/**
+ * One side of a piece's score from what the AI gave each part. A part with nothing to go on (`skip`, with
+ * the reason) or that the AI did not read is left out and said so; the side's score is the weighted share of
+ * the parts that count, and no number at all when under half of it could be counted, as with idea scores.
+ */
+export function pieceSide(defs: readonly PartDef[], given: Map<string, { score: number; note: string }>, skip: Record<string, string>): { score: number | null; parts: PiecePart[] } {
+  const parts = defs.map((d): PiecePart => {
+    if (skip[d.key]) return { key: d.key, label: d.label, max: d.max, score: null, note: skip[d.key] };
+    const g = given.get(d.key);
+    if (!g || !Number.isFinite(g.score)) return { key: d.key, label: d.label, max: d.max, score: null, note: "Not read this time." };
+    return { key: d.key, label: d.label, max: d.max, score: Math.max(0, Math.min(100, Math.round(g.score))), note: g.note };
+  });
+  const counted = parts.filter((p) => p.score !== null);
+  const countedMax = counted.reduce((n, p) => n + p.max, 0), allMax = parts.reduce((n, p) => n + p.max, 0);
+  const score = countedMax > 0 && countedMax * 2 >= allMax ? Math.round(counted.reduce((n, p) => n + p.score! * p.max, 0) / countedMax) : null;
+  return { score, parts };
+}
+
+/** A short fingerprint of a piece of text, to notice when what was scored has changed. Spacing does not count. */
+export function textKey(text: string): string {
+  const s = String(text ?? "").replace(/\s+/g, " ").trim();
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, "0");
+}

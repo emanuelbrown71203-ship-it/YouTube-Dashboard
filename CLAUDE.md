@@ -44,7 +44,8 @@ research and the last sync. Every table and view has a comment explaining it;
 | `yt_idea_refs` | Thumbnail references kept with an idea: other people's videos (`video_id`, with title, channel, views and `outlier_score` copied in), or a screenshot the owner added (no `video_id`; `image` and `image_small` hold it as JPEG data, framed to the thumbnail in the browser by `src/lib/pictures.ts`), and the owner's `note` on what to take from each. A video's picture is `https://i.ytimg.com/vi/<video_id>/mqdefault.jpg`. Lists never select the two image columns: read one row's picture at a time. |
 | `yt_notes` | Lines the owner wants to remember (from a podcast, a video, anywhere): `text`, `source`, `source_url`, `topic`. `on_front` ones show on the front page. |
 | `yt_comments` | Recent comments with the AI's reading: `sentiment`, `theme`, `is_question`. `pinned` ones sit on the front page. |
-| `yt_scripts` | Scripts the owner wrote for past videos (`title`, `topic`, `body`, `source_url`): their intros, the beats they hand their editor with directions in brackets, and voiceover written against the cut. Playbook → My scripts. The script starter reads the two closest (same game first) to write in their voice. |
+| `yt_idea_thumbs` | The owner's own thumbnails for an idea, one row per version to compare (`image`, `image_small` as JPEG data, framed in the browser; lists never select them), each with its two-way `score`. |
+| `yt_scripts` | Scripts the owner wrote for past videos (`title`, `topic`, `body`, `source_url`, and `video_id`: the upload it was for, which the owner picks on My scripts, so how that video did counts in their track record): their intros, the beats they hand their editor with directions in brackets, and voiceover written against the cut. Playbook → My scripts. The script starter reads the two closest (same game first) to write in their voice. |
 | `yt_editor_notes` | Notes for the owner's editor, read from markers they export from Premiere Pro, kept per video idea (`idea_id`, `name` = which cut, `markers` = `{at, end, name, note, type}`). Idea editor → For my editor, and Ideas → For my editor. |
 | `yt_editor_docs` | The Google Doc each video's notes for the editor went into (`idea_id`, `doc_id`, `doc_url`, `pushed_at`). Written only by the server. |
 | `yt_rhythm` | The owner's upload rhythm: one target per format (`long`, `short`, `live`), "post at least every `every_days` days". `active = false` switches one off. Home shows the days since the last upload of that format against it. |
@@ -135,14 +136,14 @@ free and the owner has said to use them whenever a score needs them.
 
 - `src/`: Vite + React + TypeScript. Reads go straight to Supabase with the
   publishable key; row level security lets only owners in.
-- `supabase/migrations/`: twenty-three files, all `yt_` objects. No statement in them
+- `supabase/migrations/`: twenty-four files, all `yt_` objects. No statement in them
   removes a table, a column or a row (017 only lets `yt_idea_refs.video_id` be
   empty, for screenshots).
 - `supabase/functions/yt-api/`: one edge function, deployed with JWT
   verification off because it checks callers itself. Routes: `/auth/setup`,
   `/auth/start`, `/auth/callback`, `/auth/finish`, `/auth/disconnect`, `/sync`,
   `/sync/extras`, `/sync/pulse`, `/research`, `/ai/setup`, `/ai/titles`,
-  `/ai/check`, `/ai/import`, `/ai/script`, `/ai/plan`, `/ai/intro`, `/editor/doc`, `/ideas/check`, `/ideas/suggest`,
+  `/ai/check`, `/ai/import`, `/ai/script`, `/ai/plan`, `/ai/score`, `/ai/intro`, `/editor/doc`, `/ideas/check`, `/ideas/suggest`,
   `/mcp/setup`, `/mcp/<secret>`, `/health`. `/sync/pulse` runs every hour (cron job `yt-pulse`, scheduler
   secret only): it spots a new upload and starts a sync, or notes the live
   view counts of uploads in their first 3 days; two lookups each time. A sync does the quick
@@ -152,7 +153,7 @@ free and the owner has said to use them whenever a score needs them.
   anything is left, so no request runs out of time; their results are added
   to the same `yt_sync_runs` row under `games`, `comments_read`, `feeders`. Google sign-in only lets a browser in when the same
   browser that started it comes back with the secret it kept (`/auth/finish`);
-  do not weaken that. `index.ts` is the only Deno-specific file (ten files in the folder); the rest take their
+  do not weaken that. `index.ts` is the only Deno-specific file (eleven files in the folder); the rest take their
   database client, `fetch` and clock as arguments so tests can replace them.
   Supabase stops accepting the older `anon` key at the end of 2026, so the app
   sends the publishable key from `.env` and `index.ts` reads the function's
@@ -160,7 +161,9 @@ free and the owner has said to use them whenever a score needs them.
 - The AI helper (`growth.ts`, called through `deps.claude` in `index.ts`) uses
   the owner's own Claude API key from `yt_private` and the official SDK. It
   describes outliers, sorts comments into themes and names the game each
-  video is about. It only ever sees text, never video, and the screens say so.
+  video is about. It reads text, and looks at pictures only to score a thumbnail the owner
+  added (with their past thumbnails and breakout ones beside it, `pieces.ts`). It never
+  sees video, and the screens say so.
   Earnings and comments each need an optional Google permission, recorded in
   `google_scopes`; the sync skips what was not granted.
 - Claude's connector (`mcp.ts`) is a Model Context Protocol server at
@@ -258,20 +261,35 @@ free and the owner has said to use them whenever a score needs them.
   "Draft from Cut N": the beats follow the newest cut's own timeline, every
   note left on it becomes a direction for the editor or the voiceover for
   that stretch, and earlier cuts count only where the newest repeats them.
-- The intro score (idea editor → Script, under the Hook box; `/ai/intro`,
-  `scoreIntro` in `growth.ts`, `src/pages/IntroScore.tsx`): the AI scores
-  the intro as it stands in the box, saved or not, the way the owner's
-  intro template asks: premise 20, problem 20, plug 5, payoff 15 (their
-  formula), emotions 20 (curiosity, desire or fear on each spoken line,
+- Piece scores (`/ai/score`, `pieces.ts`; `src/pages/PieceScore.tsx`,
+  `PieceScores.tsx`, `IntroScore.tsx`, `MyThumbnails.tsx`): a title (with the
+  other titles, all at once), the intro, the script (hook, what happens and
+  outline together) and the owner's own thumbnails are each scored two
+  ways, like ideas: "Your history" (their own templates, and how their past
+  titles, thumbnails and scripts did) and "Recommended" (next to the videos
+  that broke out on the same idea, from its YouTube check, and in its game,
+  only over the views floor, plus how a new viewer would react). The parts
+  and what each is worth are `PIECE_PARTS` in `scoring.ts`; the AI scores
+  each part 0 to 100 and `pieceSide` adds them up. A part with nothing to go
+  on (no templates of that kind, no past script tied to its video, no idea
+  check, no breakout pictures) is left out and says how to fix it, and a
+  side with under half its evidence shows no number. The intro's "Your
+  history" includes the intro formula: premise 20, problem 20, plug 5,
+  payoff 15, emotions 20 (curiosity, desire or fear on each spoken line,
   like their titles: "just like a title it should hook with emotions"),
-  hooks 10 and show it 10 (`INTRO_PARTS` and `introTotal` in `scoring.ts`:
-  the AI scores each part 0 to 100, the weights are worked out in code).
-  Spoken lines are numbered without the [directions] (`introLayout`). It
-  says what is missing and what could be better and offers lines to try,
-  line by line, and never rewrites the hook. The reading is kept in
-  `yt_ideas.intro_check` with the intro it scored, so the editor says when
-  the intro has changed since. When the owner asks you to rate an intro,
-  use the same parts and weights.
+  hooks 10 and show it 10 (`INTRO_PARTS`), spoken lines numbered without the
+  [directions] (`introLayout`). For thumbnails the AI is shown the owner's
+  picture, up to 6 of their past thumbnails (best and weakest) and up to 5
+  breakout ones from YouTube; any that will not load is left out. For
+  intros and scripts it cannot see other people's videos, so "Recommended"
+  there is its judgement against what the breakouts promised; say so. Each
+  reading says what is missing, what could be better, and offers things to
+  try (titles can be kept as options; nothing is rewritten for the owner).
+  Readings are kept in `yt_ideas.title_check`, `intro_check`,
+  `script_check` and `yt_idea_thumbs.score`, with `textKey` of what was
+  scored so the editor says when it changed since. When the owner asks you
+  to rate a title, intro, script or thumbnail, use the same parts and
+  weights, and say they are estimates.
 - Notes for the editor (idea editor → For my editor; Ideas → For my editor;
   `src/pages/EditorNotes.tsx`, `src/lib/markers.ts`): the owner leaves
   markers with comments on a cut in Premiere, exports them (Markers panel,

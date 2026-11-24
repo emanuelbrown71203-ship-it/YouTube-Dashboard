@@ -18,7 +18,14 @@ export interface Deps {
   /** Keeps work running after the response has been sent (edge runtime only). */
   background?: (work: Promise<unknown>) => void;
   /** Asks the AI for a JSON answer that follows a schema (edge runtime, or a stand-in in tests). */
-  claude?: (apiKey: string, req: { system: string; prompt: string; schema: Record<string, unknown>; effort?: string }) => Promise<unknown>;
+  claude?: (apiKey: string, req: {
+    system: string;
+    prompt: string;
+    schema: Record<string, unknown>;
+    effort?: string;
+    /** Pictures to look at before the prompt, each with a line saying what it is (base64 JPEG or PNG). */
+    images?: { label: string; media_type: "image/jpeg" | "image/png"; data: string }[];
+  }) => Promise<unknown>;
   log?: (...args: unknown[]) => void;
 }
 
