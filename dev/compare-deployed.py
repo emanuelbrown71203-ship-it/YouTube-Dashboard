@@ -1,6 +1,12 @@
-"""Compare the edge function Supabase is running with the files in supabase/functions/yt-api.
+"""Compare the edge function Supabase is running with what this repository deploys.
 
 Usage: python3 -I dev/compare-deployed.py <saved get_edge_function result>
+       python3 -I dev/compare-deployed.py --bundle <saved get_edge_function result>
+
+The function is deployed as one bundled file, dev/deploy/yt-api/index.js, built from the source in
+supabase/functions/yt-api by `npm run bundle:fn` (the source has grown past what one deploy call can
+carry). With --bundle, the deployed files are compared with that bundle, which must be newer than
+every source file; without it, with the source files themselves (how it was deployed before).
 
 The saved result is the JSON the Supabase connector's get_edge_function returns (it is long, so
 the session saves it to a file). Every deployed file is compared byte for byte with the file of
@@ -13,14 +19,29 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-FUNCTION_DIR = os.path.join(HERE, "..", "supabase", "functions", "yt-api")
+SOURCE_DIR = os.path.join(HERE, "..", "supabase", "functions", "yt-api")
+BUNDLE_DIR = os.path.join(HERE, "deploy", "yt-api")
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
+    args = sys.argv[1:]
+    bundle = args[:1] == ["--bundle"]
+    if bundle:
+        args = args[1:]
+    if len(args) != 1:
         print(__doc__)
         return 2
-    with open(sys.argv[1], "rb") as fh:
+    FUNCTION_DIR = BUNDLE_DIR if bundle else SOURCE_DIR
+    if bundle:
+        built = os.path.join(BUNDLE_DIR, "index.js")
+        if not os.path.exists(built):
+            print("no bundle yet: run npm run bundle:fn", file=sys.stderr)
+            return 2
+        newest = max(os.path.getmtime(os.path.join(SOURCE_DIR, n)) for n in os.listdir(SOURCE_DIR))
+        if os.path.getmtime(built) < newest:
+            print("the bundle is older than the source: run npm run bundle:fn again", file=sys.stderr)
+            return 2
+    with open(args[0], "rb") as fh:
         text = fh.read().decode("utf-8")  # strict: fail loudly on anything odd
     start = len(text) - len(text.lstrip())
     doc, end = json.JSONDecoder().raw_decode(text, start)
@@ -52,7 +73,8 @@ def main() -> int:
             ok = False
         else:
             print(f"same                 {name}")
-    print("MATCH: the live function is exactly the repository's" if ok else "NO MATCH")
+    what = "the bundle built from the repository" if bundle else "the repository's"
+    print(f"MATCH: the live function is exactly {what}" if ok else "NO MATCH")
     return 0 if ok else 1
 
 

@@ -8,3 +8,5 @@ dist
 dev/private/
 coverage
 .DS_Store
+# the edge function bundled for deploying (npm run bundle:fn), rebuilt from the source every time
+dev/deploy/

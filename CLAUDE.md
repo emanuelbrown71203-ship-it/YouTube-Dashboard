@@ -412,12 +412,19 @@ through.
   without a permission prompt. If Supabase still asks the owner to confirm,
   it waits only 60 seconds: tell them a prompt is coming. Regenerate
   `src/lib/database.types.ts` with `npx tsx dev/gen-types.ts`.
-- **Edge function**: `deploy_edge_function` with every file in
-  `supabase/functions/yt-api` (entry `index.ts`, `verify_jwt` false). The
-  type check and the tests skip `index.ts`; check it with Deno first, from a
-  copy of the folder outside the repository (see `dev/README.md`). Afterwards confirm the live function answers (next
-  section) and that `get_edge_function` returns the files you sent:
-  `python3 -I dev/compare-deployed.py <saved result>` must end with `MATCH`.
+- **Edge function**: deployed as one bundled file. The source grew past
+  what one `deploy_edge_function` call can carry (about 270,000 characters
+  went through; 303,000 did not), so `npm run bundle:fn` builds
+  `dev/deploy/yt-api/index.js` from `supabase/functions/yt-api` with the
+  pinned esbuild (the same code, without comments and types; never
+  committed). The type check and the tests skip `index.ts`; check it with
+  Deno first, from a copy of the folder outside the repository (see
+  `dev/README.md`), and run the bundle once in Deno against the local
+  database (`/health` answers). Then `deploy_edge_function` with that one
+  file (entry `index.js`, `verify_jwt` false). Afterwards confirm the live
+  function answers (next section) and that `get_edge_function` returns the
+  bundle: `python3 -I dev/compare-deployed.py --bundle <saved result>` must
+  end with `MATCH`.
   The whole release, in order, is the `ship` skill (`.claude/skills/ship`).
 - **Site**: the Vercel project `youtube-dashboard`, built from this
   repository with the settings in `vercel.json`. Vercel's production branch

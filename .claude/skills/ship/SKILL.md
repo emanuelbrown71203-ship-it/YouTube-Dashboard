@@ -36,13 +36,18 @@ wider than the screen. Commit and push to the working branch.
 
 1. Check `index.ts` with Deno from a copy outside the repository:
    `cp -r supabase/functions/yt-api <scratch>/fn && deno check --node-modules-dir=none <scratch>/fn/index.ts`.
-2. Deploy with the connector's `deploy_edge_function`: project `nivsnjvrsqekyocvtema`,
-   name `yt-api`, entry `index.ts`, `verify_jwt` false, **every** file in the folder, each
-   byte for byte. The files are large, so hand this to one helper agent with exactly that
-   instruction and nothing else to do.
-3. Prove it: call `get_edge_function` (its long answer is saved to a file), then
-   `python3 -I dev/compare-deployed.py <that file>`. It must end with `MATCH`.
-4. Check it answers: `curl https://nivsnjvrsqekyocvtema.supabase.co/functions/v1/yt-api/health`
+2. Bundle it: `npm run bundle:fn` writes `dev/deploy/yt-api/index.js` (one file, the same
+   code without comments and types; the source is too big for one deploy call). Run the
+   bundle once in Deno from a copy outside the repository, with `SUPABASE_URL`,
+   `SUPABASE_PUBLISHABLE_KEYS='{}'` and `SUPABASE_DB_URL` pointing at the local database, and
+   check `curl localhost:8000/functions/v1/yt-api/health` gives `{"ok":true}`.
+3. Deploy with the connector's `deploy_edge_function`: project `nivsnjvrsqekyocvtema`,
+   name `yt-api`, entry `index.js`, `verify_jwt` false, the one file `index.js`, byte for
+   byte. It is large, so hand this to one helper agent with exactly that instruction and
+   nothing else to do, and change no source or bundle file while it reads.
+4. Prove it: call `get_edge_function` (its long answer is saved to a file), then
+   `python3 -I dev/compare-deployed.py --bundle <that file>`. It must end with `MATCH`.
+5. Check it answers: `curl https://nivsnjvrsqekyocvtema.supabase.co/functions/v1/yt-api/health`
    should give `{"ok":true}`. (Where the session's network does not allow that address, use
    `net.http_get` from SQL as CLAUDE.md describes.)
 

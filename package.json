@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "dev:local": "tsx dev/server.ts"
+    "dev:local": "tsx dev/server.ts",
+    "bundle:fn": "esbuild supabase/functions/yt-api/index.ts --bundle --format=esm --platform=neutral --target=esnext --external:npm:* --external:jsr:* --external:https:* --legal-comments=none --charset=utf8 --log-level=warning --outfile=dev/deploy/yt-api/index.js"
   },
   "dependencies": {
     "@fontsource-variable/archivo": "^5.3.0",
@@ -23,6 +24,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^6.3.0",
+    "esbuild": "0.28.2",
     "postgres": "3.4.7",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
