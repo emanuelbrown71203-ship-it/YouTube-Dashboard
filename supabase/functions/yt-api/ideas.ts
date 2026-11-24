@@ -15,6 +15,7 @@
 
 import { aiReady, ask, EMOTIONS, emotionsOf, lineByLine, OWN_RULES, ownerGuidance, sentences } from "./growth.ts";
 import { type Deps, getConfig, HttpError, setConfig, type Sql } from "./google.ts";
+import { bigEnough, MIN_OUTLIER_VIEWS } from "./scoring.ts";
 
 export const BATCH_SIZE = 10;
 /** A fresh batch this often, unless the owner asked for one in between. */
@@ -151,11 +152,12 @@ async function evidence(sql: Sql, games: string[]) {
   const breakouts = patterns.length ? await sql`
     select title, channel_title as channel, views, round(outlier_score::numeric, 1) as times_usual, format from public.yt_research_videos
     where outlier_score >= 3 and published_at > now() - interval '120 days' and coalesce(channel_id, '') <> ${own} and lower(title) like any(${patterns})
+      and views >= case when format = 'short' then ${MIN_OUTLIER_VIEWS.short}::bigint else ${MIN_OUTLIER_VIEWS.long}::bigint end
     order by outlier_score desc limit 20` : [];
   const elsewhere = await sql`
     select title, channel_title as channel, views, round(outlier_score::numeric, 1) as times_usual from public.yt_research_videos
     where outlier_score >= 3 and format = 'long' and category = '20' and published_at > now() - interval '120 days' and coalesce(channel_id, '') <> ${own}
-      and not (lower(title) like any(${patterns.length ? patterns : ["%\u0000%"]}))
+      and views >= ${MIN_OUTLIER_VIEWS.long}::bigint and not (lower(title) like any(${patterns.length ? patterns : ["%\u0000%"]}))
     order by outlier_score desc limit 12`;
   const asked = await sql`
     select text from public.yt_comments
@@ -515,7 +517,8 @@ export async function draftScript(deps: Deps, body: Record<string, unknown>) {
       order by created_at desc limit 1`;
     // deno-lint-ignore no-explicit-any
     elsewhere = ((run?.results ?? []) as any[])
-      .filter((v) => v.match === "same" || v.match === "close")
+      // A tiny channel's 500-view video is no model to write from, however far it beat its usual.
+      .filter((v) => (v.match === "same" || v.match === "close") && bigEnough(Number(v.views), format))
       .sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0)).slice(0, 8)
       .map((v) => ({ title: String(v.title ?? ""), times_usual: num(v.score), match: v.match === "same" ? "the same idea" : "the same kind of video" }));
   }

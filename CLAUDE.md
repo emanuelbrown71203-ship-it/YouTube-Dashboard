@@ -66,6 +66,13 @@ Things to keep in mind when reading the numbers:
   meaningful on a partial library; say so rather than quote them.
 - Keyword scores are estimates from the videos that rank today, not search
   volumes. Say "estimate" when you quote one.
+- An outlier has to have reached a real audience, not only beaten its
+  channel's usual: at least 10,000 views on long-form and 100,000 on Shorts
+  (`MIN_OUTLIER_VIEWS`, `isBreakout` in `scoring.ts`). The owner aims at
+  50,000 views, and a tiny channel's 7x on 504 views was "a horrible
+  starting point". Breakouts, idea check examples and scores, thumbnail
+  references, the suggestion and script helpers and the Outliers search all
+  use the floor. Never offer a video under it as a reference or a model.
 
 Do not spend the owner's vidIQ credits unless they ask you to. The research
 tools here exist so that is not needed. The dashboard's own YouTube lookups are
@@ -178,8 +185,12 @@ free and the owner has said to use them whenever a score needs them.
   by the idea's own words), and the ones that count set against their own
   channel's usual. It is stored as a `yt_research_runs` row of kind
   `outliers` with `params.mode = 'idea'` and `params.idea_id`; `summary`
-  holds `same` and `close` (`n`, `scored`, `broke_out`, `median`, `newest`)
-  and a few `examples`. A check lasts 30 days or until the idea's title or
+  holds `same` and `close` (`n`, `scored`, `broke_out`, `median`, `newest`,
+  `small`: only videos over the views floor are scored and counted, `small`
+  says how many were left out) and a few `examples`, all over the floor
+  (`min_views`). Checks stored before the floor are summed up again from
+  their `results` at the start of the next pass (`resummariseChecks`), with
+  no new lookups. A check lasts 30 days or until the idea's title or
   game changes, costs about 100 to 130 lookups, and identical ideas share
   one. To tell the owner how an idea looks, read that row. A search on the
   game alone cannot tell two ideas on the same game apart: it is only a
@@ -267,7 +278,7 @@ free and the owner has said to use them whenever a score needs them.
   open, and the next one is brought in under the last.
 - Thumbnail references (Research, Thumbnails tab; `src/pages/Thumbnails.tsx`)
   are long-form videos in `yt_research_videos` from the last year that did
-  at least 3x their channel's usual, split into the owner's games (open
+  at least 3x their channel's usual with 10,000 views or more, split into the owner's games (open
   ideas plus what they posted in the last year) and everything else. They
   fill in by themselves: the game searches, every idea check (which keeps
   what it found there), and `coverOutside` in `research.ts`, which searches

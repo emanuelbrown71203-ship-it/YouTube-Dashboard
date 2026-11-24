@@ -9,6 +9,7 @@ import { keys, useChannel, useMyFormats, useResearchRuns, useSavedVideos, useVid
 import { navigate } from "../lib/router.ts";
 import { libraryComplete, median, myTopics, titleStats } from "../lib/stats.ts";
 import type { OutlierResponse, OutlierResult, OutlierSearch, SavedVideo } from "../lib/types.ts";
+import { minOutlierViews } from "../../supabase/functions/yt-api/scoring.ts";
 
 type Sort = "outlier" | "views" | "per_day" | "newest";
 
@@ -25,7 +26,8 @@ export function ResearchOutliers({ connected, initial = "", initialFormat = "lon
   const saved = useSavedVideos();
   const watched = useWatched();
 
-  const [search, setSearch] = useState<OutlierSearch>({ query: initial, mode: "breakout", format: initialFormat, window_days: 30, max_subs: null, min_views: 1000 });
+  // Starts at the views a video needs to count as a breakout, so a tiny channel's 500-view video does not top the list.
+  const [search, setSearch] = useState<OutlierSearch>({ query: initial, mode: "breakout", format: initialFormat, window_days: 30, max_subs: null, min_views: minOutlierViews(initialFormat) });
   const [result, setResult] = useState<{ search: OutlierSearch; items: OutlierResult[]; next: string | null; summary: OutlierResponse["summary"] | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -152,7 +154,7 @@ export function ResearchOutliers({ connected, initial = "", initialFormat = "lon
         <div className="field-row">
           <div className="field">
             <span>Format</span>
-            <Segmented label="Format" value={search.format} onChange={(v) => set("format", v)} options={[{ value: "long", label: "Long-form" }, { value: "short", label: "Shorts" }]} />
+            <Segmented label="Format" value={search.format} onChange={(v) => setSearch((s) => ({ ...s, format: v, min_views: s.min_views === minOutlierViews(s.format) ? minOutlierViews(v) : s.min_views }))} options={[{ value: "long", label: "Long-form" }, { value: "short", label: "Shorts" }]} />
           </div>
           <div className="field">
             <span>Look for</span>

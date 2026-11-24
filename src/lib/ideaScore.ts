@@ -6,6 +6,7 @@
 // Everything is worked out within one format. A Short's views never count for or against a
 // long-form idea; the one bridge is a hint, when a Short on the same game beat the other Shorts.
 
+import { bigEnough, isBreakout, minOutlierViews } from "../../supabase/functions/yt-api/scoring.ts";
 import type { Idea, Video } from "./types.ts";
 
 export interface FoundVideo {
@@ -27,11 +28,13 @@ export const COVER_DAYS = 14;
 /** One group of videos a check on an idea found: the same idea, or the same kind of video. */
 export interface MarketGroup {
   n: number;
-  /** How many could be set against their channel's usual video. */
+  /** How many reached enough views to count (MIN_OUTLIER_VIEWS in scoring.ts) and could be set against their channel's usual. */
   scored: number;
-  /** How many did 3x their channel's usual or better. */
+  /** How many of those did 3x their channel's usual or better. */
   broke_out: number;
-  /** The middle one against its channel's usual. A tiny channel's freak result counts as 20x at most. */
+  /** How many were left out for having too few views. Missing on checks stored before there was a floor. */
+  small?: number;
+  /** The middle counted one against its channel's usual. A freak result counts as 20x at most. */
   median: number | null;
   newest: string | null;
 }
@@ -208,7 +211,11 @@ function marketPart(market: Market | null | undefined, game: string | null, file
   if (!game || !filed) return { label, points: null, max, why: `File the idea under ${game ?? "a game"} and the dashboard searches YouTube for this exact video.` };
   if (market === undefined) return { label, points: null, max, why: "Save the idea and the dashboard searches YouTube for this exact video. It takes a minute or two." };
   if (market === null) return { label, points: null, max, why: "The dashboard is searching YouTube for this exact video. This fills in by itself in a few minutes." };
-  const examples = market.examples.slice(0, 3).map((v) => ({
+  // Only videos that reached a real audience count; checks stored before the floor may still hold others.
+  const floor = compactViews(minOutlierViews(format));
+  const leftOut = (g: MarketGroup) => (g.small ? `${g.small === 1 ? "One" : g.small} with under ${floor} views ${g.small === 1 ? "is" : "are"} left out. ` : "");
+  // A check stored before the views floor may still hold a tiny channel's video: it is no example to follow.
+  const examples = market.examples.filter((v) => bigEnough(v.views, format)).slice(0, 3).map((v) => ({
     href: `https://www.youtube.com/watch?v=${v.video_id}`, title: v.title,
     note: `${v.channel}, ${compactViews(v.views)} views${v.score === null ? "" : `, ${times(v.score)} its channel's usual`}${v.match === "close" ? " (same kind of video)" : ""}`,
   }));
@@ -219,11 +226,14 @@ function marketPart(market: Market | null | undefined, game: string | null, file
     return {
       label, points, max, examples,
       why: `${same.n === 1 ? "One video" : `${same.n} videos`} of this exact idea turned up. ${
-        same.broke_out ? `${same.broke_out === same.scored && same.scored > 1 ? "All of them" : same.broke_out} did 3x ${same.broke_out === 1 ? "its" : "their"} channel's usual or better` : `None stood out from ${same.n === 1 ? "its" : "their"} channel's usual`
+        leftOut(same)}${same.broke_out ? `${same.broke_out === same.scored && same.scored > 1 ? (same.small ? "All the others" : "All of them") : same.broke_out} did 3x ${same.broke_out === 1 ? "its" : "their"} channel's usual or better` : `None stood out from ${same.scored === 1 ? "its" : "their"} channel's usual`
       }${same.scored > 1 ? `; the middle one did ${times(same.median)}` : `, at ${times(same.median)}`}.${same.newest ? ` The newest is from ${monthOf(same.newest)}.` : ""}`,
     };
   }
-  if (same.n > 0) {
+  // Made before, but only by videos too small to learn from: still open at a real size.
+  const onlySmall = same.n > 0 && same.small === same.n;
+  const madeSmall = `This exact ${KIND[format]} has only been made by ${same.n === 1 ? "one video" : `${same.n} videos`} under ${floor} views, too small to learn from, so the idea is still open.`;
+  if (same.n > 0 && !onlySmall) {
     return { label, points: null, max, examples, why: `${same.n === 1 ? "One video" : `${same.n} videos`} of this exact idea turned up, but how ${same.n === 1 ? "it" : "they"} did against ${same.n === 1 ? "its channel's" : "their channels'"} usual could not be worked out.` };
   }
   if (close.scored >= 2 && close.median !== null) {
@@ -231,14 +241,15 @@ function marketPart(market: Market | null | undefined, game: string | null, file
     const points = Math.round(even + (fromTimes(close.median, max) - even) * 0.6 * Math.min(1, close.scored / 4));
     return {
       label, points, max, examples,
-      why: `Nobody in YouTube's top results has made this exact ${KIND[format]}, so the idea is open. ${close.n} of the same kind on ${game} turned up: ${
+      why: `${onlySmall ? madeSmall : `Nobody in YouTube's top results has made this exact ${KIND[format]}, so the idea is open.`} ${close.n} of the same kind on ${game} turned up${
+        close.small ? `, ${close.small} of them under ${floor} views and left out` : ""}: ${
         close.broke_out ? `${close.broke_out} did 3x their channel's usual or better` : "none stood out from their channel's usual"
       }, and the middle one did ${times(close.median)}.`,
     };
   }
   return {
     label, points: even, max, examples,
-    why: `Nothing like this idea turned up in YouTube's top results for it. It is untested: that can be an opening, but there is no proof yet that people want it.`,
+    why: `${onlySmall ? madeSmall : "Nothing like this idea turned up in YouTube's top results for it."} It is untested: that can be an opening, but there is no proof yet that people want it.`,
   };
 }
 
@@ -302,7 +313,7 @@ export function scoreIdea(
   };
   const since = Date.parse(today) - 120 * 86_400_000;
   const outside = found.filter((v) => (v.format ?? "long") === format && about(v) && v.published_at && Date.parse(v.published_at) >= since);
-  const breakouts = outside.filter((v) => (v.outlier_score ?? 0) >= 3);
+  const breakouts = outside.filter((v) => isBreakout(v.outlier_score, v.views, format));
   // The newest search on this game in this format, if there is one.
   const searches = covered.filter((c) => c.format === format && key && squash(c.game) === key).map((c) => c.at).sort();
   const searchedAt = searches[searches.length - 1] ?? null;

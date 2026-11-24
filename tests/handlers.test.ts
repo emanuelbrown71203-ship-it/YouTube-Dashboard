@@ -587,8 +587,8 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
 
   it("checks each idea against YouTube by itself: the same idea, the same kind of video, and how they did", async () => {
     const { call, mock, deps } = setup();
-    // An idea someone on the made-up YouTube has really made, so there is a "same" to find.
-    const theirs = mock.universe.filter((c) => c.id !== MY_CHANNEL_ID).flatMap((c) => c.videos)
+    // An idea someone on the made-up YouTube has really made, with a real audience, so there is a "same" to find.
+    const theirs = mock.universe.filter((c) => c.id !== MY_CHANNEL_ID).flatMap((c) => c.videos).filter((v) => v.views >= 10_000)
       .map((v) => /^Can You Beat (.+) With Only (.+)\?$/.exec(v.title)).find(Boolean)!;
     const [game, thing] = [theirs[1], theirs[2]];
     const short = game.split(" ").length > 1 ? game.replace(/[^A-Za-z0-9 ]/g, "").split(" ").map((w) => (/^\d+$/.test(w) ? w : w[0])).join("") : game;
@@ -641,6 +641,26 @@ describe.skipIf(!dbUrl)("yt-api against a local database", () => {
     // These checks are not searches to browse, and they do not count as having searched the game.
     const history = await sql`select count(*)::int as n from public.yt_research_runs where kind = 'outliers' and not (params @> '{"mode":"idea"}'::jsonb) and query = ${run.query}`;
     expect(history[0].n).toBe(0);
+
+    // A check summed up before videos needed a real audience is summed up again from what it found, with no
+    // new search: a tiny channel's 504 views stops being an example or counting towards the score.
+    const tinyVideo = { video_id: "tinyvideo01", title: `Can You Beat ${game} With Only ${thing}?`, channel: "Tiny", subscribers: 70, views: 504, score: 7.2, published: "2026-10-01T00:00:00Z", match: "same" };
+    await sql`
+      update public.yt_research_runs
+         set results = results || ${sql.json([tinyVideo])}::jsonb,
+             summary = (summary - 'min_views') || jsonb_build_object('examples', jsonb_build_array(${sql.json(tinyVideo)}::jsonb))
+       where params @> ${sql.json({ mode: "idea", idea_id: twin.id })}`;
+    const spent = searches();
+    const redo = await call("POST", "/research", { user: OWNER, body: { action: "idea_check", idea_id: twin.id } });
+    expect(redo.data).toMatchObject({ checked: [], resummarised: 1 });
+    expect(searches()).toBe(spent);
+    const redone = await checkOf(twin.id);
+    expect(redone.summary).toMatchObject({ min_views: 10_000, judged_by: "words", units: 0 });
+    expect(redone.summary.same.small).toBeGreaterThanOrEqual(1);
+    expect(redone.summary.examples.length).toBeGreaterThan(0);
+    expect((redone.summary.examples as { video_id: string; views: number }[]).every((e) => e.video_id !== "tinyvideo01" && e.views >= 10_000)).toBe(true);
+    // Done once: the next pass leaves it alone.
+    expect((await call("POST", "/research", { user: OWNER, body: { action: "idea_check", idea_id: twin.id } })).data.resummarised).toBeUndefined();
 
     // A new title is a new idea: the follow-up to a sync checks it, with the AI doing the sorting when it is on.
     await sql`update public.yt_ideas set title = ${`${game} But I Can Only Use ${thing}`} where id = ${a.id}`;

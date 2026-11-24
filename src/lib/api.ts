@@ -1,6 +1,7 @@
 // Every read and write the screens make. Table and column names are checked
 // against the generated database types at compile time.
 
+import { MIN_OUTLIER_VIEWS } from "../../supabase/functions/yt-api/scoring.ts";
 import { FUNCTION_URL, supabase, SUPABASE_KEY } from "./supabase.ts";
 import type {
   Channel, Connection, DailyRow, FormatDailyRow, Idea, IdeaDraft, KeywordResponse, KeywordRow, MyFormat,
@@ -418,12 +419,12 @@ export interface FoundThumb {
   category: string | null;
 }
 
-/** Every long-form video found in the last year that did at least twice its channel's usual. */
+/** Every long-form video found in the last year that did at least twice its channel's usual, with enough views to learn from. */
 export async function getThumbGallery(): Promise<FoundThumb[]> {
   const since = new Date(Date.now() - 365 * 86_400_000).toISOString();
   const { data, error } = await supabase.from("yt_research_videos")
     .select("id, channel_id, channel_title, channel_subscribers, title, published_at, views, outlier_score, tags, category")
-    .eq("format", "long").gte("outlier_score", 2).gte("published_at", since)
+    .eq("format", "long").gte("outlier_score", 2).gte("views", MIN_OUTLIER_VIEWS.long).gte("published_at", since)
     .order("outlier_score", { ascending: false }).limit(800);
   fail(error);
   return (data ?? []) as unknown as FoundThumb[];

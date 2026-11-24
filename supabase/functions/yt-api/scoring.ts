@@ -159,6 +159,22 @@ export function typicalViews(
   return median(pool.map((r) => r.views));
 }
 
+/**
+ * The fewest views a video needs before it counts as a breakout, an example to look at or a
+ * thumbnail reference. Times-the-usual alone puts a tiny channel's 500-view video at the top; the
+ * owner is aiming at 50,000 views, so a video has to have reached a real audience as well. Shorts
+ * get far more views than long videos, so theirs is higher.
+ */
+export const MIN_OUTLIER_VIEWS = { long: 10_000, short: 100_000 } as const;
+export const minOutlierViews = (format: string | null | undefined): number =>
+  format === "short" ? MIN_OUTLIER_VIEWS.short : MIN_OUTLIER_VIEWS.long;
+/** Enough views to be worth learning from (see MIN_OUTLIER_VIEWS). */
+export const bigEnough = (views: number | null | undefined, format: string | null | undefined): boolean =>
+  (views ?? 0) >= minOutlierViews(format);
+/** 3x its channel's usual or better, with enough views to be worth learning from. */
+export const isBreakout = (score: number | null | undefined, views: number | null | undefined, format: string | null | undefined): boolean =>
+  (score ?? 0) >= 3 && bigEnough(views, format);
+
 export function outlierScore(views: number, typical: number | null): number | null {
   if (typical === null) return null;
   return round(views / Math.max(typical, 1), 2);
@@ -438,11 +454,13 @@ export interface MarketVideo {
 
 export interface MarketGroup {
   n: number;
-  /** How many of them could be set against their channel's usual. */
+  /** How many of them reached enough views to count (MIN_OUTLIER_VIEWS) and could be set against their channel's usual. */
   scored: number;
-  /** How many did 3x their channel's usual or more. */
+  /** How many of those did 3x their channel's usual or more. */
   broke_out: number;
-  /** The middle one, against its channel's usual. A tiny channel's freak 900x counts as 20x here. */
+  /** How many were left out for having too few views. Missing on checks summed up before there was a floor. */
+  small?: number;
+  /** The middle counted one, against its channel's usual. A freak 900x counts as 20x here. */
   median: number | null;
   newest: string | null;
 }
@@ -452,23 +470,36 @@ export interface MarketSummary {
   same: MarketGroup;
   close: MarketGroup;
   examples: MarketVideo[];
+  /** The views a video needed to count as a breakout or an example. Missing on checks summed up before there was one. */
+  min_views?: number;
 }
 
 const SCORE_CAP = 20;
-function group(videos: MarketVideo[]): MarketGroup {
-  const scores = videos.map((v) => v.score).filter((s): s is number => s !== null).map((s) => Math.min(s, SCORE_CAP)).sort((a, b) => a - b);
+function group(videos: MarketVideo[], format: string): MarketGroup {
+  // Only videos that reached a real audience count: a tiny channel's 7x on 500 views says nothing
+  // about whether the idea can reach 50,000.
+  const counted = videos.filter((v) => v.score !== null && bigEnough(v.views, format));
+  const scores = counted.map((v) => Math.min(v.score!, SCORE_CAP)).sort((a, b) => a - b);
   const mid = Math.floor(scores.length / 2);
   const median = scores.length === 0 ? null : scores.length % 2 ? scores[mid] : (scores[mid - 1] + scores[mid]) / 2;
   return {
-    n: videos.length, scored: scores.length, broke_out: scores.filter((s) => s >= 3).length,
+    n: videos.length, scored: scores.length, broke_out: counted.filter((v) => isBreakout(v.score, v.views, format)).length,
+    small: videos.filter((v) => !bigEnough(v.views, format)).length,
     median: median === null ? null : Math.round(median * 10) / 10,
     newest: videos.map((v) => v.published.slice(0, 10)).sort().at(-1) ?? null,
   };
 }
 
-/** What the search for one idea found, boiled down: the same idea, the same kind of video, and a few to look at. */
-export function summariseMarket(searched: number, judged: MarketVideo[]): MarketSummary {
+/**
+ * What the search for one idea found, boiled down: the same idea, the same kind of video, and a few to
+ * look at. Only videos with enough views are offered as examples: a 500-view video is no model to build on.
+ */
+export function summariseMarket(searched: number, judged: MarketVideo[], format: string): MarketSummary {
   const same = judged.filter((v) => v.match === "same"), close = judged.filter((v) => v.match === "close");
-  const best = (list: MarketVideo[]) => [...list].sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || b.views - a.views);
-  return { searched, same: group(same), close: group(close), examples: [...best(same), ...best(close)].slice(0, 4) };
+  const best = (list: MarketVideo[]) => list.filter((v) => bigEnough(v.views, format))
+    .sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || b.views - a.views);
+  return {
+    searched, same: group(same, format), close: group(close, format),
+    examples: [...best(same), ...best(close)].slice(0, 4), min_views: minOutlierViews(format),
+  };
 }

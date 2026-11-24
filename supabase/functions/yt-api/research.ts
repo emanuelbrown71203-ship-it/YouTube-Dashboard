@@ -6,7 +6,7 @@ import {
   HttpError, mapLimit, openApi, playlistFor, searchChannelIds, searchVideoIds, SEARCH_COST, type Sql,
 } from "./google.ts";
 import {
-  ageDays, analyzeKeyword, ideaQuery, isEnglish, judgeByWords, type MarketVideo, type Match, normalizeKeyword, type OutlierItem,
+  ageDays, analyzeKeyword, ideaQuery, isBreakout, isEnglish, judgeByWords, type MarketVideo, minOutlierViews, type Match, normalizeKeyword, type OutlierItem,
   type PublicChannel, type PublicVideo, type RecentUpload, scoreOutlier, sortOutliers, summariseMarket, typicalViews,
 } from "./scoring.ts";
 import { aiReady, ask, explainVideo } from "./growth.ts";
@@ -256,14 +256,16 @@ function readOutlierParams(body: any): OutlierParams {
   }
   const window = Number(body.window_days ?? 30);
   const maxSubs = body.max_subs === null || body.max_subs === undefined || body.max_subs === "" ? null : Number(body.max_subs);
-  const minViews = Number(body.min_views ?? 1000);
+  const format = body.format === "short" ? "short" : "long";
+  const floor = minOutlierViews(format);
+  const minViews = Number(body.min_views ?? floor);
   return {
     query,
     mode: body.mode === "evergreen" ? "evergreen" : "breakout",
-    format: body.format === "short" ? "short" : "long",
+    format,
     window_days: [7, 30, 90, 365].includes(window) ? window : 30,
     max_subs: maxSubs !== null && Number.isFinite(maxSubs) && maxSubs > 0 ? maxSubs : null,
-    min_views: Number.isFinite(minViews) && minViews >= 0 ? minViews : 1000,
+    min_views: Number.isFinite(minViews) && minViews >= 0 ? minViews : floor,
     page_token: typeof body.page_token === "string" && body.page_token ? body.page_token : null,
   };
 }
@@ -530,7 +532,7 @@ export async function coverGames(deps: Deps, opts: { only?: Cover | null; limit:
       const out = await findOutliers(api, {
         query: cover.game, mode: "breakout", format: cover.format, window_days: 90, max_subs: null, min_views: 1000, page_token: null, auto: true,
       });
-      done.push({ ...cover, found: out.items.length, breakouts: out.items.filter((i) => (i.outlier_score ?? 0) >= 3).length });
+      done.push({ ...cover, found: out.items.length, breakouts: out.items.filter((i) => isBreakout(i.outlier_score, i.views, cover.format)).length });
     } catch (err) {
       if (!(err instanceof HttpError)) throw err;
       // Out of lookups for today, or YouTube said no: say so and leave the rest for the next run.
@@ -636,9 +638,13 @@ async function checkIdea(deps: Deps, idea: IdeaRow): Promise<Record<string, unkn
     order by created_at desc limit 1`;
   if (twin?.summary?.pending) return null;
   if (twin) {
+    // Summed up again, so a check stored before today's rules is not copied as it was.
+    const summary = Array.isArray(twin.results)
+      ? { ...twin.summary, ...summariseMarket(Number(twin.summary?.searched) || 0, twin.results as MarketVideo[], idea.format), units: 0 }
+      : { ...twin.summary, units: 0 };
     await sql`
       insert into public.yt_research_runs (kind, query, params, results, summary, quota_units)
-      values ('outliers', ${query}, ${sql.json(params)}, ${sql.json(twin.results)}, ${sql.json({ ...twin.summary, units: 0 })}, 0)`;
+      values ('outliers', ${query}, ${sql.json(params)}, ${sql.json(twin.results)}, ${sql.json(summary)}, 0)`;
     return { idea_id: idea.id, title: idea.title, same: twin.summary?.same?.n ?? 0, close: twin.summary?.close?.n ?? 0, reused: true };
   }
 
@@ -681,7 +687,7 @@ async function checkIdea(deps: Deps, idea: IdeaRow): Promise<Record<string, unkn
     });
     // What the check found goes in the swipe file too, so its thumbnails can be used as references.
     await storeFound(sql, items.filter((_, i) => baselines.has(kept[i].v.channel_id)));
-    const summary = { ...summariseMarket(candidates.length, judged), judged_by: by, units: api.units };
+    const summary = { ...summariseMarket(candidates.length, judged, idea.format), judged_by: by, units: api.units };
     await sql`
       update public.yt_research_runs
          set results = ${sql.json(judged)}, summary = ${sql.json(summary)}, quota_units = ${api.units}
@@ -698,12 +704,31 @@ async function checkIdea(deps: Deps, idea: IdeaRow): Promise<Record<string, unkn
 }
 
 /**
+ * Idea checks summed up before a video needed a real audience to count (MIN_OUTLIER_VIEWS in
+ * scoring.ts) are summed up again from the videos they found, so no idea is searched twice for it
+ * and no tiny channel's video stays up as an example. Costs no lookups.
+ */
+export async function resummariseChecks(sql: Sql): Promise<number> {
+  const rows = await sql`
+    select id, results, summary, params->>'format' as format from public.yt_research_runs
+    where kind = 'outliers' and params->>'mode' = 'idea' and jsonb_typeof(results) = 'array'
+      and summary ? 'same' and not (summary ? 'min_views')
+    order by created_at desc limit 200`;
+  for (const r of rows) {
+    const summary = { ...r.summary, ...summariseMarket(Number(r.summary.searched) || 0, r.results as MarketVideo[], r.format === "short" ? "short" : "long") };
+    await sql`update public.yt_research_runs set summary = ${sql.json(summary)} where id = ${r.id}`;
+  }
+  return rows.length;
+}
+
+/**
  * Checks the ideas that need it, two at a time, until the time or the day's lookups run out.
  * `only` is one idea the owner is looking at now.
  */
 export async function coverIdeas(deps: Deps, opts: { only?: string | null; limit: number; until: number }): Promise<Record<string, unknown>> {
   // deno-lint-ignore no-explicit-any
   const stale = (await staleIdeas(deps.sql, opts.only ?? null)) as any as IdeaRow[];
+  const resummarised = await resummariseChecks(deps.sql);
   const checked: Record<string, unknown>[] = [];
   let stopped: string | null = null;
   await mapLimit(stale.slice(0, opts.limit), 2, async (idea) => {
@@ -717,7 +742,7 @@ export async function coverIdeas(deps: Deps, opts: { only?: string | null; limit
       stopped = err.message;
     }
   });
-  return { checked, left: Math.max(0, stale.length - checked.length), ...(stopped ? { skipped: stopped } : {}) };
+  return { checked, left: Math.max(0, stale.length - checked.length), ...(resummarised ? { resummarised } : {}), ...(stopped ? { skipped: stopped } : {}) };
 }
 
 // ---------------------------------------------------------------------------
@@ -759,7 +784,7 @@ export async function coverOutside(deps: Deps, opts: { limit: number; until: num
       const out = await findOutliers(api, {
         query, mode: "breakout", format: "long", window_days: 90, max_subs: null, min_views: 1000, page_token: null, auto: true, thumbs: true,
       });
-      searched.push({ query, found: out.items.length, breakouts: out.items.filter((i) => (i.outlier_score ?? 0) >= 3).length });
+      searched.push({ query, found: out.items.length, breakouts: out.items.filter((i) => isBreakout(i.outlier_score, i.views, "long")).length });
     } catch (err) {
       if (!(err instanceof HttpError)) throw err;
       stopped = err.message;

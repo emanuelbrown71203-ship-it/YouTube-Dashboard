@@ -317,6 +317,18 @@ describe("growth", () => {
     expect(open.why).toContain("the idea is open");
     expect(part(check(group(0, null))).points).toBe(20);
     expect(part(check(group(0, null))).why).toContain("untested");
+    // Made only by a tiny channel (504 views): it does not count, and its video is not offered as an example.
+    const tinyVideo = { video_id: "hZPa9MBAi0I", title: "Merchant only", channel: "Tiny", subscribers: 70, views: 504, score: 7.2, published: "2026-10-01T00:00:00Z", match: "same" as const };
+    const tiny = part({ ...check(group(0, null)), same: { n: 1, scored: 0, broke_out: 0, small: 1, median: null, newest: "2026-10-01" }, examples: [tinyVideo] });
+    expect(tiny.points).toBe(20);
+    expect(tiny.why).toContain("under 10K views");
+    expect(tiny.examples).toEqual([]);
+    const tinyThenKind = part({ ...check(group(0, null), group(6, 5, 4)), same: { n: 1, scored: 0, broke_out: 0, small: 1, median: null, newest: "2026-10-01" } });
+    expect(tinyThenKind.points!).toBe(open.points!);
+    expect(tinyThenKind.why).toContain("still open");
+    // An old check that still lists a tiny video among its examples shows only the real ones.
+    const old = part({ ...check(group(5, 6, 4)), examples: [tinyVideo, ...check(group(5, 6, 4)).examples] });
+    expect(old.examples?.map((e) => e.href)).toEqual(["https://www.youtube.com/watch?v=abc12345678"]);
     // Two ideas on the same game now get different scores, which the game-wide search could not do.
     const a = scoreIdea(idea, [], [], "2026-11-17", [], check(group(5, 6, 4))).recommended.parts[0].points;
     const b = scoreIdea({ ...idea, title: "Elden Ring Using Only Faith" }, [], [], "2026-11-17", [], check(group(4, 0.5))).recommended.parts[0].points;
@@ -395,7 +407,7 @@ describe("growth", () => {
     expect(gameOfThumb({ title: "This run broke me", tags: ["bg3", "honour mode"] }, games)).toBe("Baldur's Gate 3");
     expect(gameOfThumb({ title: "Minecraft But Every Block Is TNT", tags: ["minecraft"] }, games)).toBeNull();
 
-    const row = (id: string, title: string, over: object = {}) => ({ id, title, channel_id: "UCother", channel_title: "c", channel_subscribers: 20_000, published_at: "2026-11-01T00:00:00Z", views: 1000, outlier_score: 5, tags: [], category: "20", ...over });
+    const row = (id: string, title: string, over: object = {}) => ({ id, title, channel_id: "UCother", channel_title: "c", channel_subscribers: 20_000, published_at: "2026-11-01T00:00:00Z", views: 40_000, outlier_score: 5, tags: [], category: "20", ...over });
     const rows = [
       row("a", "Elden Ring But I Can Only Roll", { outlier_score: 9 }),
       row("b", "Cuphead Without Shooting", { outlier_score: 4, published_at: "2026-11-15T00:00:00Z" }),
@@ -407,9 +419,11 @@ describe("growth", () => {
       row("g", "KATSEYE DANCE CHALLENGE", { outlier_score: 600, category: "24" }),
       row("h", "Using only the wall, day 1", { outlier_score: 200, category: null }),
       row("i", "Elden Ring castle as Venom Snake", { outlier_score: 40, category: null, published_at: "2026-10-20T00:00:00Z" }),
+      // A tiny channel's 7x on 504 views is no thumbnail to build on, however far it beat its usual.
+      row("j", "Can You Beat Elden Ring With Only Merchant Bought Items?", { outlier_score: 7.2, views: 504 }),
     ];
     const pick = (over: object) => galleryItems(rows, games, { where: "mine", game: null, days: 90, small: false, sort: "jump", ...over }, "2026-11-18", "UCme").map((r) => r.id);
-    // At least 3x the channel's usual, within the time span, never the owner's own video.
+    // At least 3x the channel's usual with a real audience, within the time span, never the owner's own video.
     expect(pick({})).toEqual(["i", "a", "b"]);
     expect(pick({ where: "outside" })).toEqual(["c"]);
     expect(pick({ where: "all" })).toEqual(["i", "c", "a", "b"]);

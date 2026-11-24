@@ -7,6 +7,7 @@ import { Drawer, ErrorNote, Icon, Loading, Mult, Segmented, useNear, useToast } 
 import {
   addIdeaRef, findOutsideThumbs, getIdeaCheckVideos, getIdeaRefs, getThumbGallery, type IdeaRef, lookupVideo, patchIdeaRef,
 } from "../lib/api.ts";
+import { bigEnough, MIN_OUTLIER_VIEWS, minOutlierViews } from "../../supabase/functions/yt-api/scoring.ts";
 import { setPendingIdea } from "../lib/draft.ts";
 import { ago, compact, multiple } from "../lib/format.ts";
 import { useChannel, useIdeas, useVideos } from "../lib/hooks.ts";
@@ -218,7 +219,7 @@ export function Thumbnails({ connected }: { connected: boolean }) {
           </label>
         </div>
         <p className="small muted" style={{ margin: 0 }}>
-          Long-form videos that did at least 3x their channel's usual. The dashboard finds them by itself. Shorts are left out.
+          Long-form videos that did at least 3x their channel's usual and reached {compact(MIN_OUTLIER_VIEWS.long)} views or more. The dashboard finds them by itself. Shorts are left out.
         </p>
         {looking ? <p className="small muted row" style={{ gap: 8, margin: 0 }}>{looking.startsWith("Looking") ? <span className="spin" /> : null}{looking}</p> : null}
       </div>
@@ -268,7 +269,10 @@ function RefPicker(props: { idea: IdeaDraft; have: Set<string>; onAdd: (ref: Ref
   const check = useQuery({ queryKey: ["idea-check-videos", props.idea.id], queryFn: () => getIdeaCheckVideos(props.idea.id!), enabled: Boolean(props.idea.id) });
   // Open on the idea's own search results when it has them, else on its game, else outside the niche.
   const [chosen, setChosen] = useState<"check" | "game" | "outside" | null>(null);
-  const hasCheck = (check.data ?? []).length > 0;
+  // Only videos that reached a real audience: a tiny channel's 500-view video is no model to build on.
+  const format = props.idea.format === "short" ? "short" : "long";
+  const checkVideos = useMemo(() => (check.data ?? []).filter((v) => bigEnough(v.views, format)), [check.data, format]);
+  const hasCheck = checkVideos.length > 0;
   const tab = chosen ?? (hasCheck ? "check" : game ? "game" : "outside");
   const setTab = (v: "check" | "game" | "outside") => setChosen(v);
   const [link, setLink] = useState("");
@@ -279,14 +283,14 @@ function RefPicker(props: { idea: IdeaDraft; have: Set<string>; onAdd: (ref: Ref
   const base: GalleryFilter = { where: "all", game: null, days: 365, small: false, sort: "jump" };
   const tiles: Tile[] = useMemo(() => {
     if (tab === "check") {
-      return [...(check.data ?? [])].sort((a, b) => (b.score ?? -1) - (a.score ?? -1))
+      return [...checkVideos].sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || b.views - a.views)
         .map((v) => ({ ...refFrom(v), match: v.match === "same" ? "Same idea" : "Same kind of video" }));
     }
     const rows = (gallery.data ?? []).filter((r) => r.channel_id !== (channel.data?.id ?? null));
     const pool = galleryItems(rows, games, base, today, channel.data?.id ?? null);
     return (tab === "game" ? pool.filter((r) => game && gameOfThumb(r, [game]) === game) : pool.filter((r) => r.game === null)).map((r) => refFrom(r));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, check.data, gallery.data, games, game, today, channel.data?.id]);
+  }, [tab, checkVideos, gallery.data, games, game, today, channel.data?.id]);
   const add = async (tile: Tile) => {
     setBusy(tile.video_id);
     try {
@@ -321,9 +325,9 @@ function RefPicker(props: { idea: IdeaDraft; have: Set<string>; onAdd: (ref: Ref
       </div>
       <Segmented label="Where from" value={tab} onChange={(v) => { setTab(v); setShown(12); }} options={tabs} />
       <small className="muted">
-        {tab === "check" ? "The videos the dashboard found when it searched YouTube for this idea, best against their channel's usual first."
-          : tab === "game" ? `Long-form ${game} videos that did at least 3x their channel's usual.`
-          : "Challenge videos on other games that did at least 3x their channel's usual."}
+        {tab === "check" ? `The videos with ${compact(minOutlierViews(format))} views or more that the dashboard found when it searched YouTube for this idea, best against their channel's usual first.`
+          : tab === "game" ? `Long-form ${game} videos that did at least 3x their channel's usual and reached ${compact(MIN_OUTLIER_VIEWS.long)} views or more.`
+          : `Challenge videos on other games that did at least 3x their channel's usual and reached ${compact(MIN_OUTLIER_VIEWS.long)} views or more.`}
       </small>
       {tab === "check" && check.isLoading ? <Loading label="Loading" /> : null}
       {tiles.length === 0 && !(tab === "check" && check.isLoading) ? (
@@ -338,6 +342,7 @@ function RefPicker(props: { idea: IdeaDraft; have: Set<string>; onAdd: (ref: Ref
               </a>
               <span className="thumb-card-title clip2">{t.title}</span>
               <span className="small muted clip">{t.match ? `${t.match}, ` : ""}{t.channel_title}</span>
+              {t.views !== null ? <span className="small muted">{compact(t.views)} views</span> : null}
               {props.have.has(t.video_id)
                 ? <span className="small muted">Added</span>
                 : <button type="button" className="btn btn-small" disabled={busy !== null} onClick={() => void add(t)}>{busy === t.video_id ? "Adding" : "Add"}</button>}

@@ -225,13 +225,33 @@ describe("checking one idea against YouTube", () => {
 
   it("boils a check down to how the same idea and the same kind of video did", async () => {
     const { summariseMarket } = await import("../supabase/functions/yt-api/scoring.ts");
-    const v = (id: string, match: "same" | "close", score: number | null, published = "2026-05-01T00:00:00Z") =>
-      ({ video_id: id, title: id, channel: "c", subscribers: 900, views: 1000, score, published, match });
-    const out = summariseMarket(30, [v("a", "same", 900), v("b", "same", 2), v("c", "same", 5, "2026-09-09T00:00:00Z"), v("d", "same", null), v("e", "close", 1), v("f", "close", 4)]);
-    // A tiny channel's 900x counts as 20x, so one freak does not carry the middle.
-    expect(out.same).toEqual({ n: 4, scored: 3, broke_out: 2, median: 5, newest: "2026-09-09" });
-    expect(out.close).toMatchObject({ n: 2, scored: 2, broke_out: 1, median: 2.5 });
+    const v = (id: string, match: "same" | "close", score: number | null, published = "2026-05-01T00:00:00Z", views = 50_000) =>
+      ({ video_id: id, title: id, channel: "c", subscribers: 900, views, score, published, match });
+    const out = summariseMarket(30, [
+      v("a", "same", 900), v("b", "same", 2), v("c", "same", 5, "2026-09-09T00:00:00Z"), v("d", "same", null), v("e", "close", 1), v("f", "close", 4),
+      // A tiny channel's 7x on 504 views: no model to build on, so it neither counts nor shows.
+      v("tiny", "same", 7.2, "2026-10-01T00:00:00Z", 504),
+    ], "long");
+    // A freak 900x counts as 20x, so one freak does not carry the middle.
+    expect(out.same).toEqual({ n: 5, scored: 3, broke_out: 2, small: 1, median: 5, newest: "2026-10-01" });
+    expect(out.close).toMatchObject({ n: 2, scored: 2, broke_out: 1, small: 0, median: 2.5 });
     expect(out.examples.map((e) => e.video_id)).toEqual(["a", "c", "b", "d"]);
-    expect(summariseMarket(12, []).same).toEqual({ n: 0, scored: 0, broke_out: 0, median: null, newest: null });
+    expect(out.min_views).toBe(10_000);
+    expect(summariseMarket(12, [], "long").same).toEqual({ n: 0, scored: 0, broke_out: 0, small: 0, median: null, newest: null });
+    // Shorts need far more views to count.
+    const shorts = summariseMarket(5, [v("s1", "same", 6, undefined, 50_000), v("s2", "same", 4, undefined, 400_000)], "short");
+    expect(shorts.same).toMatchObject({ scored: 1, broke_out: 1, small: 1 });
+    expect(shorts.examples.map((e) => e.video_id)).toEqual(["s2"]);
   });
+
+  it("only calls a video a breakout when it reached a real audience", async () => {
+    const { isBreakout, bigEnough } = await import("../supabase/functions/yt-api/scoring.ts");
+    expect(isBreakout(7.2, 504, "long")).toBe(false);
+    expect(isBreakout(3, 10_000, "long")).toBe(true);
+    expect(isBreakout(2.9, 2_000_000, "long")).toBe(false);
+    expect(isBreakout(5, 60_000, "short")).toBe(false);
+    expect(isBreakout(5, 100_000, "short")).toBe(true);
+    expect(bigEnough(null, "long")).toBe(false);
+  });
+
 });
