@@ -60,14 +60,14 @@ const message = (err: unknown) => (err instanceof Error ? err.message : "Somethi
 const count = (n: number) => `${n} ${n === 1 ? "note" : "notes"}`;
 
 /** In the idea editor: the notes for the editor kept with this idea, and a way to bring in the next export. */
-export function EditorNotesFold({ ideaId, title }: { ideaId?: string; title: string }) {
+export function EditorNotesFold({ ideaId, title, open, openSignal }: { ideaId?: string; title: string; open?: boolean; openSignal?: number }) {
   const notes = useEditorNotes();
   // In the order they were made: Cut 1, then Cut 2. The newest is open, and the next one goes in under it.
   const mine = (notes.data ?? []).filter((n) => n.idea_id === ideaId);
   const latest = mine[mine.length - 1];
   const summary = !ideaId ? "Save the idea first" : latest ? `${count(latest.markers.length)} from ${latest.name}` : "Bring in your Premiere markers";
   return (
-    <Fold title="For my editor" summary={summary}>
+    <Fold title="For my editor" summary={summary} open={open} openSignal={openSignal}>
       {!ideaId ? (
         <p className="small muted" style={{ margin: 0 }}>Save the idea first, then bring in the markers from your cut here.</p>
       ) : (
@@ -111,6 +111,7 @@ function ImportMarkers({ ideaId, nextName }: { ideaId: string; nextName: string 
     try {
       await addEditorNotes({ idea_id: ideaId, name: name.trim() || nextName, file_name: read.file, markers: read.markers });
       await queryClient.invalidateQueries({ queryKey: notesKey });
+      void queryClient.invalidateQueries({ queryKey: ["piece-counts"] });
       setRead(null);
       toast(`${count(read.markers.length)} kept with this idea.`);
     } catch (err) {
@@ -187,6 +188,7 @@ function EditorSheet({ sheet, title, open }: { sheet: EditorNotes; title: string
     try {
       await binEditorNotes(sheet.id);
       await queryClient.invalidateQueries({ queryKey: notesKey });
+      void queryClient.invalidateQueries({ queryKey: ["piece-counts"] });
       toast("Moved to the bin.");
     } catch (err) {
       toast(message(err), { error: true });

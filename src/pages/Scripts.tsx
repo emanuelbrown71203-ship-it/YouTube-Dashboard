@@ -53,7 +53,7 @@ async function binScript(id: string): Promise<void> {
   fail(error);
 }
 
-const useScripts = () => useQuery({ queryKey: scriptsKey, queryFn: getScripts });
+export const useScripts = () => useQuery({ queryKey: scriptsKey, queryFn: getScripts });
 const message = (err: unknown) => (err instanceof Error ? err.message : "Something went wrong. Try again.");
 const words = (text: string) => text.split(/\s+/).filter(Boolean).length;
 

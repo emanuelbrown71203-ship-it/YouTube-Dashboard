@@ -11,7 +11,7 @@ import { ago } from "../lib/format.ts";
 import { useConnection } from "../lib/hooks.ts";
 import { emotionCounts, emotionSummary, introChanged, scoredLines } from "../lib/intro.ts";
 import type { IdeaDraft } from "../lib/types.ts";
-import { PieceFigures, PieceParts } from "./PieceScore.tsx";
+import { PieceAdvice, PieceFigures, PieceParts } from "./PieceScore.tsx";
 
 const band = (score: number) => (score >= 75 ? "high" : score >= 55 ? "mid" : score >= 40 ? "even" : "low");
 
@@ -86,18 +86,7 @@ export function IntroScore(props: { form: IdeaDraft; onScored: (check: IntroChec
             })}
           </ul>
 
-          {check.missing.length ? (
-            <div className="intro-list">
-              <div className="small" style={{ fontWeight: 650 }}>What it's missing</div>
-              <ul className="small">{check.missing.map((m, i) => <li key={i}>{m}</li>)}</ul>
-            </div>
-          ) : null}
-          {check.better.length ? (
-            <div className="intro-list">
-              <div className="small" style={{ fontWeight: 650 }}>What could be better</div>
-              <ul className="small">{check.better.map((m, i) => <li key={i}>{m}</li>)}</ul>
-            </div>
-          ) : null}
+          <PieceAdvice reading={check} />
 
           <details className="intro-more">
             <summary>Emotions line by line</summary>

@@ -427,11 +427,35 @@ export class Safety extends Component<{ children: ReactNode }, { error: Error | 
  * A section that folds away. Closed, it shows its title and a one-line summary of what is in it, so a
  * long form reads as a short list until a part is opened.
  */
-export function Fold(props: { title: string; summary?: string | null; open?: boolean; children: ReactNode }) {
-  const [open, setOpen] = useState(Boolean(props.open));
+/**
+ * A closed heading with a one-line summary; tap to open. `rememberAs` keeps it open or closed in this browser
+ * the way the owner last left it. A new `openSignal` number opens it and brings it into view (a "Do it" button).
+ */
+export function Fold(props: { title: string; summary?: string | null; open?: boolean; children: ReactNode; rememberAs?: string; openSignal?: number }) {
+  const [open, setOpen] = useState(() => {
+    if (props.rememberAs) {
+      try {
+        const kept = localStorage.getItem(props.rememberAs);
+        if (kept === "1" || kept === "0") return kept === "1";
+      } catch { /* private mode */ }
+    }
+    return Boolean(props.open);
+  });
+  const box = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!props.openSignal) return;
+    setOpen(true);
+    requestAnimationFrame(() => box.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }, [props.openSignal]);
+  const toggle = () => setOpen((o) => {
+    if (props.rememberAs) {
+      try { localStorage.setItem(props.rememberAs, o ? "0" : "1"); } catch { /* private mode */ }
+    }
+    return !o;
+  });
   return (
-    <section className={`fold${open ? " open" : ""}`}>
-      <button type="button" className="fold-head" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+    <section ref={box} className={`fold${open ? " open" : ""}`}>
+      <button type="button" className="fold-head" aria-expanded={open} onClick={toggle}>
         <span className="fold-title">{props.title}</span>
         {!open && props.summary ? <span className="fold-sum clip">{props.summary}</span> : <span className="grow" />}
         <svg className="fold-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>

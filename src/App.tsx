@@ -17,6 +17,7 @@ import { Suggested } from "./pages/Suggested.tsx";
 import { type GoogleResult, SignIn } from "./pages/SignIn.tsx";
 import { Templates } from "./pages/Templates.tsx";
 import { Videos } from "./pages/Videos.tsx";
+import { FindBox } from "./pages/Find.tsx";
 
 // The sections, in the order they are listed. The first four sit in the phone's bottom bar; the rest
 // open from "More" there. On a wide screen all of them are in the side rail.
@@ -236,6 +237,7 @@ function Shell(props: { google: GoogleResult | null; clearGoogle: () => void; on
             <>
               <div className="page-head"><h1>Playbook</h1></div>
               <Tabs label="Playbook" base="/playbook" current={sub} tabs={PLAYBOOK_TABS} />
+              <div style={{ marginBottom: 16 }}><FindBox label="Find a template, line, script or idea" /></div>
               {sub === "lines" ? <Notes /> : sub === "scripts" ? <Scripts /> : <Templates />}
             </>
           )

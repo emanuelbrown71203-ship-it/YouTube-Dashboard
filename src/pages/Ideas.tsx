@@ -6,6 +6,8 @@ import { MyThumbnails } from "./MyThumbnails.tsx";
 import { ScriptScore, TitleScore } from "./PieceScores.tsx";
 import { ScriptStarter } from "./ScriptStarter.tsx";
 import { EditorNotesFold } from "./EditorNotes.tsx";
+import { MakingNow, usePieceCounts } from "./MakingNow.tsx";
+import { nextStage, nextStep, type Place } from "../lib/nextStep.ts";
 import { bareNote, checkCount } from "../lib/notes.ts";
 import { scoreIdea } from "../lib/ideaScore.ts";
 import { ImportIdeas, TemplateHint, TemplateScore, useTemplates } from "./Templates.tsx";
@@ -71,9 +73,12 @@ export function Ideas() {
   // The planner links straight to an idea.
   const route = useRoute();
   const editId = route.query.get("edit");
+  const openPart = route.query.get("open");
+  const [startAt, setStartAt] = useState<Place | null>(null);
   useEffect(() => {
     const idea = editId ? ideas.data?.find((i) => i.id === editId) : undefined;
     if (!idea) return;
+    setStartAt((["script", "editor", "thumbnail", "titles", "plan"] as const).find((p) => p === openPart) ?? null);
     setEditing(idea);
     navigate("/ideas", true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -91,6 +96,16 @@ export function Ideas() {
   const [importing, setImporting] = useState(false);
   // Game sections show their first few ideas; the rest open on request.
   const [openGames, setOpenGames] = useState<Set<string>>(new Set());
+  // Each game is one line until it is tapped open, so the board is a short list to scan, not 65 cards.
+  const [shownGames, setShownGames] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(remembered("yt-ideas-games-open") ?? "[]") as string[]); } catch { return new Set(); }
+  });
+  const showGame = (game: string, on?: boolean) => setShownGames((shown) => {
+    const next = new Set(shown);
+    if (on ?? !next.has(game)) next.add(game); else next.delete(game);
+    remember("yt-ideas-games-open", JSON.stringify([...next]));
+    return next;
+  });
   // Ideas added on this visit stay in view at the top of their game, even in a folded section.
   const [fresh, setFresh] = useState<Set<string>>(new Set());
   const toggleGame = (game: string) => setOpenGames((open) => {
@@ -143,6 +158,7 @@ export function Ideas() {
     try {
       const saved = await saveIdea({ ...blank(quickFormat), title: quick, topic: quickGame.trim() || null });
       setFresh((f) => new Set(f).add(saved.id));
+      showGame(quickGame.trim(), true);
       remember("yt-ideas-game", quickGame.trim());
       setQuick("");
       await reload();
@@ -232,6 +248,7 @@ export function Ideas() {
     <>
       <div className="page-head"><h1>Ideas</h1></div>
       <Tabs label="Ideas" base="/ideas" current="" tabs={IDEA_TABS} />
+      <MakingNow where="ideas" />
       <form className="quick-idea" onSubmit={add}>
         <div className="row" style={{ gap: 8 }}>
           <input className="input grow" value={quick} onChange={(e) => setQuick(e.target.value)} placeholder="A video you could make" aria-label="New idea title" maxLength={200} />
@@ -302,25 +319,31 @@ export function Ideas() {
           </div>
         </div>
       ) : view === "game" ? (
-        <div className={`stack${ideas.isFetching ? " fade" : ""}`} style={{ gap: 22 }}>
+        <div className={`stack${ideas.isFetching ? " fade" : ""}`} style={{ gap: 8 }}>
           {sections.length === 0 ? <div className="panel"><div className="empty"><h3>No open ideas</h3><p>Everything here has been published. Add the next one above.</p></div></div> : null}
           {sections.map(([game, cards]) => {
             const all = sorted(cards);
             const rest = all.filter((i) => !fresh.has(i.id));
             const shown = openGames.has(game) ? all : [...all.filter((i) => fresh.has(i.id)), ...rest.slice(0, FIRST_IN_GAME)];
+            const isOpen = shownGames.has(game) || all.some((i) => fresh.has(i.id));
             return (
             <section key={game || "none"} aria-label={game || "No game yet"}>
-              <div className="section-head">
+              <button type="button" className="game-row" aria-expanded={isOpen} onClick={() => showGame(game)}>
                 <h2>{game || "No game yet"}</h2>
-                <span className="small muted">{cards.length} {cards.length === 1 ? "idea" : "ideas"}</span>
-              </div>
-              {game ? null : <p className="small muted" style={{ margin: "0 0 8px" }}>Open an idea and choose its game to file it under a section.</p>}
-              <div className="game-ideas">{shown.map((idea) => card(idea, true))}</div>
+                <span className="row" style={{ gap: 8 }}>
+                  <span className="small muted">{cards.length} {cards.length === 1 ? "idea" : "ideas"}</span>
+                  <svg className="fold-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                </span>
+              </button>
+              {isOpen ? <>
+              {game ? null : <p className="small muted" style={{ margin: "8px 0" }}>Open an idea and choose its game to file it under a section.</p>}
+              <div className="game-ideas" style={{ marginTop: 10 }}>{shown.map((idea) => card(idea, true))}</div>
               {rest.length > FIRST_IN_GAME ? (
                 <button type="button" className="btn btn-quiet btn-small" style={{ marginTop: 8 }} onClick={() => toggleGame(game)}>
                   {openGames.has(game) ? "Hide older ideas" : `Show ${all.length - shown.length} older ${all.length - shown.length === 1 ? "idea" : "ideas"}`}
                 </button>
               ) : null}
+              </> : null}
             </section>
             );
           })}
@@ -348,12 +371,12 @@ export function Ideas() {
       )}
 
       {importing ? <ImportIdeas onClose={() => setImporting(false)} onAdded={() => void reload()} /> : null}
-      {editing ? <IdeaEditor key={editorKey} draft={editing} games={games} onClose={() => setEditing(null)} onChanged={reload} onOpen={setEditing} /> : null}
+      {editing ? <IdeaEditor key={editorKey} draft={editing} games={games} start={startAt} onClose={() => { setEditing(null); setStartAt(null); }} onChanged={reload} onOpen={setEditing} /> : null}
     </>
   );
 }
 
-function IdeaEditor(props: { draft: IdeaDraft; games: string[]; onClose: () => void; onChanged: () => Promise<void>; onOpen: (draft: IdeaDraft) => void }) {
+function IdeaEditor(props: { draft: IdeaDraft; games: string[]; start?: Place | null; onClose: () => void; onChanged: () => Promise<void>; onOpen: (draft: IdeaDraft) => void }) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const refsAll = useIdeaRefs();
@@ -361,6 +384,11 @@ function IdeaEditor(props: { draft: IdeaDraft; games: string[]; onClose: () => v
   const saved = useSavedVideos();
   const [form, setForm] = useState<IdeaDraft>(props.draft);
   const [dirty, setDirty] = useState(!props.draft.id && Boolean(props.draft.title));
+  // The one next step for a video being made, and the part of the editor it is done in. Opened from
+  // "Do it" on Making now, that part starts open; "Go" opens it and scrolls to it.
+  const counts = usePieceCounts();
+  const [signal, setSignal] = useState<{ place: Place | null; n: number }>({ place: props.start ?? null, n: props.start ? 1 : 0 });
+  const sig = (p: Place) => (signal.place === p ? signal.n : 0);
   const [saving, setSaving] = useState(false);
   const set = <K extends keyof IdeaDraft>(key: K, value: IdeaDraft[K]) => {
     setForm((f) => ({ ...f, [key]: value }));
@@ -511,6 +539,24 @@ function IdeaEditor(props: { draft: IdeaDraft; games: string[]; onClose: () => v
           </select>
         </label>
       ) : null}
+      {(() => {
+        if (!form.id || !making(form) || form.status === "published") return null;
+        const step = nextStep({
+          status: form.status ?? "idea", format: form.format ?? "long", hook: form.hook ?? null, concept: form.concept ?? null, outline: form.outline ?? null,
+          notes: form.notes ?? null, target_date: form.target_date ?? null, intro_check: form.intro_check ?? null, title_check: form.title_check ?? null,
+        }, counts.data?.get(form.id) ?? { cuts: 0, thumbs: 0 });
+        const to = nextStage(form.status ?? "idea");
+        return (
+          <div className="next-bar">
+            <span><span className="small muted">Next{step.fromList ? ", from your list" : ""}</span><br />{step.text}</span>
+            {step.advance && to ? (
+              <button type="button" className="btn btn-small" onClick={() => { setForm((f) => ({ ...f, status: to.key, picked_at: f.picked_at ?? new Date().toISOString() })); setDirty(true); }}>Move to {to.label}</button>
+            ) : step.place ? (
+              <button type="button" className="btn btn-primary btn-small" onClick={() => setSignal((x) => ({ place: step.place, n: x.n + 1 }))}>Go</button>
+            ) : null}
+          </div>
+        );
+      })()}
 
       <Fold title="Scores" summary={scoreSummary}>
         <ScorePanel draft={form} dirty={dirty} />
@@ -520,7 +566,7 @@ function IdeaEditor(props: { draft: IdeaDraft; games: string[]; onClose: () => v
         />
       </Fold>
 
-      <Fold title="Script" summary={scriptSummary} open={!form.id || Boolean(form.hook || form.concept || form.outline)}>
+      <Fold title="Script" summary={scriptSummary} open={!form.id || Boolean(form.hook || form.concept || form.outline) || props.start === "script"} openSignal={sig("script")}>
         <ScriptStarter form={form} onUse={(part, value) => set(part, value)} />
         <label className="field">
           <span>Hook</span>
@@ -539,9 +585,9 @@ function IdeaEditor(props: { draft: IdeaDraft; games: string[]; onClose: () => v
         <ScriptScore form={form} onScored={(check) => { setForm((f) => ({ ...f, script_check: check })); void props.onChanged(); }} />
       </Fold>
 
-      <EditorNotesFold ideaId={form.id} title={form.title} />
+      <EditorNotesFold ideaId={form.id} title={form.title} open={props.start === "editor"} openSignal={sig("editor")} />
 
-      <Fold title="Thumbnail" summary={thumbSummary}>
+      <Fold title="Thumbnail" summary={thumbSummary} open={props.start === "thumbnail"} openSignal={sig("thumbnail")}>
         {form.format !== "short" ? (
           <label className="field">
             <span>Thumbnail idea</span>
@@ -553,7 +599,7 @@ function IdeaEditor(props: { draft: IdeaDraft; games: string[]; onClose: () => v
         <IdeaRefs idea={form} onPending={(refs) => set("pending_refs", refs)} />
       </Fold>
 
-      <Fold title="Other titles" summary={options.filter((o) => o.trim()).length ? `${options.filter((o) => o.trim()).length} to try` : "Title helper"}>
+      <Fold title="Other titles" summary={options.filter((o) => o.trim()).length ? `${options.filter((o) => o.trim()).length} to try` : "Title helper"} open={props.start === "titles"} openSignal={sig("titles")}>
         <TitleHelper
           draft={form} game={game} kept={options}
           onUse={(t) => { if (title.trim() && !options.includes(title) && options.length < 5) set("title_options", [...options, title]); set("title", t); }}
@@ -576,7 +622,7 @@ function IdeaEditor(props: { draft: IdeaDraft; games: string[]; onClose: () => v
         />
       </Fold>
 
-      <Fold title="Plan" summary={planSummary}>
+      <Fold title="Plan" summary={planSummary} open={props.start === "plan"} openSignal={sig("plan")}>
         <div className="field-row">
           <label className="field">
             <span>Aim to post by</span>

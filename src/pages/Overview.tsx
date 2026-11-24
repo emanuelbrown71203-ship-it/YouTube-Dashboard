@@ -3,8 +3,10 @@ import { GoalsStrip, KindWords, RunBand, STATS_TABS, Tabs } from "./Growth.tsx";
 import { FrontLines } from "./Notes.tsx";
 import { NewUpload, WeekCard } from "./Pulse.tsx";
 import { FollowUpsWaiting } from "./Suggested.tsx";
+import { FindBox } from "./Find.tsx";
+import { MakingNow } from "./MakingNow.tsx";
 import { BarList, Sparkline, Timeline, type UploadPin } from "../components/Timeline.tsx";
-import { Delta, ErrorNote, FormatTag, Loading, Mult, Segmented, Thumb } from "../components/ui.tsx";
+import { Delta, ErrorNote, Fold, FormatTag, Loading, Mult, Segmented, Thumb } from "../components/ui.tsx";
 import { ago, compact, day, FORMAT_PLURAL, hours, signed, whole } from "../lib/format.ts";
 import { useChannel, useConnection, useDaily, useFormatDaily, useReports, useSyncRuns, useVideos } from "../lib/hooks.ts";
 import {
@@ -97,7 +99,7 @@ export function Overview({ view }: { view: "home" | "stats" }) {
         {home ? null : <Segmented label="Time range" value={range} options={RANGES} onChange={setRange} />}
       </div>
       {home ? null : <Tabs label="Stats" base="/stats" current="" tabs={STATS_TABS} />}
-      {home ? <><RunBand /><NewUpload /><FollowUpsWaiting /><WeekCard /></> : null}
+      {home ? <><RunBand /><MakingNow where="home" /><div style={{ marginBottom: 18 }}><FindBox /></div></> : null}
 
       {connection.data?.connection_error ? (
         <div className="notice error" role="alert">
@@ -128,13 +130,46 @@ export function Overview({ view }: { view: "home" | "stats" }) {
       </div>}
 
       {home ? (
-        <>
+        // Everything that is not the next step waits here, closed, until the owner asks for it.
+        <Fold title="Everything else" summary="Your latest upload, this week, goals and more" rememberAs="yt-home-more">
+          <NewUpload /><FollowUpsWaiting /><WeekCard />
           <FrontLines />
           <div style={{ marginBottom: 22 }}>
             <KindWords />
             <GoalsStrip />
           </div>
-        </>
+          <section className="section">
+          <div className="section-head">
+            <h2>Latest uploads</h2>
+            <a href="#/videos">All videos</a>
+          </div>
+          <div className="panel">
+            {latest.length === 0 ? <div className="empty"><h3>No uploads stored yet</h3><p>They appear after the first sync.</p></div> : null}
+            {latest.map((v) => (
+              <a key={v.id} className="item" href={`#/videos?v=${v.id}`}>
+                <Thumb src={v.thumbnail_url} seconds={v.duration_s} small short={v.content_type === "short"} />
+                <span className="grow">
+                  <span className="title clip2">{v.title}</span>
+                  <span className="meta row-wrap">
+                    <FormatTag format={v.content_type} />
+                    <span>{ago(v.published_at)}</span>
+                  </span>
+                </span>
+                <span style={{ textAlign: "right" }}>
+                  <span className="fig" style={{ fontSize: 18, display: "block" }}>{compact(v.views)}</span>
+                  <span className="small muted">views</span>
+                  {complete && v.vs_typical !== null ? <span style={{ display: "block", marginTop: 4 }}><Mult value={v.vs_typical} /></span> : null}
+                </span>
+              </a>
+            ))}
+          </div>
+          {!complete && latest.length ? (
+            <p className="small muted" style={{ marginTop: 8 }}>
+              {whole(videos.data?.length ?? 0)} of {whole(channel.data?.videos ?? 0)} uploads are stored so far. How each one compares with your usual shows once YouTube is connected.
+            </p>
+          ) : null}
+          </section>
+        </Fold>
       ) : null}
 
       {home ? null : <div className={`panel${daily.isFetching ? " fade" : ""}`}>
@@ -172,40 +207,8 @@ export function Overview({ view }: { view: "home" | "stats" }) {
         </p>
       </div>}
 
-      <div className={home ? "section" : "two-col section"}>
-        {home ? <section>
-          <div className="section-head">
-            <h2>Latest uploads</h2>
-            <a href="#/videos">All videos</a>
-          </div>
-          <div className="panel">
-            {latest.length === 0 ? <div className="empty"><h3>No uploads stored yet</h3><p>They appear after the first sync.</p></div> : null}
-            {latest.map((v) => (
-              <a key={v.id} className="item" href={`#/videos?v=${v.id}`}>
-                <Thumb src={v.thumbnail_url} seconds={v.duration_s} small short={v.content_type === "short"} />
-                <span className="grow">
-                  <span className="title clip2">{v.title}</span>
-                  <span className="meta row-wrap">
-                    <FormatTag format={v.content_type} />
-                    <span>{ago(v.published_at)}</span>
-                  </span>
-                </span>
-                <span style={{ textAlign: "right" }}>
-                  <span className="fig" style={{ fontSize: 18, display: "block" }}>{compact(v.views)}</span>
-                  <span className="small muted">views</span>
-                  {complete && v.vs_typical !== null ? <span style={{ display: "block", marginTop: 4 }}><Mult value={v.vs_typical} /></span> : null}
-                </span>
-              </a>
-            ))}
-          </div>
-          {!complete && latest.length ? (
-            <p className="small muted" style={{ marginTop: 8 }}>
-              {whole(videos.data?.length ?? 0)} of {whole(channel.data?.videos ?? 0)} uploads are stored so far. How each one compares with your usual shows once YouTube is connected.
-            </p>
-          ) : null}
-        </section> : null}
-
-        {home ? null : <section>
+      {home ? null : <div className="two-col section">
+        <section>
           <div className="section-head"><h2>Where views come from</h2></div>
           <div className="panel panel-pad">
             {trafficRows.length ? (
@@ -228,8 +231,8 @@ export function Overview({ view }: { view: "home" | "stats" }) {
             )}
           </div>
           <FormatSplit period={period} formats={formats.data ?? []} />
-        </section>}
-      </div>
+        </section>
+      </div>}
     </>
   );
 }

@@ -370,6 +370,53 @@ describe("growth", () => {
     expect(scriptText({ hook: " Hi ", concept: null, outline: "Beat 1" })).toBe(scriptKeyText(" Hi ", null, "Beat 1"));
   });
 
+  it("gives each video being made one next step, from how far along it is and what is written", async () => {
+    const { nextStep, firstOpenBox, dueWord, makingOrder } = await import("../src/lib/nextStep.ts");
+    const base = { status: "scripting" as const, format: "long" as const, hook: null, concept: null, outline: null, notes: null, target_date: null, intro_check: null, title_check: null };
+    const none = { cuts: 0, thumbs: 0 };
+    // Scripting walks through the hook, what happens, the outline, the owner's own list, then the intro score.
+    expect(nextStep(base, none)).toMatchObject({ place: "script", advance: false, text: expect.stringContaining("hook") });
+    expect(nextStep({ ...base, hook: "Meet Patty." }, none).text).toContain("what happens");
+    expect(nextStep({ ...base, hook: "x", concept: "y" }, none).text).toContain("Outline");
+    const outline = "Margit\n- [x] Buy the club\n- [ ] Film the Margit fight\n- [ ] Godrick";
+    expect(firstOpenBox(outline)).toBe("Film the Margit fight");
+    expect(nextStep({ ...base, hook: "x", concept: "y", outline }, none)).toMatchObject({ text: "Film the Margit fight", fromList: true });
+    expect(nextStep({ ...base, hook: "x", concept: "y", outline: "All ticked\n- [x] Done" }, none).text).toContain("Score your intro");
+    expect(nextStep({ ...base, hook: "x", concept: "y", outline: "Beats", intro_check: {} as never }, none)).toMatchObject({ advance: true, text: expect.stringContaining("Filming") });
+    // Editing: notes for the editor, then the thumbnail (long-form only), then the title, then schedule it.
+    const editing = { ...base, status: "editing" as const };
+    expect(nextStep(editing, none).place).toBe("editor");
+    expect(nextStep(editing, { cuts: 2, thumbs: 0 }).place).toBe("thumbnail");
+    expect(nextStep({ ...editing, format: "short" as const }, { cuts: 1, thumbs: 0 }).place).toBe("titles");
+    expect(nextStep(editing, { cuts: 1, thumbs: 1 }).place).toBe("titles");
+    expect(nextStep({ ...editing, title_check: {} as never }, { cuts: 1, thumbs: 1 })).toMatchObject({ advance: true });
+    expect(nextStep({ ...base, status: "scheduled", target_date: "2026-12-04" }, { cuts: 1, thumbs: 1 }).text).toContain("Dec 4");
+    // How close it is, in plain words.
+    expect(dueWord("2026-11-27", "2026-11-24")).toBe("Due in 3 days");
+    expect(dueWord("2026-11-25", "2026-11-24")).toBe("Due tomorrow");
+    expect(dueWord("2026-11-24", "2026-11-24")).toBe("Due today");
+    expect(dueWord("2026-11-22", "2026-11-24")).toBe("2 days late");
+    expect(dueWord(null, "2026-11-24")).toBeNull();
+    // Due soonest first; then the one furthest along.
+    const order = makingOrder([
+      { id: "a", target_date: null, status: "scripting" }, { id: "b", target_date: "2026-12-04", status: "editing" },
+      { id: "c", target_date: "2026-11-27", status: "editing" }, { id: "d", target_date: null, status: "editing" },
+    ] as never[]) as { id: string }[];
+    expect(order.map((x) => x.id)).toEqual(["c", "b", "d", "a"]);
+  });
+
+  it("finds a thought by any of its words, wherever it was written down", async () => {
+    const { matches, snippet } = await import("../src/pages/Find.tsx");
+    expect(matches(["merchant", "boss"], "Elden Ring merchant run", "- [ ] A new weapon every boss")).toBe(true);
+    expect(matches(["merchant", "radahn"], "Elden Ring merchant run")).toBe(false);
+    expect(matches([], "anything")).toBe(false);
+    const text = "Some words before. ".repeat(10) + "The merchant sells a club." + " And after.".repeat(20);
+    const piece = snippet(text, ["merchant"]);
+    expect(piece).toContain("merchant");
+    expect(piece.startsWith("…")).toBe(true);
+    expect(piece.length).toBeLessThan(200);
+  });
+
   it("reads bullets and checkboxes out of a note, and ticks them", async () => {
     const { parseNote, toggleCheck, untickAll, checkCount, plainNote, bareNote, hasList } = await import("../src/lib/notes.ts");
     const note = "Before I film:\n- [ ] Write the hook\n- [x] Pick the build\n  - [ ] Test it once\n\nThings to say\n- The rule\n* The stakes\nA last line";

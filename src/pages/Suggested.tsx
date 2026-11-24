@@ -31,6 +31,8 @@ const KIND_LABEL: Record<Suggestion["kind"], string> = {
 /** A suggestion this weak on YouTube right now goes in the "weaker" fold. */
 const WEAK = 40;
 const BATCH_EVERY_DAYS = 7;
+/** How many of the newest ideas show before "Show N more". */
+const FIRST_SHOWN = 3;
 const message = (err: unknown) => (err instanceof Error ? err.message : "Something went wrong. Try again.");
 
 /** Best first: the Recommended score, then Your history; ones not checked yet go last. */
@@ -47,6 +49,8 @@ export function Suggested() {
   const queryClient = useQueryClient();
   const toast = useToast();
   const [writing, setWriting] = useState(false);
+  // A few at a time: the strongest three first, the rest a tap away.
+  const [allStrong, setAllStrong] = useState(false);
   const ideas = list.data ?? [];
   const scores = useIdeaScores(ideas);
   const checking = useIdeaChecking(ideas);
@@ -98,10 +102,14 @@ export function Suggested() {
 
   return (
     <>
-      <p className="soft" style={{ margin: "0 0 12px", maxWidth: "68ch" }}>
-        Ideas written from what is working for you, newest batch first. Keep the ones you like: they go to your board.
-        Older ones move down to Earlier suggestions and go away after three weeks, so there is nothing to clear. Not for me only rules out that one video, never the kind of idea or title, and never touches YouTube.
-      </p>
+      <p className="soft" style={{ margin: "0 0 6px", maxWidth: "68ch" }}>Ideas written from what's working for you. Keep the ones you like.</p>
+      <details className="intro-more" style={{ margin: "0 0 12px" }}>
+        <summary>How this works</summary>
+        <p className="small soft" style={{ maxWidth: "68ch" }}>
+          The newest batch is on top. Keep sends one to your board. Older ones move down to Earlier suggestions and go away after three weeks, so there is nothing to clear.
+          Not for me only rules out that one video, never the kind of idea or title, and never touches YouTube.
+        </p>
+      </details>
       <div className="row-wrap" style={{ gap: 10, marginBottom: 14, alignItems: "center" }}>
         <button type="button" className="btn btn-primary" disabled={busy || !c?.ai} onClick={() => void more()}>
           <Icon name="plus" />{busy ? "Writing ideas" : "Give me more"}
@@ -136,7 +144,12 @@ export function Suggested() {
       {groups.strong.length ? (
         <section className="section" style={{ marginTop: groups.follow.length ? undefined : 0 }}>
           {groups.follow.length || groups.earlier.length ? <div className="section-head"><h2>Newest ideas</h2></div> : null}
-          <div className="stack" style={{ gap: 10 }}>{groups.strong.map((i) => <SuggestionCard key={i.id} idea={i} scores={scores.get(i.id)} onDone={refresh} />)}</div>
+          <div className="stack" style={{ gap: 10 }}>{(allStrong ? groups.strong : groups.strong.slice(0, FIRST_SHOWN)).map((i) => <SuggestionCard key={i.id} idea={i} scores={scores.get(i.id)} onDone={refresh} />)}</div>
+          {groups.strong.length > FIRST_SHOWN ? (
+            <button type="button" className="btn btn-quiet btn-small" style={{ marginTop: 8, paddingLeft: 0 }} onClick={() => setAllStrong((x) => !x)}>
+              {allStrong ? "Show fewer" : `Show ${groups.strong.length - FIRST_SHOWN} more`}
+            </button>
+          ) : null}
         </section>
       ) : null}
       {groups.weak.length ? (

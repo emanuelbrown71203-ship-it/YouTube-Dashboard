@@ -217,6 +217,21 @@ export const scoreThumb = (body: ScoreBody & { thumb_id: string }) =>
   callApi<PieceReading & { thumb_id: string }>("/ai/score", { kind: "thumbnail", ...body });
 
 const THUMB_COLUMNS = "id, idea_id, name, score, created_at";
+
+/** For each idea, how many cuts were brought in for the editor and how many of the owner's own thumbnails it has. */
+export async function getPieceCounts(): Promise<Map<string, { cuts: number; thumbs: number }>> {
+  const [cuts, thumbs] = await Promise.all([
+    supabase.from("yt_editor_notes").select("idea_id").is("trashed_at", null).limit(2000),
+    supabase.from("yt_idea_thumbs").select("idea_id").is("trashed_at", null).limit(2000),
+  ]);
+  fail(cuts.error);
+  fail(thumbs.error);
+  const out = new Map<string, { cuts: number; thumbs: number }>();
+  const add = (id: string, key: "cuts" | "thumbs") => out.set(id, { ...(out.get(id) ?? { cuts: 0, thumbs: 0 }), [key]: (out.get(id)?.[key] ?? 0) + 1 });
+  for (const r of (cuts.data ?? []) as { idea_id: string }[]) add(r.idea_id, "cuts");
+  for (const r of (thumbs.data ?? []) as { idea_id: string }[]) add(r.idea_id, "thumbs");
+  return out;
+}
 export async function getIdeaThumbs(ideaId: string): Promise<IdeaThumb[]> {
   const { data, error } = await supabase.from("yt_idea_thumbs").select(THUMB_COLUMNS).eq("idea_id", ideaId).is("trashed_at", null).order("created_at").limit(20);
   fail(error);

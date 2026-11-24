@@ -2,7 +2,7 @@
 // scored: "Your history" (your own rules, and how your past ones did) and "Recommended" (what is working
 // on YouTube now). Shared by every piece so they look and read the same.
 
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import type { PieceReading, PieceSide } from "../lib/api.ts";
 import { ago } from "../lib/format.ts";
 
@@ -59,22 +59,32 @@ function SideParts({ title, side }: { title: string; side: PieceSide }) {
   );
 }
 
-/** What it is missing and what could be better, open: the part the owner acts on. */
+/**
+ * What it is missing and what could be better: the part the owner acts on. Only the most important one
+ * of each shows at first (the AI lists them most important first); the rest are a tap away, so it is
+ * never a wall of advice.
+ */
 export function PieceAdvice({ reading }: { reading: Pick<PieceReading, "missing" | "better"> }) {
+  const [all, setAll] = useState(false);
+  const missing = all ? reading.missing : reading.missing.slice(0, 1);
+  const better = all ? reading.better : reading.better.slice(0, 1);
+  const hidden = reading.missing.length + reading.better.length - missing.length - better.length;
   return (
     <>
-      {reading.missing.length ? (
+      {missing.length ? (
         <div className="intro-list">
-          <div className="small" style={{ fontWeight: 650 }}>What it's missing</div>
-          <ul className="small">{reading.missing.map((m, i) => <li key={i}>{m}</li>)}</ul>
+          <div className="small" style={{ fontWeight: 650 }}>{all ? "What it's missing" : "Most missing"}</div>
+          <ul className="small">{missing.map((m, i) => <li key={i}>{m}</li>)}</ul>
         </div>
       ) : null}
-      {reading.better.length ? (
+      {better.length ? (
         <div className="intro-list">
-          <div className="small" style={{ fontWeight: 650 }}>What could be better</div>
-          <ul className="small">{reading.better.map((m, i) => <li key={i}>{m}</li>)}</ul>
+          <div className="small" style={{ fontWeight: 650 }}>{all ? "What could be better" : "Biggest win"}</div>
+          <ul className="small">{better.map((m, i) => <li key={i}>{m}</li>)}</ul>
         </div>
       ) : null}
+      {hidden > 0 ? <button type="button" className="btn btn-quiet btn-small" style={{ marginTop: 4, paddingLeft: 0 }} onClick={() => setAll(true)}>Show {hidden} more</button>
+        : all && reading.missing.length + reading.better.length > 2 ? <button type="button" className="btn btn-quiet btn-small" style={{ marginTop: 4, paddingLeft: 0 }} onClick={() => setAll(false)}>Show less</button> : null}
     </>
   );
 }

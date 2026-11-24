@@ -25,7 +25,10 @@ export function MyThumbnails({ idea }: { idea: IdeaDraft }) {
   const [framing, setFraming] = useState<File | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
-  const reload = () => void queryClient.invalidateQueries({ queryKey: thumbsKey(idea.id ?? "") });
+  const reload = () => {
+    void queryClient.invalidateQueries({ queryKey: thumbsKey(idea.id ?? "") });
+    void queryClient.invalidateQueries({ queryKey: ["piece-counts"] });
+  };
   const list = thumbs.data ?? [];
 
   if (!idea.id) return <small className="muted">Save the idea, then add your thumbnail here to score it.</small>;

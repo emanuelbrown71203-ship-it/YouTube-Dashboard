@@ -349,22 +349,34 @@ free and the owner has said to use them whenever a score needs them.
   and a More menu. Put a new page in the section it belongs to; when it
   fits none of them, give it a section of its own. Never tuck it under
   whichever section is handy.
-- The front page is for what the owner acts on, and the owner has said it
-  felt overbearing, so keep it short and never say a thing twice: the new
-  upload, waiting follow-ups, one "This week" card (the upload rhythm rows,
-  only with a target, then a few lines; no goal there, since Goals has its
-  own block), one saved line and one pinned comment (a different one each
-  day, `src/lib/daily.ts`), up to 2 goals and 3 latest uploads, each linking
-  to the rest. A block with nothing in it is left out. Charts and breakdowns go in the Stats section
-  (`#/stats`), not there.
+- **Show what's next, fold the rest.** The owner has ADHD and said the app
+  was "a bit much"; they asked it to "show me what's next". Home opens on
+  "Making now" (`src/pages/MakingNow.tsx`): each video in production (picked,
+  not out yet), due soonest first, with ONE next step (`nextStep` in
+  `src/lib/nextStep.ts`: from its stage and what is written, the first
+  unticked box on their own list when there is one) and one button ("Do it"
+  opens the idea editor on that part, or "Move to <stage>"). Under it, one
+  Find box (`src/pages/Find.tsx`: every word, across ideas, lines, templates,
+  scripts and goals). Everything else (the new upload, follow-ups, the "This
+  week" card, a saved line and a pinned comment, up to 2 goals, 3 latest
+  uploads) sits in one closed "Everything else" fold, remembered per browser.
+  Never say a thing twice, leave out a block with nothing in it, and put
+  charts and breakdowns in the Stats section (`#/stats`), not on Home. New
+  things go behind a tap unless they are the next step.
 - Keep screens short on a phone. Detail that is not needed every time goes
   in a `Fold` (`src/components/ui.tsx`): a closed heading with a one-line
   summary. The idea editor keeps title, game, format and "Am I making it?"
   open and folds scores, script, thumbnail, other titles, plan and notes;
-  Settings folds every part. The Ideas board never makes the owner clear
-  old ideas (`src/lib/ideaOrder.ts`): games keep their order (most ideas
-  first), and each game shows its 5 newest ideas, with older ones folded
-  under "Show N older ideas". `sort_order` is when an idea joined the
+  Settings folds every part. The idea editor of a video being made shows its
+  next step under the stage, with "Go" opening that part (`Fold`'s
+  `openSignal`). Score advice shows the one thing most missing and the
+  biggest win, the rest under "Show N more"; Suggested shows the strongest 3
+  of the newest batch first. The Ideas board opens on a compact Making now,
+  then each game as one line until tapped (remembered per browser; adding an
+  idea opens its game), and never makes the owner clear old ideas
+  (`src/lib/ideaOrder.ts`): games keep their order (most ideas first), and
+  an open game shows its 5 newest ideas, with older ones folded under "Show
+  N older ideas". `sort_order` is when an idea joined the
   board; keeping a suggestion resets it to that moment. Filters are dropdowns, not rows of
   chips.
 - On a wider screen the side panel (`Drawer`: the idea editor and every
