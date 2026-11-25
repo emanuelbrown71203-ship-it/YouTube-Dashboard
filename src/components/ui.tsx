@@ -1,0 +1,477 @@
+// Small shared pieces: icons, buttons that pick one of a few options, the
+// "times the usual" pill, thumbnails, the side drawer and toasts.
+
+import { Component, createContext, type CSSProperties, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { duration, FORMAT_LABEL, multiple, percentChange } from "../lib/format.ts";
+
+const PATHS: Record<string, string> = {
+  overview: "M4 19V10m5.5 9V5M15 19v-6m5.5 6V8",
+  home: "M4 11.5 12 4l8 7.5M6.5 10v9.5h11V10",
+  goals: "M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18zm0-5a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm0-4h.01",
+  comments: "M5 5.5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-5 3.5v-3.5H5a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1z",
+  playbook: "M6 4h11a1 1 0 0 1 1 1v15H7.5A1.5 1.5 0 0 1 6 18.5zM6 18.5A1.5 1.5 0 0 1 7.5 17H18M9.5 8h5M9.5 11.5h5",
+  more: "M5 12h.01M12 12h.01M19 12h.01",
+  videos: "M4 6.5A1.5 1.5 0 0 1 5.5 5h13A1.5 1.5 0 0 1 20 6.5v11a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5zM10 9.5v5l4.5-2.5z",
+  ideas: "M9 18h6m-5 3h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2v.1h5V16c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z",
+  research: "M10.5 17a6.5 6.5 0 1 1 0-13 6.5 6.5 0 0 1 0 13zm5-1.5L20 20",
+  settings: "M4 7h9m4 0h3M4 17h3m4 0h9M15 4.5v5M9 14.5v5",
+  external: "M14 5h5v5m0-5-8 8M11 6H6a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-5",
+  plus: "M12 5v14M5 12h14",
+  image: "M5 5h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm-1 11 4.5-4.5 3.5 3.5 2.5-2.5L20 17M15.5 9.5h.01",
+  close: "M6 6l12 12M18 6 6 18",
+  bookmark: "M7 4h10a1 1 0 0 1 1 1v15l-6-4-6 4V5a1 1 0 0 1 1-1z",
+  refresh: "M19 12a7 7 0 1 1-2.1-5M19 4v4h-4",
+};
+
+export function Icon({ name, filled = false }: { name: keyof typeof PATHS | string; filled?: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={PATHS[name]} />
+    </svg>
+  );
+}
+
+export function Segmented<T extends string>(props: {
+  label: string;
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div className="seg" role="group" aria-label={props.label}>
+      {props.options.map((o) => (
+        <button key={o.value} type="button" aria-pressed={o.value === props.value} onClick={() => props.onChange(o.value)}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** A percentage change with an arrow, so direction never depends on colour. */
+export function Delta({ value, suffix }: { value: number | null; suffix?: string }) {
+  if (value === null) return null;
+  const flat = Math.abs(value) < 0.5;
+  return (
+    <span className={`delta ${flat ? "flat" : value > 0 ? "up" : "down"}`}>
+      <span aria-hidden="true">{flat ? "●" : value > 0 ? "▲" : "▼"}</span>
+      {percentChange(value)}
+      {suffix ? <span className="muted" style={{ fontWeight: 500 }}> {suffix}</span> : null}
+    </span>
+  );
+}
+
+export function multStep(value: number | null | undefined): number {
+  if (value === null || value === undefined) return 0;
+  return value >= 25 ? 5 : value >= 10 ? 4 : value >= 5 ? 3 : value >= 2 ? 2 : value >= 1 ? 1 : 0;
+}
+
+/** "14x": how many times the usual views. Darker is bigger. */
+export function Mult({ value, title }: { value: number | null | undefined; title?: string }) {
+  return (
+    <span className="mult" data-step={multStep(value)} title={title ?? (value == null ? "Not enough uploads to know what is usual" : `${multiple(value)} the usual views`)}>
+      {multiple(value)}
+    </span>
+  );
+}
+
+export function FormatTag({ format }: { format: string | null | undefined }) {
+  if (!format) return null;
+  return (
+    <span className="tag">
+      <span className="dot" style={{ background: `var(--s-${format})` }} />
+      {FORMAT_LABEL[format] ?? format}
+    </span>
+  );
+}
+
+/**
+ * YouTube's standard thumbnail for a Short is a wide crop from the middle of an
+ * upright video, which looks zoomed in. Shorts have an upright one as well.
+ */
+function uprightThumb(src: string): string | null {
+  const id = /\/vi\/([\w-]{11})\//.exec(src)?.[1];
+  return id ? `https://i.ytimg.com/vi/${id}/oardefault.jpg` : null;
+}
+
+// Which thumbnails are on or near the screen, worked out from where they sit on the page each time
+// it scrolls. Plain position sums on purpose: they behave the same in every browser.
+const watched = new Set<{ el: HTMLElement; set: (near: boolean) => void }>();
+let looking = false;
+function look() {
+  looking = false;
+  const reach = 700;
+  for (const { el, set } of watched) {
+    const box = el.getBoundingClientRect();
+    // A frame with no size is not laid out yet (or is hidden); leave it for the next look.
+    set(box.width > 0 && box.bottom > -reach && box.top < window.innerHeight + reach);
+  }
+}
+function lookSoon() {
+  if (looking) return;
+  looking = true;
+  requestAnimationFrame(look);
+}
+if (typeof window !== "undefined") {
+  // Capture, so scrolling inside a panel or a table counts as well.
+  window.addEventListener("scroll", lookSoon, { passive: true, capture: true });
+  window.addEventListener("resize", lookSoon, { passive: true });
+  // Rows that appear without a scroll (a filter, more rows loading) are caught by a slow tick.
+  window.setInterval(() => { if (watched.size) lookSoon(); }, 1000);
+}
+
+/** Whether an element is on or near the screen: pictures are only loaded while it is. */
+export function useNear<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [near, setNear] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const entry = { el, set: setNear };
+    watched.add(entry);
+    lookSoon();
+    return () => void watched.delete(entry);
+  }, []);
+  return [ref, near] as const;
+}
+
+/** The shape each picture turned out to have, so a list does not jump when it is drawn again. */
+const shapes = new Map<string, number>();
+
+/**
+ * A video's thumbnail, never cropped: the frame takes the shape of the picture once it has loaded.
+ * A Short's upright picture is not always upright (a wide or square clip posted as a Short keeps
+ * its own shape), so the shape is read from the picture and not assumed from the format.
+ */
+export function Thumb(props: { src: string | null | undefined; seconds?: number | null; tall?: boolean; small?: boolean; short?: boolean }) {
+  const [failed, setFailed] = useState(0);
+  const [, redraw] = useState(0);
+  // Only pictures on or near the screen are kept loaded. An upright picture comes from YouTube at
+  // full size, and a long list of those is more than a phone will hold: they turn black.
+  const frame = useRef<HTMLSpanElement>(null);
+  const [near, setNear] = useState(false);
+  useEffect(() => {
+    const el = frame.current;
+    if (!el) return;
+    const entry = { el, set: setNear };
+    watched.add(entry);
+    lookSoon();
+    return () => void watched.delete(entry);
+  }, []);
+  const upright = props.short && props.src ? uprightThumb(props.src) : null;
+  const sources = [upright, props.src].filter((s): s is string => Boolean(s));
+  const src = sources[Math.min(failed, sources.length - 1)];
+  const isUpright = Boolean(upright) && src === upright;
+  const ratio = src ? shapes.get(src) : undefined;
+  // Until the picture has loaded, guess: upright for a Short, wide for everything else.
+  const shape = ratio === undefined ? (props.tall || isUpright ? "tall" : "wide") : ratio < 0.8 ? "tall" : ratio < 1.25 ? "square" : "wide";
+  return (
+    <span
+      ref={frame}
+      className={`thumb${shape === "wide" ? "" : ` ${shape}`}${props.small ? " small" : ""}`}
+      style={ratio === undefined ? undefined : { aspectRatio: String(Math.min(2, Math.max(0.5, ratio))) }}
+    >
+      {src && near ? (
+        <img
+          key={src} src={src} alt="" decoding="async"
+          onError={() => setFailed((n) => n + 1)}
+          onLoad={(e) => {
+            const { naturalWidth: w, naturalHeight: h } = e.currentTarget;
+            // YouTube answers a missing picture with a small grey placeholder; treat that as missing.
+            if (isUpright && w <= 120 && h <= 90) return setFailed((n) => n + 1);
+            if (w > 0 && h > 0 && shapes.get(src) !== w / h) {
+              shapes.set(src, w / h);
+              redraw((n) => n + 1);
+            }
+          }}
+        />
+      ) : null}
+      {props.seconds ? <span className="len">{duration(props.seconds)}</span> : null}
+    </span>
+  );
+}
+
+export function Loading({ label = "Loading" }: { label?: string }) {
+  return (
+    <div className="loading" role="status">
+      <span className="spin" />
+      {label}
+    </div>
+  );
+}
+
+export function ErrorNote({ error, retry }: { error: unknown; retry?: () => void }) {
+  const message = error instanceof Error ? error.message : "Something went wrong.";
+  return (
+    <div className="notice error" role="alert">
+      <span className="grow">{message}</span>
+      {retry ? <button type="button" className="btn btn-small" onClick={retry}>Try again</button> : null}
+    </div>
+  );
+}
+
+export function Meter({ value, max, label }: { value: number; max: number; label: string }) {
+  return (
+    <div className="meter" role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={max} aria-valuenow={Math.min(value, max)}>
+      <i style={{ width: `${Math.min(100, (100 * value) / max)}%` }} />
+    </div>
+  );
+}
+
+export function CopyLine({ value, label = "Copy" }: { value: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="copy">
+      <code>{value}</code>
+      <button
+        type="button"
+        className="btn btn-small"
+        onClick={async () => {
+          await navigator.clipboard.writeText(value).catch(() => undefined);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1600);
+        }}
+      >
+        {copied ? "Copied" : label}
+      </button>
+    </div>
+  );
+}
+
+/** The side panel's width the owner dragged it to, kept between visits. Unknown or unreadable = the default. */
+export const DRAWER_DEFAULT = 560;
+const DRAWER_MIN = 420;
+const DRAWER_KEY = "yt-drawer-width";
+/** As the panel widens, its text grows with it: 1x at the default width, up to 1.5x at 960 pixels and wider. */
+export const drawerScale = (width: number) => Math.round(Math.min(1.5, Math.max(1, 1 + (width - DRAWER_DEFAULT) / 800)) * 100) / 100;
+const roomFor = () => Math.max(DRAWER_MIN, (typeof window === "undefined" ? 1200 : window.innerWidth) - 24);
+const fitWidth = (w: number) => Math.round(Math.min(roomFor(), Math.max(DRAWER_MIN, w)));
+function storedWidth(): number {
+  try {
+    const w = Number(localStorage.getItem(DRAWER_KEY));
+    return w > 0 ? fitWidth(w) : DRAWER_DEFAULT;
+  } catch {
+    return DRAWER_DEFAULT;
+  }
+}
+function storeWidth(w: number) {
+  try { localStorage.setItem(DRAWER_KEY, String(w)); } catch { /* private mode: it just will not be remembered */ }
+}
+
+/**
+ * The bar on the side panel's left edge: drag it left to widen the panel (the text grows with it), drag it
+ * right to narrow it, double-tap it to put it back. Arrow keys move it too. A phone shows the panel full
+ * screen, so it has no bar.
+ */
+function DrawerGrip({ width, onWidth }: { width: number; onWidth: (w: number, done: boolean) => void }) {
+  const start = useRef<{ x: number; w: number } | null>(null);
+  return (
+    <div
+      className="drawer-grip" role="separator" aria-orientation="vertical" tabIndex={0}
+      aria-label="Drag to make the panel wider or narrower" aria-valuenow={width} aria-valuemin={DRAWER_MIN} aria-valuemax={roomFor()}
+      title="Drag to make the panel wider. Double-tap to reset."
+      onPointerDown={(e) => {
+        e.preventDefault();
+        e.currentTarget.setPointerCapture(e.pointerId);
+        start.current = { x: e.clientX, w: width };
+      }}
+      onPointerMove={(e) => {
+        if (start.current) onWidth(fitWidth(start.current.w + start.current.x - e.clientX), false);
+      }}
+      onPointerUp={(e) => {
+        if (!start.current) return;
+        start.current = null;
+        e.currentTarget.releasePointerCapture(e.pointerId);
+        onWidth(width, true);
+      }}
+      onPointerCancel={() => { start.current = null; onWidth(width, true); }}
+      onDoubleClick={() => onWidth(DRAWER_DEFAULT, true)}
+      onKeyDown={(e) => {
+        if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+          e.preventDefault();
+          onWidth(fitWidth(width + (e.key === "ArrowLeft" ? 40 : -40)), true);
+        }
+      }}
+    >
+      <span />
+    </div>
+  );
+}
+
+export function Drawer(props: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(storedWidth);
+  const resize = useCallback((w: number, done: boolean) => {
+    setWidth(w);
+    if (done) storeWidth(w);
+  }, []);
+  // A smaller window can no longer hold a panel dragged wide: it shrinks to fit.
+  useEffect(() => {
+    const fit = () => setWidth((w) => fitWidth(w));
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, []);
+  // The newest onClose is kept to one side, so the set-up below runs once, when the drawer opens.
+  // Running it again on every redraw would move the cursor out of whatever box is being typed in.
+  const latest = useRef(props.onClose);
+  latest.current = props.onClose;
+  const onClose = useCallback(() => latest.current(), []);
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    ref.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") latest.current();
+    };
+    document.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+      previous?.focus?.();
+    };
+  }, []);
+  return (
+    <>
+      <div className="scrim" onClick={onClose} />
+      <div
+        className="drawer" role="dialog" aria-modal="true" aria-label={props.title} tabIndex={-1} ref={ref}
+        style={{ "--dw": `${width}px`, "--dz": drawerScale(width) } as CSSProperties}
+      >
+        <DrawerGrip width={width} onWidth={resize} />
+        <div className="drawer-head">
+          <h2 className="clip">{props.title}</h2>
+          <button type="button" className="btn btn-quiet btn-small" onClick={onClose} aria-label="Close">
+            <Icon name="close" />
+          </button>
+        </div>
+        <div className="drawer-body">{props.children}</div>
+        {props.footer ? <div className="drawer-foot">{props.footer}</div> : null}
+      </div>
+    </>
+  );
+}
+
+interface Toast {
+  id: number;
+  message: string;
+  error?: boolean;
+  action?: { label: string; run: () => void };
+}
+
+const ToastContext = createContext<(message: string, options?: Omit<Toast, "id" | "message">) => void>(() => undefined);
+export const useToast = () => useContext(ToastContext);
+
+export function ToastProvider({ children }: { children: ReactNode }) {
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const push = useCallback((message: string, options: Omit<Toast, "id" | "message"> = {}) => {
+    const id = Date.now() + Math.random();
+    setToasts((list) => [...list.slice(-2), { id, message, ...options }]);
+    setTimeout(() => setToasts((list) => list.filter((t) => t.id !== id)), options.action ? 7000 : 4000);
+  }, []);
+  return (
+    <ToastContext.Provider value={push}>
+      {children}
+      <div className="toasts" aria-live="polite">
+        {toasts.map((t) => (
+          <div key={t.id} className={`toast${t.error ? " error" : ""}`}>
+            <span>{t.message}</span>
+            {t.action ? (
+              <button
+                type="button"
+                onClick={() => {
+                  t.action!.run();
+                  setToasts((list) => list.filter((x) => x.id !== t.id));
+                }}
+              >
+                {t.action.label}
+              </button>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </ToastContext.Provider>
+  );
+}
+
+export type Theme = "system" | "light" | "dark";
+
+export function useTheme(): [Theme, (theme: Theme) => void] {
+  const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem("yt-theme") as Theme) ?? "system");
+  useEffect(() => {
+    if (theme === "system") document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("yt-theme", theme);
+  }, [theme]);
+  return [theme, setTheme];
+}
+
+/** If a screen breaks, say so and offer a way back, in place of a blank page. */
+export class Safety extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className="notice error" role="alert" style={{ margin: 24, flexDirection: "column", alignItems: "flex-start", gap: 10 }}>
+        <strong>This screen hit a problem and could not be shown.</strong>
+        <span className="small">{this.state.error.message || String(this.state.error)}</span>
+        <button type="button" className="btn btn-small" onClick={() => { window.location.hash = "#/"; window.location.reload(); }}>Back to the front page</button>
+      </div>
+    );
+  }
+}
+
+/**
+ * A section that folds away. Closed, it shows its title and a one-line summary of what is in it, so a
+ * long form reads as a short list until a part is opened.
+ */
+/**
+ * A closed heading with a one-line summary; tap to open. `rememberAs` keeps it open or closed in this browser
+ * the way the owner last left it. A new `openSignal` number opens it and brings it into view (a "Do it" button).
+ */
+export function Fold(props: { title: string; summary?: string | null; open?: boolean; children: ReactNode; rememberAs?: string; openSignal?: number }) {
+  const [open, setOpen] = useState(() => {
+    if (props.rememberAs) {
+      try {
+        const kept = localStorage.getItem(props.rememberAs);
+        if (kept === "1" || kept === "0") return kept === "1";
+      } catch { /* private mode */ }
+    }
+    return Boolean(props.open);
+  });
+  const box = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!props.openSignal) return;
+    setOpen(true);
+    requestAnimationFrame(() => box.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }, [props.openSignal]);
+  const toggle = () => setOpen((o) => {
+    if (props.rememberAs) {
+      try { localStorage.setItem(props.rememberAs, o ? "0" : "1"); } catch { /* private mode */ }
+    }
+    return !o;
+  });
+  return (
+    <section ref={box} className={`fold${open ? " open" : ""}`}>
+      <button type="button" className="fold-head" aria-expanded={open} onClick={toggle}>
+        <span className="fold-title">{props.title}</span>
+        {!open && props.summary ? <span className="fold-sum clip">{props.summary}</span> : <span className="grow" />}
+        <svg className="fold-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      </button>
+      {open ? <div className="fold-body">{props.children}</div> : null}
+    </section>
+  );
+}
+
+/** The emotions a title sparks, each with the colour the owner uses for it in their notes. */
+export function EmotionTags({ emotions }: { emotions?: import("../lib/emotions.ts").Emotion[] }) {
+  if (!emotions?.length) return null;
+  const label = { curiosity: "Curiosity", desire: "Desire", fear: "Fear" } as const;
+  return (
+    <span className="emotion-tags" aria-label={`Sparks ${emotions.map((e) => label[e].toLowerCase()).join(" and ")}`}>
+      {emotions.map((e) => <span key={e} className="tag emotion"><span className={`dot emo-${e}`} />{label[e]}</span>)}
+    </span>
+  );
+}
