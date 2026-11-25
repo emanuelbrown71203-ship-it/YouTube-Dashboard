@@ -417,6 +417,43 @@ describe("growth", () => {
     expect(piece.length).toBeLessThan(200);
   });
 
+  it("reads the daily idea swings from the owner's own template, and picks today's idea to upgrade", async () => {
+    const { parseSwings, pickUpgrade, streak, doneOn, bestScore } = await import("../src/lib/swings.ts");
+    const body = [
+      "Full Game Swing (5 min)", "- A whole game challenge, beginning to credits", "- Formula: [Big game] + [proven hook] + [twist]", "",
+      "Segmented Game Swing (6 min)", "- One act, isle, area or boss", "",
+      "Short Swing (2 min)", "- One moment, one story, from what I played today", "",
+      "Score Levers", "- [ ] Proven hook: \"0 hours\", a group", "- [x] Big community: Elden Ring, BG3",
+    ].join("\n");
+    const guide = parseSwings(body);
+    expect(guide.parts.map((p) => [p.kind, p.minutes])).toEqual([["full", 5], ["segment", 6], ["short", 2], ["upgrade", 3]]);
+    expect(guide.parts[0].lines).toEqual(["A whole game challenge, beginning to credits", "Formula: [Big game] + [proven hook] + [twist]"]);
+    // A part the template leaves out keeps the owner's first wording; ticks never reach the levers.
+    expect(guide.parts[3].lines[0]).toContain("70-something");
+    expect(guide.levers).toEqual(["Proven hook: \"0 hours\", a group", "Big community: Elden Ring, BG3"]);
+    expect(parseSwings(null).levers).toHaveLength(5);
+    // The idea to upgrade: best score in the 70s, a different one by day, never one that is out.
+    const ideas = [{ id: "a", status: "idea" }, { id: "b", status: "idea" }, { id: "c", status: "published" }, { id: "d", status: "idea" }, { id: "e", status: "idea" }, { id: "f", status: "editing", picked_at: "2026-11-17" }] as never[];
+    const scores: Record<string, number | null> = { a: 74, b: 78, c: 75, d: 85, e: 40, f: 77 };
+    const picks = new Set(["2026-11-25", "2026-11-26", "2026-11-27", "2026-11-28"].map((d) => (pickUpgrade(ideas, (id) => scores[id], d) as unknown as { id: string }).id));
+    expect([...picks].every((id) => id === "a" || id === "b")).toBe(true);
+    expect(picks.size).toBe(2);
+    // A video already being made only when no plain idea is in the 70s; then the highest under 80.
+    expect((pickUpgrade(ideas, (id) => scores[id], "2026-11-25", ["a", "b"]) as unknown as { id: string }).id).toBe("f");
+    expect((pickUpgrade(ideas, (id) => scores[id], "2026-11-25", ["a", "b", "f"]) as unknown as { id: string }).id).toBe("e");
+    expect(bestScore({ history: { value: 61 }, recommended: { value: 74 } })).toBe(74);
+    expect(bestScore({ history: { value: null }, recommended: { value: null } })).toBeNull();
+    // Progress today, and days in a row (yesterday still counts before today's first swing).
+    const rows = [
+      { id: "1", day: "2026-11-25", kind: "full", idea_id: "x", levers: [] }, { id: "2", day: "2026-11-25", kind: "short", idea_id: "y", levers: [] },
+      { id: "3", day: "2026-11-24", kind: "full", idea_id: "z", levers: [] }, { id: "4", day: "2026-11-22", kind: "upgrade", idea_id: "w", levers: [] },
+    ] as never[];
+    expect([...doneOn(rows, "2026-11-25")].sort()).toEqual(["full", "short"]);
+    expect(streak(rows, "2026-11-25")).toBe(2);
+    expect(streak(rows, "2026-11-26")).toBe(2);
+    expect(streak(rows, "2026-11-27")).toBe(0);
+  });
+
   it("reads bullets and checkboxes out of a note, and ticks them", async () => {
     const { parseNote, toggleCheck, untickAll, checkCount, plainNote, bareNote, hasList } = await import("../src/lib/notes.ts");
     const note = "Before I film:\n- [ ] Write the hook\n- [x] Pick the build\n  - [ ] Test it once\n\nThings to say\n- The rule\n* The stakes\nA last line";

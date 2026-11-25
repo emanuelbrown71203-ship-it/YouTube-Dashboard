@@ -5,6 +5,7 @@ import { NewUpload, WeekCard } from "./Pulse.tsx";
 import { FollowUpsWaiting } from "./Suggested.tsx";
 import { FindBox } from "./Find.tsx";
 import { MakingNow } from "./MakingNow.tsx";
+import { SwingsLine } from "./Swings.tsx";
 import { BarList, Sparkline, Timeline, type UploadPin } from "../components/Timeline.tsx";
 import { Delta, ErrorNote, Fold, FormatTag, Loading, Mult, Segmented, Thumb } from "../components/ui.tsx";
 import { ago, compact, day, FORMAT_PLURAL, hours, signed, whole } from "../lib/format.ts";
@@ -99,7 +100,7 @@ export function Overview({ view }: { view: "home" | "stats" }) {
         {home ? null : <Segmented label="Time range" value={range} options={RANGES} onChange={setRange} />}
       </div>
       {home ? null : <Tabs label="Stats" base="/stats" current="" tabs={STATS_TABS} />}
-      {home ? <><RunBand /><MakingNow where="home" /><div style={{ marginBottom: 18 }}><FindBox /></div></> : null}
+      {home ? <><RunBand /><MakingNow where="home" /><SwingsLine /><div style={{ marginBottom: 18 }}><FindBox /></div></> : null}
 
       {connection.data?.connection_error ? (
         <div className="notice error" role="alert">

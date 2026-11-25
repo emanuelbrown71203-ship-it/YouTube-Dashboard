@@ -218,6 +218,18 @@ export const scoreThumb = (body: ScoreBody & { thumb_id: string }) =>
 
 const THUMB_COLUMNS = "id, idea_id, name, score, created_at";
 
+/** Daily idea swings done in the last two months (enough for "days in a row"). */
+export async function getSwings(): Promise<import("./swings.ts").SwingRow[]> {
+  const since = new Date(Date.now() - 62 * 86_400_000).toISOString().slice(0, 10);
+  const { data, error } = await supabase.from("yt_swings").select("id, day, kind, idea_id, levers").is("trashed_at", null).gte("day", since).order("day", { ascending: false }).limit(500);
+  fail(error);
+  return (data ?? []) as unknown as import("./swings.ts").SwingRow[];
+}
+export async function addSwing(row: { day: string; kind: import("./swings.ts").SwingKind; idea_id: string; levers?: string[] }): Promise<void> {
+  const { error } = await supabase.from("yt_swings").insert({ ...row, levers: row.levers ?? [] });
+  fail(error);
+}
+
 /** For each idea, how many cuts were brought in for the editor and how many of the owner's own thumbnails it has. */
 export async function getPieceCounts(): Promise<Map<string, { cuts: number; thumbs: number }>> {
   const [cuts, thumbs] = await Promise.all([

@@ -48,6 +48,7 @@ research and the last sync. Every table and view has a comment explaining it;
 | `yt_scripts` | Scripts the owner wrote for past videos (`title`, `topic`, `body`, `source_url`, and `video_id`: the upload it was for, which the owner picks on My scripts, so how that video did counts in their track record): their intros, the beats they hand their editor with directions in brackets, and voiceover written against the cut. Playbook → My scripts. The script starter reads the two closest (same game first) to write in their voice. |
 | `yt_editor_notes` | Notes for the owner's editor, read from markers they export from Premiere Pro, kept per video idea (`idea_id`, `name` = which cut, `markers` = `{at, end, name, note, type}`). Idea editor → For my editor, and Ideas → For my editor. |
 | `yt_editor_docs` | The Google Doc each video's notes for the editor went into (`idea_id`, `doc_id`, `doc_url`, `pushed_at`). Written only by the server. |
+| `yt_swings` | Daily idea swings done (`day` = the owner's own date, `kind` = full, segment, short or upgrade, `idea_id` = the idea it wrote or upgraded, `levers` ticked on an upgrade). Ideas a swing wrote have `source = 'swing'`. |
 | `yt_rhythm` | The owner's upload rhythm: one target per format (`long`, `short`, `live`), "post at least every `every_days` days". `active = false` switches one off. Home shows the days since the last upload of that format against it. |
 
 `yt_v_videos` also carries `topic` (the game), `estimated_revenue` and `feeders`
@@ -136,7 +137,7 @@ free and the owner has said to use them whenever a score needs them.
 
 - `src/`: Vite + React + TypeScript. Reads go straight to Supabase with the
   publishable key; row level security lets only owners in.
-- `supabase/migrations/`: twenty-four files, all `yt_` objects. No statement in them
+- `supabase/migrations/`: twenty-five files, all `yt_` objects. No statement in them
   removes a table, a column or a row (017 only lets `yt_idea_refs.video_id` be
   empty, for screenshots).
 - `supabase/functions/yt-api/`: one edge function, deployed with JWT
@@ -290,6 +291,19 @@ free and the owner has said to use them whenever a score needs them.
   scored so the editor says when it changed since. When the owner asks you
   to rate a title, intro, script or thumbnail, use the same parts and
   weights, and say they are estimates.
+- Daily idea swings (Ideas → Daily swings; `src/pages/Swings.tsx`,
+  `src/lib/swings.ts`): the owner's 15-minute routine, read from their own
+  active template with "swing" in its name (`parseSwings`: each heading's
+  minutes and points, and the score levers), so what they change there the
+  app follows. One swing at a time with its own countdown (it only nudges,
+  never stops a save): full game, segmented and Short swings each write a
+  new idea under its game (`source = 'swing'`; a Short swing makes a Short);
+  the upgrade swing takes one idea whose best score is in the 70s (plain
+  ideas before ones being made, a different one each day, "Pick another"
+  swaps it; `pickUpgrade`), ticks the levers, and saves a better title,
+  keeping the old one in Other titles and noting the lever in the idea's
+  notes. Each swing done is a `yt_swings` row, so "2 of 4 today" and "days
+  in a row" are the same on every device.
 - Notes for the editor (idea editor → For my editor; Ideas → For my editor;
   `src/pages/EditorNotes.tsx`, `src/lib/markers.ts`): the owner leaves
   markers with comments on a cut in Premiere, exports them (Markers panel,
@@ -342,7 +356,7 @@ free and the owner has said to use them whenever a score needs them.
   Shorts suggests the idea could carry a long video (`shortsWorthAVideo`).
   The same goes when answering the owner's questions from the data.
 - **Sections** (`NAV` in `src/App.tsx`): Home, Videos (all videos, title
-  and thumbnail tests), Ideas (board, suggested, planner, for my editor), Research (outliers,
+  and thumbnail tests), Ideas (board, daily swings, suggested, planner, for my editor), Research (outliers,
   thumbnails, search phrases, channels), Stats (charts,
   monthly recap, by game, Shorts to long), Goals, Comments, Playbook
   (templates, lines to remember, my scripts), Settings. A phone shows the first four
@@ -356,6 +370,7 @@ free and the owner has said to use them whenever a score needs them.
   `src/lib/nextStep.ts`: from its stage and what is written, the first
   unticked box on their own list when there is one) and one button ("Do it"
   opens the idea editor on that part, or "Move to <stage>"). Under it, one
+  line for the daily idea swings until today's four are done, then one
   Find box (`src/pages/Find.tsx`: every word, across ideas, lines, templates,
   scripts and goals). Everything else (the new upload, follow-ups, the "This
   week" card, a saved line and a pinned comment, up to 2 goals, 3 latest

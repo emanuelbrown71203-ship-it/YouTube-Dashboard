@@ -1022,6 +1022,36 @@ export type Database = {
         };
         Relationships: [];
       };
+      yt_swings: {
+        Row: {
+          id: string;
+          day: string;
+          kind: string;
+          idea_id: string | null;
+          levers: string[];
+          created_at: string;
+          trashed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          day: string;
+          kind: string;
+          idea_id?: string | null;
+          levers?: string[];
+          created_at?: string;
+          trashed_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          day?: string;
+          kind?: string;
+          idea_id?: string | null;
+          levers?: string[];
+          created_at?: string;
+          trashed_at?: string | null;
+        };
+        Relationships: [];
+      };
       yt_sync_runs: {
         Row: {
           id: number;

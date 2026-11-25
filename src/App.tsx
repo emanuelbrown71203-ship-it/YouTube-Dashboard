@@ -18,6 +18,7 @@ import { type GoogleResult, SignIn } from "./pages/SignIn.tsx";
 import { Templates } from "./pages/Templates.tsx";
 import { Videos } from "./pages/Videos.tsx";
 import { FindBox } from "./pages/Find.tsx";
+import { DailySwings } from "./pages/Swings.tsx";
 
 // The sections, in the order they are listed. The first four sit in the phone's bottom bar; the rest
 // open from "More" there. On a wide screen all of them are in the side rail.
@@ -209,6 +210,13 @@ function Shell(props: { google: GoogleResult | null; clearGoogle: () => void; on
             </>
           )
           : section === "videos" ? <Videos />
+          : section === "ideas" && sub === "swings" ? (
+            <>
+              <div className="page-head"><h1>Ideas</h1></div>
+              <Tabs label="Ideas" base="/ideas" current={sub} tabs={IDEA_TABS} />
+              <DailySwings />
+            </>
+          )
           : section === "ideas" && sub === "suggested" ? (
             <>
               <div className="page-head"><h1>Ideas</h1></div>

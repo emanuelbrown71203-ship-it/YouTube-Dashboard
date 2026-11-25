@@ -848,3 +848,14 @@ button.nav-link { border: 0; background: none; font-family: inherit; font-size: 
 .making-card.compact { padding: 10px 12px; gap: 4px; }
 .making-card.compact .making-title { font-size: 15px; }
 .making-next-link { display: block; text-align: left; padding: 0; color: var(--accent-strong); text-decoration: none; line-height: 1.4; overflow-wrap: anywhere; }
+
+/* Daily idea swings: one swing at a time, its timer, the owner's formula, and the boxes to write in. */
+.swing-steps { gap: 6px; margin-bottom: 12px; }
+.swing-card { display: grid; gap: 12px; }
+.swing-lines { margin: 0; padding-left: 18px; display: grid; gap: 3px; line-height: 1.4; overflow-wrap: anywhere; }
+.swing-clock { font-size: 20px; padding: 2px 10px; border-radius: 10px; background: var(--surface-2); }
+.swing-up { padding: 2px 8px; border-radius: 999px; border: 1px solid var(--note-line); background: var(--note-bg); color: var(--note-ink); font-weight: 600; }
+.swing-idea { display: grid; gap: 4px; padding: 10px 12px; border-radius: var(--radius-s); background: var(--surface-2); }
+.swing-lever { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; line-height: 1.4; }
+.swing-lever input { width: 20px; height: 20px; flex: none; margin-top: 1px; }
+.swings-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; margin: -10px 0 18px; border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--surface); color: var(--ink); text-decoration: none; }
