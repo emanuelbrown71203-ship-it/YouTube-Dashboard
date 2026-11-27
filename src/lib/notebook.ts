@@ -58,6 +58,18 @@ export function notePages(note: NoteLike): { heading: string; body: string; part
   return [{ heading: note.source?.trim() || "A line to remember", body: note.text.trim(), part: null }];
 }
 
+/**
+ * What a note is called in Contents and above its page. One written in parts goes by where it came from
+ * ("Notes from my drive"); a single line goes by its own first words, since several lines can share a source.
+ */
+export function noteName(note: NoteLike, parts: number): string {
+  const source = note.source?.trim();
+  if (parts > 1 && source) return source;
+  const first = note.text.split("\n").map((l) => l.replace(/^\s*[-*•]\s+(?:\[[ xX]\]\s+)?/, "").trim()).find(Boolean) ?? "";
+  if (!first) return source || "A line to remember";
+  return first.length > 70 ? `${first.slice(0, 68).trimEnd()}…` : first;
+}
+
 /** The note's text with one part's points replaced (a box ticked on its page); the whole note when `part` is null. */
 export function withNotePart(text: string, part: number | null, body: string): string {
   if (part === null) return body;
@@ -111,7 +123,7 @@ export function buildNotebook(ideas: Idea[], notes: NoteLike[]): { pages: Notebo
     open(NOTES);
     for (const note of notes) {
       const parts = notePages(note);
-      const entry = begin(`note-${note.id}`, note.source?.trim() || parts[0].heading, null);
+      const entry = begin(`note-${note.id}`, noteName(note, parts.length), null);
       parts.forEach((p, i) => add({ kind: "note", key: `note-${note.id}-${i}`, chapter: NOTES, entry, noteId: note.id, ...p }));
     }
   }
@@ -123,4 +135,13 @@ export function findPage(pages: { key: string }[], key: string | null): number {
   if (!key) return -1;
   const at = pages.findIndex((p) => p.key === key);
   return at >= 0 ? at : pages.findIndex((p) => p.key === `${key}-plan`);
+}
+
+/** Videos and notes whose name has every word typed, in the notebook's order, each with its chapter. */
+export function tocMatches(chapters: Chapter[], find: string): { entry: Entry; chapter: string }[] {
+  const words = find.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  return chapters.flatMap((c) => c.entries
+    .filter((e) => words.every((w) => `${e.label} ${c.name}`.toLowerCase().includes(w)))
+    .map((entry) => ({ entry, chapter: c.name })));
 }

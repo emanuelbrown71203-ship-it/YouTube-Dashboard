@@ -1,21 +1,25 @@
-// The notebook (Ideas, the first tab): every video and every note the owner wrote, on ruled paper, one
-// page at a time. Each video is a set of pages in the order it is made, its plan first: Plan, Title,
-// Intro, Script, For my editor, Thumbnail (long-form only), Notes. Divider tabs jump between a video's
-// pages; swipe or Next turns the page; Contents jumps to a chapter or a video. Tapping any part of a page
-// writes on it there and then. The owner asked for "everything its own piece of paper" and "my plan for
-// each video at the beginning".
+// The notebook (Ideas, the first tab): every video and every note the owner wrote, on a sheet of paper,
+// one page at a time. Each video is a set of pages in the order it is made, its plan first: Plan, Title,
+// Intro, Script, For my editor, Thumbnail (long-form only), Notes. Above the sheet: which video this is,
+// then tabs for its pages (they stay in reach while the page scrolls). Under it: buttons named for the
+// page they turn to, and the video before and after. Contents lists every chapter and video, with a box
+// to find one. Tapping any part of a page writes on it there and then.
+//
+// Plain on purpose. The owner found a handwriting font hard to read ("especially in large text") and
+// asked for it not to be fancy: everything is in the app's own font, and the ruled lines sit only under
+// their own writing, where each line of text has its own rule.
 
 import { useQueryClient } from "@tanstack/react-query";
-import { createContext, type ReactNode, type TouchEvent, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
+import { createContext, type ReactNode, type TouchEvent, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { NotesBox, RichNote } from "../components/notes.tsx";
-import { FormatTag, Loading, Mult, useToast } from "../components/ui.tsx";
+import { Drawer, FormatTag, Icon, Loading, Mult, useToast } from "../components/ui.tsx";
 import type { IntroCheck, PieceReading, TitleCheck } from "../lib/api.ts";
 import { saveIdea } from "../lib/api.ts";
 import { takePendingIdea } from "../lib/draft.ts";
 import { lengthRule } from "../lib/emotions.ts";
 import { compact, day } from "../lib/format.ts";
 import { keys, useIdeas, useSavedVideos } from "../lib/hooks.ts";
-import { buildNotebook, type Chapter, findPage, MAKING, NOTES, type NotebookPage, PAGE_NAMES, type PageKind, pageKey, pageOfPlace, TAB_NAMES, videoPages, withNotePart } from "../lib/notebook.ts";
+import { buildNotebook, type Chapter, type Entry, findPage, type NotebookPage, PAGE_NAMES, type PageKind, pageKey, pageOfPlace, TAB_NAMES, tocMatches, videoPages, withNotePart } from "../lib/notebook.ts";
 import { dueWord, PLAN_STAGES, type PlanStep, planSteps, STAGES, stageLabel } from "../lib/nextStep.ts";
 import { navigate, useRoute } from "../lib/router.ts";
 import type { Idea, IdeaDraft, IdeaStatus } from "../lib/types.ts";
@@ -33,16 +37,20 @@ import { IdeaRefs } from "./Thumbnails.tsx";
 
 const KEPT = "yt-notebook-page";
 const remembered = () => { try { return localStorage.getItem(KEPT); } catch { return null; } };
+const keep = (key: string) => { try { localStorage.setItem(KEPT, key); } catch { /* private mode */ } };
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const noCounts = { cuts: 0, thumbs: 0 };
+const kindOf = (e: Entry) => (e.ideaId ? "video" : "note");
+const many = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /** Writing open on the page and not saved yet, so turning the page asks first. */
 const Unsaved = createContext<(id: string, on: boolean) => void>(() => {});
 
 type Save = (patch: Partial<IdeaDraft>) => Promise<boolean>;
+type Plan = ReturnType<typeof planSteps>;
 interface PageProps {
   idea: Idea;
-  plan: ReturnType<typeof planSteps>;
+  plan: Plan;
   scores: Parameters<typeof ScoreChips>[0]["scores"];
   save: Save;
   /** Keeps a reading the server just stored (a score) on the page at once. */
@@ -61,10 +69,10 @@ export function Notebook() {
   const book = useMemo(() => buildNotebook(ideas.data ?? [], notes.data ?? []), [ideas.data, notes.data]);
   // The page is kept by what is on it, so the notebook opens where the owner left it even after ideas move.
   const [pageKeyNow, setPageKey] = useState<string | null>(remembered);
-  const [turn, setTurn] = useState<"next" | "prev" | null>(null);
   const [contents, setContents] = useState(false);
   const [editing, setEditing] = useState<IdeaDraft | null>(null);
-  const top = useRef<HTMLDivElement>(null);
+  /** Just above the tabs: turning the page from further down comes back to here, never past it. */
+  const sheetTop = useRef<HTMLDivElement>(null);
   const found = findPage(book.pages, pageKeyNow);
   const index = found >= 0 ? found : 0;
   const page = book.pages[index];
@@ -76,24 +84,31 @@ export function Notebook() {
     if (on) unsaved.current.add(id); else unsaved.current.delete(id);
   }, []);
 
-  const show = (n: number, animate: "next" | "prev" | null) => {
-    setTurn(animate);
+  const show = (n: number) => {
     setPageKey(book.pages[n].key);
-    try { localStorage.setItem(KEPT, book.pages[n].key); } catch { /* private mode */ }
+    keep(book.pages[n].key);
     setContents(false);
   };
   const go = (to: number) => {
     const n = Math.max(0, Math.min(book.pages.length - 1, to));
-    if (n === index) return;
+    if (n === index) { setContents(false); return; }
     if (unsaved.current.size && !window.confirm("You have writing on this page that is not saved yet. Turn the page anyway?")) return;
     unsaved.current.clear();
-    show(n, n > index ? "next" : "prev");
-    top.current?.scrollIntoView({ block: "start" });
+    show(n);
+    // A page turned from part-way down starts at its top; one turned from the top stays put.
+    const el = sheetTop.current;
+    if (el && el.getBoundingClientRect().top < 0) el.scrollIntoView({ block: "start" });
   };
   const goPage = (kind: PageKind) => {
     if (page?.kind !== "idea") return;
     const at = findPage(book.pages, pageKey(page.idea.id, kind));
     if (at >= 0) go(at);
+  };
+  /** One page on or back. Back from a video's first page goes to the start of the one before, not its last page. */
+  const turn = (by: 1 | -1) => {
+    if (!page || !entry) return;
+    const before = book.entries[page.entry - 1];
+    if (by === -1 && index === entry.start) { if (before) go(before.start); } else go(index + by);
   };
 
   // A link from elsewhere (Making now, the planner, Find) opens that video on the page its step is done on.
@@ -104,7 +119,7 @@ export function Notebook() {
     if (!editId || !ideas.data || notes.isLoading) return;
     const at = findPage(book.pages, pageKey(editId, pageOfPlace(openPart)));
     const plan = at >= 0 ? at : findPage(book.pages, `idea-${editId}`);
-    if (plan >= 0) show(plan, null);
+    if (plan >= 0) show(plan);
     else {
       // Out already, so not in the notebook: open it in the editor instead.
       const idea = ideas.data.find((i) => i.id === editId);
@@ -122,9 +137,9 @@ export function Notebook() {
   // Arrow keys turn the page on a computer.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (editing || (e.target as HTMLElement | null)?.closest("input, textarea, select")) return;
-      if (e.key === "ArrowRight") go(index + 1);
-      if (e.key === "ArrowLeft") go(index - 1);
+      if (editing || contents || (e.target as HTMLElement | null)?.closest("input, textarea, select")) return;
+      if (e.key === "ArrowRight") turn(1);
+      if (e.key === "ArrowLeft") turn(-1);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -140,7 +155,7 @@ export function Notebook() {
     start.current = null;
     if (!s) return;
     const dx = e.changedTouches[0].clientX - s.x, dy = e.changedTouches[0].clientY - s.y;
-    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) go(index + (dx < 0 ? 1 : -1));
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) turn(dx < 0 ? 1 : -1);
   };
 
   /** Writes part of an idea and shows it on the page straight away. */
@@ -182,18 +197,18 @@ export function Notebook() {
 
   if (ideas.isLoading || notes.isLoading) return <Loading label="Opening your notebook" />;
   const games = [...new Set((ideas.data ?? []).map((i) => i.topic).filter((t): t is string => Boolean(t)))].slice(0, 8);
-  const gameHere = chapter && chapter.name !== MAKING && chapter.name !== NOTES && chapter.name !== "No game yet" ? chapter.name : null;
-  const newIdea = () => setEditing({ ...blankIdea("long"), topic: page?.kind === "idea" ? page.idea.topic : gameHere });
+  const gameHere = page?.kind === "idea" ? page.idea.topic : null;
+  const newIdea = () => setEditing({ ...blankIdea("long"), topic: gameHere });
   const editor = editing ? (
     <IdeaEditor
       draft={editing} games={games} onOpen={setEditing}
       onClose={() => setEditing(null)}
       onChanged={async () => { await queryClient.invalidateQueries({ queryKey: keys.ideas }); }}
-      onSaved={(idea) => { if (!editing.id) { setTurn(null); setPageKey(pageKey(idea.id, "plan")); try { localStorage.setItem(KEPT, pageKey(idea.id, "plan")); } catch { /* private mode */ } } }}
+      onSaved={(idea) => { if (!editing.id) { setPageKey(pageKey(idea.id, "plan")); keep(pageKey(idea.id, "plan")); } }}
     />
   ) : null;
 
-  if (!page || !entry) {
+  if (!page || !entry || !chapter) {
     return (
       <div className="panel">
         <div className="empty">
@@ -206,111 +221,143 @@ export function Notebook() {
     );
   }
   const inEntry = index - entry.start;
-  const lastOfEntry = inEntry === entry.count - 1;
-  const nextEntry = book.entries[page.entry + 1];
+  const before = book.entries[page.entry - 1];
+  const after = book.entries[page.entry + 1];
   const plan = page.kind === "idea" ? planSteps(page.idea, counts.data?.get(page.idea.id) ?? noCounts) : null;
+  const pages = page.kind === "idea" ? videoPages(page.idea.format) : [];
+  const place = `${chapter.name} · ${kindOf(entry) === "video" ? "Video" : "Note"} ${chapter.entries.indexOf(entry) + 1} of ${chapter.entries.length}`;
+  // A single line is named by its first words in Contents; above its page, by where it came from, so the
+  // page does not say the line twice.
+  const single = page.kind === "note" && entry.count === 1;
+  const name = page.kind === "note" && single ? page.heading : entry.label;
+  // What the two page buttons say: the page they turn to.
+  const back = inEntry === 0 ? null : page.kind === "idea" ? PAGE_NAMES[pages[inEntry - 1]] : "Previous page";
+  const on = inEntry === entry.count - 1 ? null : page.kind === "idea" ? PAGE_NAMES[pages[inEntry + 1]] : "Next page";
 
   return (
     <Unsaved.Provider value={markUnsaved}>
-      <div className="notebook" ref={top}>
-        <div className="nb-bar">
-          <button type="button" className="btn btn-small" aria-expanded={contents} onClick={() => setContents((c) => !c)}>Contents</button>
-          <span className="small muted grow" style={{ textAlign: "center" }}>
-            {entry.count > 1 ? `Page ${inEntry + 1} of ${entry.count}` : null}
-          </span>
-          <button type="button" className="btn btn-small" onClick={newIdea}>New idea</button>
-        </div>
-        {contents ? <Contents chapters={book.chapters} at={index} onGo={(n) => go(n)} /> : null}
-
-        <article key={page.key} className={`nb-page${turn ? ` turn-${turn}` : ""}`} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} aria-label={page.kind === "idea" ? `${entry.label}, ${PAGE_NAMES[page.page]}` : entry.label}>
-          {page.kind === "idea" && plan ? <Tabs idea={page.idea} current={page.page} plan={plan} onGo={goPage} /> : null}
-          <div className={`nb-paper${page.kind === "idea" ? " with-tabs" : ""}`}>
-            <div className="nb-chapter nb-hand">{page.chapter}</div>
-            {page.kind === "idea" && plan ? (
-              <VideoPage
-                kind={page.page} idea={page.idea} plan={plan} scores={scores.get(page.idea.id)}
-                save={saveTo(page.idea)} keep={keepOn(page.idea)} goto={goPage} onEditAll={() => setEditing(page.idea)}
-              />
-            ) : page.kind === "note" ? (
-              <>
-                <h2 className="nb-title nb-hand">{page.heading}</h2>
-                <PaperText
-                  label={page.heading} kind="note" value={page.body} empty="Tap to write"
-                  onSave={(v) => saveNote(page, v ?? "")} onTick={(t) => void saveNote(page, t)}
-                />
-                <a className="btn btn-quiet btn-small nb-edit" href="#/playbook/lines">Open Lines to remember</a>
-              </>
-            ) : null}
+      <div className="notebook">
+        <header className="nb-cover">
+          <div className="nb-cover-row">
+            <p className="nb-place">{place}</p>
+            <button type="button" className="btn" onClick={() => setContents(true)}>Contents</button>
           </div>
+          <h2 className="nb-name">{name}</h2>
+        </header>
+
+        <div ref={sheetTop} className="nb-anchor" />
+        {page.kind === "idea" && plan ? <Tabs pages={pages} current={page.page} plan={plan} onGo={goPage} /> : null}
+        <article
+          key={page.key} className={`nb-sheet${page.kind === "idea" ? " tabbed" : ""}`} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
+          aria-label={page.kind === "idea" ? `${entry.label}, ${PAGE_NAMES[page.page]}` : entry.label}
+        >
+          {page.kind === "idea" && plan ? (
+            <VideoPage
+              kind={page.page} idea={page.idea} plan={plan} scores={scores.get(page.idea.id)}
+              save={saveTo(page.idea)} keep={keepOn(page.idea)} goto={goPage} onEditAll={() => setEditing(page.idea)}
+            />
+          ) : page.kind === "note" ? (
+            <>
+              <PaperText
+                label={single ? "This line" : page.heading} heading={!single} bare={single} kind="note" value={page.body} empty="Tap to write"
+                onSave={(v) => saveNote(page, v ?? "")} onTick={(t) => void saveNote(page, t)}
+                under={entry.count > 1 ? <p className="nb-help" style={{ margin: "0 0 10px" }}>Page {inEntry + 1} of {entry.count}</p> : null}
+              />
+              <p className="nb-foot"><a href="#/playbook/lines">Open Lines to remember</a></p>
+            </>
+          ) : null}
         </article>
 
-        <div className="nb-nav">
-          <button type="button" className="btn" disabled={index === 0} onClick={() => go(index - 1)}>‹ Previous</button>
-          {!lastOfEntry && nextEntry ? (
-            <button type="button" className="btn btn-quiet btn-small" onClick={() => go(nextEntry.start)}>Skip to next {nextEntry.ideaId ? "video" : "note"}</button>
-          ) : <span className="small muted">Swipe to turn the page</span>}
-          <button type="button" className="btn btn-primary" disabled={index >= book.pages.length - 1} onClick={() => go(index + 1)}>
-            {lastOfEntry && nextEntry ? `Next ${nextEntry.ideaId ? "video" : "note"} ›` : "Next ›"}
-          </button>
-        </div>
+        <nav className="nb-turn" aria-label="Turn the page">
+          {back || on ? (
+            <div className="nb-turn-row">
+              {back ? <button type="button" className="btn nb-turn-back" onClick={() => turn(-1)}>‹ {back}</button> : null}
+              {on ? <button type="button" className="btn btn-primary nb-turn-on" onClick={() => turn(1)}>{on} ›</button> : null}
+            </div>
+          ) : null}
+          <div className="nb-turn-row">
+            {before ? <button type="button" className="btn btn-quiet" onClick={() => go(before.start)}>‹ Previous {kindOf(before)}</button> : null}
+            {after ? <button type="button" className="btn btn-quiet nb-turn-on" onClick={() => go(after.start)}>Next {kindOf(after)} ›</button> : null}
+          </div>
+        </nav>
+        {contents ? <Contents chapters={book.chapters} at={index} onGo={go} onClose={() => setContents(false)} onNew={() => { setContents(false); window.setTimeout(newIdea, 0); }} /> : null}
         {editor}
       </div>
     </Unsaved.Provider>
   );
 }
 
-/** Contents: each chapter, opening to its videos; the chapter the owner is in starts open. */
-function Contents({ chapters, at, onGo }: { chapters: Chapter[]; at: number; onGo: (index: number) => void }) {
+/** Contents: every chapter, opening to its videos, and a box to find one by any of its words. */
+function Contents({ chapters, at, onGo, onClose, onNew }: { chapters: Chapter[]; at: number; onGo: (index: number) => void; onClose: () => void; onNew: () => void }) {
   const here = chapters.find((c) => at >= c.start && at < c.start + c.count)?.name;
   const [open, setOpen] = useState<Set<string>>(() => new Set(here ? [here] : []));
+  const [find, setFind] = useState("");
+  const list = useRef<HTMLDivElement>(null);
   const toggle = (name: string) => setOpen((o) => {
     const next = new Set(o);
     if (next.has(name)) next.delete(name); else next.add(name);
     return next;
   });
+  // Opens with the video the owner is on in view.
+  useEffect(() => {
+    list.current?.querySelector('.nb-toc-entry[aria-current="true"]')?.scrollIntoView({ block: "center" });
+  }, []);
+  const hits = find.trim() ? tocMatches(chapters, find) : null;
+  const row = (e: Entry, chapterName?: string) => (
+    <button key={e.key} type="button" className="nb-toc-entry" aria-current={at >= e.start && at < e.start + e.count ? "true" : undefined} onClick={() => onGo(e.start)}>
+      <span>{e.label}</span>
+      {chapterName ? <span className="small muted">{chapterName}</span> : null}
+    </button>
+  );
   return (
-    <nav className="nb-contents" aria-label="Contents">
-      {chapters.map((c) => {
-        const videos = c.entries.some((e) => e.ideaId);
-        return (
-          <div key={c.name}>
-            <button type="button" className="nb-contents-row" aria-expanded={open.has(c.name)} aria-current={here === c.name ? "true" : undefined} onClick={() => toggle(c.name)}>
-              <span className="nb-hand">{c.name}</span>
-              <span className="small muted">{c.entries.length} {videos ? (c.entries.length === 1 ? "video" : "videos") : (c.entries.length === 1 ? "note" : "notes")}</span>
+    <Drawer title="Contents" onClose={onClose} footer={<button type="button" className="btn" onClick={onNew}><Icon name="plus" />New idea</button>}>
+      <input className="input" type="search" value={find} onChange={(e) => setFind(e.target.value)} placeholder="Find a video or note" aria-label="Find a video or note" />
+      <div className="nb-toc" ref={list}>
+        {hits ? (
+          hits.length ? hits.map((h) => row(h.entry, h.chapter)) : <p className="muted" style={{ margin: 0 }}>Nothing in your notebook has those words.</p>
+        ) : chapters.map((c) => (
+          <section key={c.name}>
+            <button type="button" className="nb-toc-chapter" aria-expanded={open.has(c.name)} onClick={() => toggle(c.name)}>
+              <span className="grow">{c.name}</span>
+              <span className="small muted">{many(c.entries.length, c.entries.some((e) => e.ideaId) ? "video" : "note")}</span>
+              <svg className="fold-chev" viewBox="0 0 24 24" aria-hidden="true" style={{ transform: open.has(c.name) ? "rotate(180deg)" : undefined }}>
+                <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
             </button>
-            {open.has(c.name) ? (
-              <div className="nb-contents-list">
-                {c.entries.map((e) => (
-                  <button key={e.key} type="button" className="nb-contents-entry" aria-current={at >= e.start && at < e.start + e.count ? "true" : undefined} onClick={() => onGo(e.start)}>
-                    {e.label}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        );
-      })}
-    </nav>
+            {open.has(c.name) ? <div className="nb-toc-list">{c.entries.map((e) => row(e))}</div> : null}
+          </section>
+        ))}
+      </div>
+    </Drawer>
   );
 }
 
-/** The divider tabs along the top of a video's pages. A tab whose steps are all done has a tick. */
-function Tabs({ idea, current, plan, onGo }: { idea: Idea; current: PageKind; plan: ReturnType<typeof planSteps>; onGo: (page: PageKind) => void }) {
-  const pages = videoPages(idea.format);
+/** A page's name: the short one where room is tight (a phone), the full one elsewhere. */
+function PageName({ page }: { page: PageKind }) {
+  if (TAB_NAMES[page] === PAGE_NAMES[page]) return <>{PAGE_NAMES[page]}</>;
+  return <><span className="nb-short">{TAB_NAMES[page]}</span><span className="nb-long">{PAGE_NAMES[page]}</span></>;
+}
+
+/** The tabs along the top of a video's sheet, one per page, in order. They stay in reach while the page scrolls. */
+function Tabs({ pages, current, plan, onGo }: { pages: PageKind[]; current: PageKind; plan: Plan; onGo: (page: PageKind) => void }) {
   const done = (k: PageKind) => {
     const on = plan.steps.filter((s) => s.page === k);
     return on.length > 0 && on.every((s) => s.done);
   };
   return (
     <nav className="nb-tabs" aria-label="Pages of this video" style={{ ["--tabs" as string]: pages.length }}>
-      {pages.map((k) => (
-        <button
-          key={k} type="button" className={`nb-tab nb-hand${done(k) ? " done" : ""}${plan.here?.page === k ? " next" : ""}`}
-          aria-current={k === current ? "page" : undefined} aria-label={`${PAGE_NAMES[k]}${done(k) ? ", done" : ""}`} onClick={() => onGo(k)}
-        >
-          {TAB_NAMES[k]}
-        </button>
-      ))}
+      {pages.map((k) => {
+        const state = plan.here?.page === k ? "next" : done(k) ? "done" : "";
+        return (
+          <button
+            key={k} type="button" className={`nb-tab ${state}`} aria-current={k === current ? "page" : undefined}
+            aria-label={`${PAGE_NAMES[k]}${state === "next" ? ", your next step is here" : state === "done" ? ", done" : ""}`} onClick={() => onGo(k)}
+          >
+            <span className="nb-tab-mark" aria-hidden="true">{state === "done" ? "✓" : ""}</span>
+            <PageName page={k} />
+          </button>
+        );
+      })}
     </nav>
   );
 }
@@ -318,23 +365,31 @@ function Tabs({ idea, current, plan, onGo }: { idea: Idea; current: PageKind; pl
 function VideoPage(props: PageProps & { kind: PageKind }) {
   const { kind, idea, plan } = props;
   const here = plan.here?.page === kind && kind !== "plan" ? plan.here : null;
+  const next = here ? <NextStep text={here.text} /> : null;
+  // The notes page is one piece of writing, so its heading carries the Edit button.
+  if (kind === "notes") return <NotesPage {...props} next={next} />;
   return (
     <>
-      {kind === "plan" ? null : (
-        <>
-          {kind === "title" ? null : <div className="nb-video nb-hand">{idea.title}</div>}
-          <h2 className="nb-title nb-hand">{PAGE_NAMES[kind]}</h2>
-          {here ? <aside className="nb-sticky small-sticky"><span className="nb-hand">Next:</span> {here.text}</aside> : null}
-        </>
-      )}
+      <h2 className="nb-h">{PAGE_NAMES[kind]}</h2>
+      {next}
       {kind === "plan" ? <PlanPage {...props} />
         : kind === "title" ? <TitlePage {...props} />
         : kind === "intro" ? <IntroPage {...props} />
         : kind === "script" ? <ScriptPage {...props} />
-        : kind === "editor" ? <div className="nb-card"><EditorNotesBody ideaId={idea.id} title={idea.title} /></div>
-        : kind === "thumbnail" ? <ThumbnailPage {...props} />
-        : <NotesPage {...props} />}
+        : kind === "editor" ? <div className="nb-plain"><EditorNotesBody ideaId={idea.id} title={idea.title} /></div>
+        : <ThumbnailPage {...props} />}
     </>
+  );
+}
+
+/** The one next step, set apart from everything else on the page. */
+function NextStep({ text, children }: { text: string; children?: ReactNode }) {
+  return (
+    <aside className="nb-next">
+      <div className="nb-next-label">Next step</div>
+      <div className="nb-next-text">{text}</div>
+      {children ? <div className="nb-next-do">{children}</div> : null}
+    </aside>
   );
 }
 
@@ -348,37 +403,32 @@ function PlanPage({ idea, plan, scores, save, goto, onEditAll }: PageProps) {
   const move = async (status: IdeaStatus) => {
     if (await save({ status, picked_at: idea.picked_at ?? new Date().toISOString() })) toast(`Moved to ${stageLabel(status)}.`);
   };
-  const action = (step: PlanStep | null): ReactNode => {
-    if (!step) return null;
+  const action = (step: PlanStep): ReactNode => {
     if (step.key === "pick") {
-      return <button type="button" className="btn btn-primary btn-small" onClick={() => void save({ picked_at: new Date().toISOString() }).then((ok) => ok && toast("You're making it. It's under Making now."))}>Make this one</button>;
+      return <button type="button" className="btn btn-primary" onClick={() => void save({ picked_at: new Date().toISOString() }).then((ok) => ok && toast("You're making it. It's under Making now."))}>Make this one</button>;
     }
     if (step.key === "film") {
       return idea.status === "filming"
-        ? <button type="button" className="btn btn-primary btn-small" onClick={() => void move("editing")}>Filmed it: move to Editing</button>
-        : <button type="button" className="btn btn-primary btn-small" onClick={() => void move("filming")}>Move to Filming</button>;
+        ? <button type="button" className="btn btn-primary" onClick={() => void move("editing")}>Filmed it: move to Editing</button>
+        : <button type="button" className="btn btn-primary" onClick={() => void move("filming")}>Move to Filming</button>;
     }
-    if (step.key === "date") return <button type="button" className="btn btn-primary btn-small" onClick={() => { dateBox.current?.focus(); dateBox.current?.showPicker?.(); }}>Pick the day</button>;
-    if (step.key === "schedule") return <button type="button" className="btn btn-primary btn-small" onClick={() => void move("scheduled")}>Move to Scheduled</button>;
-    if (step.page !== "plan") return <button type="button" className="btn btn-primary btn-small" onClick={() => goto(step.page)}>Go to {PAGE_NAMES[step.page]} ›</button>;
+    if (step.key === "date") return <button type="button" className="btn btn-primary" onClick={() => { dateBox.current?.focus(); dateBox.current?.showPicker?.(); }}>Pick the day</button>;
+    if (step.key === "schedule") return <button type="button" className="btn btn-primary" onClick={() => void move("scheduled")}>Move to Scheduled</button>;
+    if (step.page !== "plan") return <button type="button" className="btn btn-primary" onClick={() => goto(step.page)}>Go to {PAGE_NAMES[step.page]} ›</button>;
     return null;
   };
   const nothingLeft = idea.status === "published" ? "It's out. Nothing left to do." : idea.target_date ? `Goes up ${day(idea.target_date)}. Nothing left to do.` : "Nothing left to do.";
 
   return (
     <>
-      <h2 className="nb-title nb-hand">{idea.title}</h2>
       <div className="nb-meta">
         <FormatTag format={idea.format} />
         {idea.topic ? <span className="tag">{idea.topic}</span> : null}
-        {making ? <span className="tag">Making it: {stageLabel(idea.status)}</span> : null}
-        {due ? <span className="small">{due}</span> : null}
+        <span className="tag">{making ? `Making it: ${stageLabel(idea.status)}` : "Just an idea"}</span>
+        {due ? <span className="tag">{due}</span> : null}
       </div>
-      <aside className="nb-sticky">
-        {scored ? <ScoreChips scores={scores} /> : null}
-        <div className="nb-sticky-next"><span className="nb-hand">Next:</span> {plan.here ? plan.here.text : nothingLeft}</div>
-        {plan.here ? <div style={{ marginTop: 8 }}>{action(plan.here)}</div> : null}
-      </aside>
+      {scored ? <ScoreChips scores={scores} /> : null}
+      <NextStep text={plan.here ? plan.here.text : nothingLeft}>{plan.here ? action(plan.here) : null}</NextStep>
       {making ? (
         <div className="nb-controls">
           <label className="field">
@@ -392,25 +442,26 @@ function PlanPage({ idea, plan, scores, save, goto, onEditAll }: PageProps) {
             <input ref={dateBox} className="input" type="date" value={idea.target_date ?? ""} onChange={(e) => void save({ target_date: e.target.value || null })} />
           </label>
         </div>
-      ) : (
-        <p className="nb-text">Just an idea for now. When you decide to make it, its plan starts here.</p>
-      )}
+      ) : null}
 
-      <h3 className="nb-label nb-hand">My plan</h3>
-      <div className="nb-plan">
+      <section className="nb-section">
+        <div className="nb-section-head">
+          <h3>Steps</h3>
+          <span className="small muted">{plan.done} of {plan.total} done</span>
+        </div>
         {PLAN_STAGES.map((stage) => {
           const steps = plan.steps.filter((s) => s.stage === stage.key);
           if (!steps.length) return null;
           return (
-            <section key={stage.key} aria-label={stage.label}>
-              <div className="nb-stage nb-hand">{stage.label}</div>
+            <div key={stage.key} className="nb-stage" role="group" aria-label={stage.label}>
+              <div className="nb-stage-name">{stage.label}</div>
               {steps.map((s) => {
                 const state = s.done ? "done" : s === plan.here ? "here" : s.passed ? "passed" : "todo";
                 const body = (
                   <>
                     <span className="nb-box" aria-hidden="true">{s.done ? "✓" : ""}</span>
-                    <span className="nb-step-text">{s.text}{s.passed ? <span className="muted"> (skipped)</span> : null}</span>
-                    {s.page !== "plan" ? <span className="nb-step-page">{TAB_NAMES[s.page]} ›</span> : null}
+                    <span className="nb-step-text">{s.text}{s.passed ? <span className="nb-skipped"> (skipped)</span> : null}</span>
+                    {s.page !== "plan" ? <span className="nb-step-page"><PageName page={s.page} /> ›</span> : null}
                   </>
                 );
                 const label = `${s.text}${s.done ? ", done" : s.passed ? ", skipped" : s === plan.here ? ", next" : ""}`;
@@ -418,12 +469,12 @@ function PlanPage({ idea, plan, scores, save, goto, onEditAll }: PageProps) {
                   ? <div key={s.key} className={`nb-step ${state}`} aria-label={label}>{body}</div>
                   : <button key={s.key} type="button" className={`nb-step ${state}`} aria-label={`${label}. Go to ${PAGE_NAMES[s.page]}`} onClick={() => goto(s.page)}>{body}</button>;
               })}
-            </section>
+            </div>
           );
         })}
-      </div>
-      <p className="nb-text muted">{plan.done} of {plan.total} done. The boxes tick themselves as you write and add things.</p>
-      <button type="button" className="btn btn-quiet btn-small nb-edit" onClick={onEditAll}>Open the full editor</button>
+        <p className="nb-help">The boxes tick themselves as you write and add things.</p>
+      </section>
+      <p className="nb-foot"><button type="button" className="btn btn-small" onClick={onEditAll}>Open the full editor</button></p>
     </>
   );
 }
@@ -443,18 +494,18 @@ function TitlePage({ idea, scores, save, keep }: PageProps) {
   return (
     <>
       <PaperText
-        label="Title" kind="line" big value={idea.title} empty="Tap to write the title" required maxLength={200}
+        label="Your title" kind="line" strong value={idea.title} empty="Tap to write the title" required maxLength={200}
         below={(draft) => <small className="muted">{count(draft)}</small>} hint={<TemplateHint kind="title" />}
         onSave={(v) => save({ title: v ?? "" })}
       />
-      <p className="small muted" style={{ margin: 0 }}>{count(idea.title)}</p>
+      <p className="nb-help">{count(idea.title)}</p>
       <PaperText
         label="Other titles to try" kind="lines" value={options.join("\n")} empty="Tap to write other titles, one per line"
         onSave={(v) => save({ title_options: (v ?? "").split("\n").map((t) => t.trim()).filter(Boolean) })}
         view={() => (
-          <ul className="nb-text nb-list nb-options">
+          <ul className="nb-options">
             {options.map((t) => (
-              <li key={t}><span>{t}</span> <button type="button" className="btn btn-quiet btn-small" onClick={() => use(t)}>Use this</button></li>
+              <li key={t}><span>{t}</span><button type="button" className="btn btn-small" onClick={() => use(t)}>Use this</button></li>
             ))}
           </ul>
         )}
@@ -480,7 +531,7 @@ function TitlePage({ idea, scores, save, keep }: PageProps) {
 function IntroPage({ idea, keep, save }: PageProps) {
   return (
     <>
-      <p className="nb-text muted">The first 5 seconds, line by line. Directions for your editor go in [brackets].</p>
+      <p className="nb-help">The first 5 seconds, one line at a time. Directions for your editor go in [brackets].</p>
       <PaperText label="Hook" kind="lines" value={idea.hook} empty="Tap to write the hook" hint={<TemplateHint kind="intro" />} onSave={(v) => save({ hook: v })} />
       <div className="nb-card">
         <IntroScore form={idea} onScored={(check: IntroCheck, at: string) => keep({ intro_check: check, intro_checked_at: at })} />
@@ -510,18 +561,26 @@ function ThumbnailPage({ idea, save }: PageProps) {
   );
 }
 
-function NotesPage({ idea, save }: PageProps) {
+function NotesPage({ idea, save, next }: PageProps & { next: ReactNode }) {
   const saved = useSavedVideos();
   const inspiration = saved.data?.find((v) => v.id === idea.inspiration_video_id);
   return (
     <>
-      {inspiration ? (
-        <div className="notice plain" style={{ margin: "8px 0 0" }}>
-          <Mult value={inspiration.outlier_score} />
-          <span className="grow small">Inspired by "{inspiration.title}" from {inspiration.channel_title}, {compact(inspiration.views)} views.</span>
-        </div>
-      ) : null}
-      <PaperText label="Notes" kind="note" value={idea.notes} empty="Tap to write anything else about this video" onSave={(v) => save({ notes: v })} onTick={(t) => void save({ notes: t })} />
+      <PaperText
+        label="Notes" heading kind="note" value={idea.notes} empty="Tap to write anything else about this video"
+        onSave={(v) => save({ notes: v })} onTick={(t) => void save({ notes: t })}
+        under={(
+          <>
+            {next}
+            {inspiration ? (
+              <div className="notice plain" style={{ margin: "12px 0" }}>
+                <Mult value={inspiration.outlier_score} />
+                <span className="grow small">Inspired by "{inspiration.title}" from {inspiration.channel_title}, {compact(inspiration.views)} views.</span>
+              </div>
+            ) : null}
+          </>
+        )}
+      />
       <PaperText
         label="Inspiration link" kind="line" value={idea.inspiration_url} empty="Tap to add a link to a video that inspired it" inputType="url"
         onSave={(v) => save({ inspiration_url: v })}
@@ -531,9 +590,21 @@ function NotesPage({ idea, save }: PageProps) {
   );
 }
 
+/** A writing box as tall as what is in it, so a long hook is never read through a small window. */
+function GrowingBox(props: { label: string; value: string; maxLength?: number; minHeight: number; onChange: (value: string) => void }) {
+  const box = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.max(props.minHeight, el.scrollHeight + 2)}px`;
+  }, [props.value, props.minHeight]);
+  return <textarea ref={box} className="textarea" autoFocus aria-label={props.label} value={props.value} maxLength={props.maxLength} onChange={(e) => props.onChange(e.target.value)} />;
+}
+
 /**
- * One part of a page, written on the paper. Tap it (or Write) to write there and then; Save keeps it.
- * Boxes in a note can be ticked without opening it.
+ * One part of a page. The owner's writing sits on ruled lines, one rule under each line of text; tap it
+ * (or Write) and a box opens in its place, and Save keeps it. Boxes in a note tick without opening it.
  */
 function PaperText(props: {
   label: string;
@@ -543,12 +614,20 @@ function PaperText(props: {
   onSave: (value: string | null) => Promise<boolean>;
   onTick?: (value: string) => void;
   hint?: ReactNode;
-  big?: boolean;
+  /** Bigger and bold: the title. */
+  strong?: boolean;
+  /** This part is the whole page: its name is the page's heading. */
+  heading?: boolean;
+  /** Nothing above names this part: only its Edit button shows. */
+  bare?: boolean;
+  /** Shown between the name and the writing. */
+  under?: ReactNode;
   required?: boolean;
   maxLength?: number;
   minHeight?: number;
   inputType?: string;
   below?: (draft: string) => ReactNode;
+  /** The owner's writing shown another way (a list with buttons, a link), off the ruled lines. */
   view?: (value: string) => ReactNode;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
@@ -571,7 +650,7 @@ function PaperText(props: {
     if (draft === null) return;
     const clean = props.kind === "line" ? draft.trim() : draft.replace(/\s+$/, "");
     if (props.required && !clean) {
-      toast(`Write a ${props.label.toLowerCase()} first.`, { error: true });
+      toast(`Write ${props.label.toLowerCase()} first.`, { error: true });
       return;
     }
     setBusy(true);
@@ -580,50 +659,42 @@ function PaperText(props: {
     if (ok) setDraft(null);
   };
 
-  const heading = (
-    <div className="nb-field-head">
-      <h3 className={`nb-label nb-hand${props.big ? " sr-only" : ""}`}>{props.label}</h3>
-      {draft === null ? <button type="button" className="btn btn-quiet btn-small nb-write" onClick={open} aria-label={`${value ? "Edit" : "Write"} ${props.label.toLowerCase()}`}>{value ? "Edit" : "Write"}</button> : null}
-    </div>
-  );
-  if (draft !== null) {
-    return (
-      <section className={`nb-field${props.big ? " big" : ""}`}>
-        {heading}
+  const what = props.label.toLowerCase();
+  return (
+    <section className={props.heading || props.bare ? "nb-section whole" : "nb-section"}>
+      <div className="nb-section-head">
+        {props.heading ? <h2 className="nb-h">{props.label}</h2> : <h3 className={props.bare ? "sr" : undefined}>{props.label}</h3>}
+        {draft === null ? <button type="button" className="btn btn-small" onClick={open} aria-label={`${value ? "Edit" : "Write"} ${what}`}>{value ? "Edit" : "Write"}</button> : null}
+      </div>
+      {props.under}
+      {draft !== null ? (
         <div className="nb-writing">
           {props.kind === "note" ? (
             <NotesBox label={props.label} value={draft} onChange={setDraft} alwaysEdit grow autoFocus minHeight={props.minHeight ?? 120} maxLength={props.maxLength} />
           ) : props.kind === "lines" ? (
-            <textarea className="textarea" autoFocus aria-label={props.label} value={draft} maxLength={props.maxLength} style={{ minHeight: props.minHeight ?? 140 }} onChange={(e) => setDraft(e.target.value)} />
+            <GrowingBox label={props.label} value={draft} maxLength={props.maxLength} minHeight={props.minHeight ?? 140} onChange={setDraft} />
           ) : (
             <input className="input" autoFocus aria-label={props.label} type={props.inputType ?? "text"} value={draft} maxLength={props.maxLength} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void save(); }} />
           )}
           {props.below?.(draft)}
           {props.hint}
           <div className="row-wrap" style={{ gap: 8 }}>
-            <button type="button" className="btn btn-primary btn-small" disabled={busy} onClick={() => void save()}>{busy ? "Saving" : "Save"}</button>
-            <button type="button" className="btn btn-quiet btn-small" disabled={busy} onClick={() => setDraft(null)}>Cancel</button>
+            <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void save()}>{busy ? "Saving" : "Save"}</button>
+            <button type="button" className="btn" disabled={busy} onClick={() => setDraft(null)}>Cancel</button>
           </div>
         </div>
-      </section>
-    );
-  }
-  return (
-    <section className={`nb-field${props.big ? " big" : ""}`}>
-      {heading}
-      <div className={`nb-tap${props.big ? " big" : ""}`} onClick={onPaper}>
-        {!value ? <span className="nb-empty">{props.empty}</span>
-          : props.view ? props.view(value)
-          : props.kind === "note" ? <RichNote className="nb-text" text={value} onChange={props.onTick} />
-          : props.kind === "lines" ? (
-            <div className="nb-text">
-              {value.split("\n").map((l) => l.trim()).filter(Boolean).map((l, i) => (
-                <div key={i} className={/^\[.*\]$/.test(l) ? "nb-direction" : undefined}>{l}</div>
-              ))}
-            </div>
-          )
-          : <div className={props.big ? "nb-big nb-hand" : "nb-text"}>{value}</div>}
-      </div>
+      ) : value && props.view ? (
+        <div className="nb-tap" onClick={onPaper}>{props.view(value)}</div>
+      ) : (
+        <div className={`nb-tap nb-lines${props.strong ? " strong" : ""}${value ? "" : props.kind === "line" ? " blank one" : " blank"}`} onClick={onPaper}>
+          {!value ? <span className="nb-empty">{props.empty}</span>
+            : props.kind === "note" ? <RichNote text={value} onChange={props.onTick} />
+            : props.kind === "lines" ? value.split("\n").map((l) => l.trim()).filter(Boolean).map((l, i) => (
+              <div key={i} className={/^\[.*\]$/.test(l) ? "nb-direction" : undefined}>{l}</div>
+            ))
+            : value}
+        </div>
+      )}
     </section>
   );
 }

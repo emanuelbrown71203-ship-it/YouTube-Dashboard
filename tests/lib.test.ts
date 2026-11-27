@@ -455,7 +455,7 @@ describe("growth", () => {
   });
 
   it("lays out the notebook: videos being made, then each game as a chapter, then notes a page per heading", async () => {
-    const { buildNotebook, notePages, withNotePart, findPage, videoPages, pageOfPlace } = await import("../src/lib/notebook.ts");
+    const { buildNotebook, notePages, withNotePart, findPage, videoPages, pageOfPlace, noteName, tocMatches } = await import("../src/lib/notebook.ts");
     const idea = (id: string, over: object) => ({ id, title: id, format: "long", status: "idea", picked_at: null, topic: null, priority: 2, sort_order: 0, target_date: null, ...over }) as never;
     const ideas = [
       idea("er1", { topic: "Elden Ring", sort_order: 1 }), idea("er2", { topic: "Elden Ring", sort_order: 2, format: "short" }), idea("cup", { topic: "Cuphead" }),
@@ -469,7 +469,7 @@ describe("growth", () => {
     expect(videoPages("short")).not.toContain("thumbnail");
     expect(book.chapters.map((c) => [c.name, c.entries.map((e) => e.label)])).toEqual([
       ["Making now", ["lobber"]], ["Elden Ring", ["er2", "er1"]], ["Cuphead", ["cup"]], ["No game yet", ["loose"]],
-      ["My notes", ["Notes from my drive", "A podcast"]],
+      ["My notes", ["Notes from my drive", "Retention beats views"]],
     ]);
     expect(book.pages.slice(0, 7).map((p) => p.key)).toEqual(["plan", "title", "intro", "script", "editor", "thumbnail", "notes"].map((k) => `idea-lobber-${k}`));
     expect(book.entries.map((e) => e.count)).toEqual([7, 6, 7, 7, 7, 3, 1]);
@@ -482,6 +482,13 @@ describe("growth", () => {
     expect(findPage(book.pages, "idea-cup")).toBe(book.pages.findIndex((p) => p.key === "idea-cup-plan"));
     expect(findPage(book.pages, "idea-cup-intro")).toBe(book.pages.findIndex((p) => p.key === "idea-cup-intro"));
     expect(findPage(book.pages, "idea-gone")).toBe(-1);
+    // A single line goes by its own first words (several can share a source); a long one is cut short.
+    expect(noteName({ id: "a", source: "My content notes", text: "- [ ] Post on Fridays\nMore" }, 1)).toBe("Post on Fridays");
+    expect(noteName({ id: "b", source: null, text: "x".repeat(90) }, 1)).toHaveLength(69);
+    // Contents finds a video or note by any of its words, with the chapter it sits in.
+    expect(tocMatches(book.chapters, "lob").map((m) => [m.entry.label, m.chapter])).toEqual([["lobber", "Making now"]]);
+    expect(tocMatches(book.chapters, "elden er").map((m) => m.entry.label)).toEqual(["er2", "er1"]);
+    expect(tocMatches(book.chapters, "  ")).toEqual([]);
     expect(pageOfPlace("titles")).toBe("title");
     expect(pageOfPlace("intro")).toBe("intro");
     expect(pageOfPlace(null)).toBe("plan");

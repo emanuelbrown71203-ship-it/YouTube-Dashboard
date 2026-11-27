@@ -294,33 +294,49 @@ free and the owner has said to use them whenever a score needs them.
 - The notebook (Ideas, the first tab at `#/ideas`; the board moved to
   `#/ideas/board`, and `#/ideas/notebook` still lands here;
   `src/pages/Notebook.tsx`, `src/lib/notebook.ts`): everything the owner
-  wrote on ruled paper (margin line, punched holes, Caveat for headings,
-  light and dark), one page at a time: the videos being made, then each game
-  as a chapter in the board's order, then their lines to remember, a page per
-  heading when a note is written in parts (`notePages`). Each video is its
-  own set of pages in the order it is made (`videoPages`): Plan, Title,
-  Intro (the hook and its score), Script (script starter, what happens,
-  outline, script score), For my editor, Thumbnail (long-form only) and
-  Notes, with divider tabs along the top (a tick when a page's steps are
-  done, a mark on the one with the next step). The Plan page comes first:
-  stage and date, a sticky note with the scores and the one next step with
-  its button, and every step in order under Decide, Write it, Film it, Edit
-  it and Post it (`planSteps` in `src/lib/nextStep.ts`). Steps tick
-  themselves from what is written and added, never by hand; one the video
-  moved past is "skipped", not done; the order inside each part matches
-  `nextStep`, so the plan and Making now agree. Tapping any part of a page
-  (or its Write button) writes on it there and saves with Save (`PaperText`);
-  boxes tick and save without opening it; turning the page with unsaved
-  writing asks first. Swipe or Next turns the page (onto the next video's
-  plan at the end), "Skip to next video" jumps, Contents opens a chapter to
-  its videos, and it reopens on the page they left (kept by its key, in
-  this browser). Links in (`#/ideas?edit=<id>&open=<place>`, from Making
-  now, the planner, Find, swings) open that video on its step's page
-  (`pageOfPlace`); a published idea opens in the editor instead. New idea,
-  and an idea started in Research, open the idea editor, then turn to the new
-  idea's plan. "Open the full editor" keeps priority, made for, search
-  phrase, the upload link and the bin. The owner asked for "everything its
-  own piece of paper" and "my plan for each video at the beginning".
+  wrote, one page at a time on a sheet of paper (a margin line and punched
+  holes, light and dark): the videos being made, then each game as a chapter
+  in the board's order, then their lines to remember, a page per heading
+  when a note is written in parts (`notePages`). **Keep it plain.** The
+  first version used a handwriting font and ruled the whole page; the owner
+  found the font hard to read ("especially in large text"), headings ran
+  into the text under them, and asked for it not to be "super fancy". So it
+  is all in the app's own font, and ruled lines sit only under the owner's
+  own writing (`.nb-lines`), where every line of text is exactly one rule
+  tall (30px), so text never crosses a line. Never bring back a decorative
+  font, rotation, or rules behind cards and controls.
+  Top to bottom: where you are ("Making now · Video 2 of 4") with the
+  Contents button, the video's title, then a tab per page that stays at the
+  top of the screen while the page scrolls, then the sheet, then buttons
+  named for the page they turn to ("‹ Intro", "For my editor ›") and
+  "Previous video" / "Next video". Each video's pages, in the order it is
+  made (`videoPages`): Plan, Title, Intro (the hook and its score), Script
+  (script starter, what happens, outline, script score), For my editor,
+  Thumbnail (long-form only) and Notes; a phone shortens two tab names
+  (`TAB_NAMES`). A tab shows a tick when its page's steps are done and a
+  dot when the next step is on it. The Plan page comes first: stage and
+  date, one "Next step" box with its button, and every step in order under
+  Decide, Write it, Film it, Edit it and Post it (`planSteps` in
+  `src/lib/nextStep.ts`). Steps tick themselves from what is written and
+  added, never by hand; one the video moved past is "skipped", not done;
+  the order inside each part matches `nextStep`, so the plan and Making now
+  agree. Tapping any part of a page (or its Write or Edit button) opens a
+  box as tall as the writing, and Save keeps it (`PaperText`); boxes tick
+  and save without opening it; turning the page with unsaved writing asks
+  first. Swipe or the arrow keys turn the page too (back from a video's
+  first page goes to the start of the one before). Contents is a side
+  panel (full screen on a phone): each chapter opens to its videos, a box
+  finds one by any of its words (`tocMatches`), and New idea is at the
+  bottom. A single line is named by its first words there (`noteName`),
+  since several lines share a source. It reopens on the page they left
+  (kept by its key, in this browser). Links in
+  (`#/ideas?edit=<id>&open=<place>`, from Making now, the planner, Find,
+  swings) open that video on its step's page (`pageOfPlace`); a published
+  idea opens in the editor instead. New idea, and an idea started in
+  Research, open the idea editor, then turn to the new idea's plan. "Open
+  the full editor" keeps priority, made for, search phrase, the upload link
+  and the bin. The owner asked for "everything its own piece of paper" and
+  "my plan for each video at the beginning".
 - Daily idea swings (Ideas → Daily swings; `src/pages/Swings.tsx`,
   `src/lib/swings.ts`): the owner's 15-minute routine, read from their own
   active template with "swing" in its name (`parseSwings`: each heading's
