@@ -320,7 +320,7 @@ export const getFormatDaily = () =>
 
 export const getVideos = () =>
   all<Video>((from, to) => supabase.from("yt_v_videos")
-    .select("id, title, content_type, privacy, published_at, duration_s, views, likes, comments, shares, subs_gained, watch_hours, avg_view_duration_s, avg_view_pct, age_days, views_per_day, engagement_pct, typical_views, vs_typical, search_pct, recommended_pct, discovery, url, thumbnail_url, tags, traffic, estimated_revenue, revenue_per_1000_views, topic, feeders")
+    .select("id, title, content_type, privacy, published_at, duration_s, views, likes, comments, shares, subs_gained, watch_hours, avg_view_duration_s, avg_view_pct, age_days, views_per_day, engagement_pct, typical_views, vs_typical, search_pct, recommended_pct, discovery, url, thumbnail_url, tags, traffic, estimated_revenue, revenue_per_1000_views, topic, feeders, engaged_views")
     .order("published_at", { ascending: false, nullsFirst: false }).order("id").range(from, to));
 
 export async function getMyFormats(): Promise<MyFormat[]> {

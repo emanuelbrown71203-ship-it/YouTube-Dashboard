@@ -51,8 +51,11 @@ research and the last sync. Every table and view has a comment explaining it;
 | `yt_swings` | Daily idea swings done (`day` = the owner's own date, `kind` = full, segment, short or upgrade, `idea_id` = the idea it wrote or upgraded, `levers` ticked on an upgrade). Ideas a swing wrote have `source = 'swing'`. |
 | `yt_rhythm` | The owner's upload rhythm: one target per format (`long`, `short`, `live`), "post at least every `every_days` days". `active = false` switches one off. Home shows the days since the last upload of that format against it. |
 
-`yt_v_videos` also carries `topic` (the game), `estimated_revenue` and `feeders`
-(which videos sent viewers to a long video). `yt_research_videos.explanation`
+`yt_v_videos` also carries `topic` (the game), `estimated_revenue`, `feeders`
+(which videos sent viewers to a long video) and `engaged_views` (lifetime, from
+YouTube Studio: views without the people who scrolled past in the first moment;
+the video's details show it under its views as "N% of views", `engagedShare` in
+`src/lib/stats.ts`). The owner may call these "verified views". `yt_research_videos.explanation`
 holds the AI's plain-English notes on an outlier.
 
 Things to keep in mind when reading the numbers:
@@ -137,7 +140,7 @@ free and the owner has said to use them whenever a score needs them.
 
 - `src/`: Vite + React + TypeScript. Reads go straight to Supabase with the
   publishable key; row level security lets only owners in.
-- `supabase/migrations/`: twenty-five files, all `yt_` objects. No statement in them
+- `supabase/migrations/`: twenty-six files, all `yt_` objects. No statement in them
   removes a table, a column or a row (017 only lets `yt_idea_refs.video_id` be
   empty, for screenshots).
 - `supabase/functions/yt-api/`: one edge function, deployed with JWT

@@ -1484,6 +1484,7 @@ export type Database = {
           revenue_per_1000_views: number | null;
           topic: string | null;
           feeders: Json | null;
+          engaged_views: number | null;
         };
         Relationships: [];
       };

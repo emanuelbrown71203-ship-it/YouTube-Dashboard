@@ -19,6 +19,7 @@ const row = (date: string, views: number, extra: Partial<DailyRow> = {}): DailyR
 const days = (n: number, views: (i: number) => number): DailyRow[] =>
   Array.from({ length: n }, (_, i) => row(new Date(Date.UTC(2026, 7, 1) + i * 86_400_000).toISOString().slice(0, 10), views(i)));
 const video = (over: Partial<Video>): Video => ({
+  engaged_views: null,
   id: "v", title: "t", content_type: "long", privacy: "public", published_at: null, duration_s: 600, views: 100, likes: 1,
   comments: 0, shares: null, subs_gained: null, watch_hours: null, avg_view_duration_s: null, avg_view_pct: null,
   age_days: 1, views_per_day: 1, engagement_pct: 1, typical_views: null, vs_typical: null, search_pct: null,
@@ -368,6 +369,17 @@ describe("growth", () => {
     expect(pick("Inscryption outline", "Inscryption")).toBeNull();
     expect(titlesOf({ title: " A title ", title_options: ["a title", "", "Another"] })).toEqual(["A title", "Another"]);
     expect(scriptText({ hook: " Hi ", concept: null, outline: "Beat 1" })).toBe(scriptKeyText(" Hi ", null, "Beat 1"));
+  });
+
+  it("says what share of a video's views were engaged", async () => {
+    const { engagedShare } = await import("../src/lib/stats.ts");
+    expect(engagedShare(2653, 405)).toBe(15);
+    expect(engagedShare(355, 354)).toBe(100);
+    // Studio a day behind the live count can read over; it never shows more than 100.
+    expect(engagedShare(100, 104)).toBe(100);
+    expect(engagedShare(2653, null)).toBeNull();
+    expect(engagedShare(0, 0)).toBeNull();
+    expect(engagedShare(null, 5)).toBeNull();
   });
 
   it("gives each video being made one next step, from how far along it is and what is written", async () => {

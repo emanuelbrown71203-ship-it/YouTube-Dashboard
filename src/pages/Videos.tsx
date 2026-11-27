@@ -10,7 +10,7 @@ import { ago, compact, count, day, duration, FORMAT_LABEL, FORMAT_PLURAL, money,
 import { keys, useChannel, useVideos } from "../lib/hooks.ts";
 import { navigate, useRoute } from "../lib/router.ts";
 import { auditAll, type Check, CHECK_LABEL, type CheckKey } from "../lib/seo.ts";
-import { libraryComplete } from "../lib/stats.ts";
+import { engagedShare, libraryComplete } from "../lib/stats.ts";
 import type { Format, Traffic, Video } from "../lib/types.ts";
 
 type SortKey = "newest" | "views" | "per_day" | "vs_usual" | "watched" | "ctr" | "avg_view" | "watch_hours" | "earned";
@@ -237,8 +237,13 @@ function VideoDetail({ video: v, checks, complete, onClose }: { video: Video; ch
   const toast = useToast();
   const [saving, setSaving] = useState(false);
   const [topic, setTopic] = useState(v.topic ?? "");
-  const stats: [string, string][] = [
+  // Views count from the first frame (since 2026-08-27); engaged views leave out the people who scrolled past.
+  const share = engagedShare(v.views, v.engaged_views);
+  const fresh = (v.age_days ?? 99) < 3;
+  const engagedNote = share !== null ? `${share}% of views` : fresh ? "In 2 to 3 days" : undefined;
+  const stats: [string, string, string?][] = [
     ["Views", whole(v.views)],
+    ["Engaged views", whole(v.engaged_views), engagedNote],
     ["Per day", compact(v.views_per_day)],
     ["Likes", whole(v.likes)],
     ["Comments", whole(v.comments)],
@@ -283,10 +288,15 @@ function VideoDetail({ video: v, checks, complete, onClose }: { video: Video; ch
 
       <First48 video={v} />
 
-      <div className="kv">
-        {stats.map(([k, val]) => (
-          <div key={k}><div className="k">{k}</div><div className="v fig">{val}</div></div>
-        ))}
+      <div>
+        <div className="kv">
+          {stats.map(([k, val, note]) => (
+            <div key={k}><div className="k">{k}</div><div className="v fig">{val}</div>{note ? <div className="small muted">{note}</div> : null}</div>
+          ))}
+        </div>
+        <p className="small muted" style={{ marginTop: 10 }}>
+          Engaged views leave out people who scrolled past in the first moment. They come from YouTube Studio, a day or two behind.
+        </p>
       </div>
 
       <form

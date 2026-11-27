@@ -240,3 +240,12 @@ export function libraryComplete(videos: Video[], channelVideos: number | null | 
   if (!channelVideos) return videos.length > 0;
   return videos.length >= 0.9 * channelVideos;
 }
+
+/**
+ * What share of a video's views were engaged, in whole percent. Null until YouTube Studio has the number.
+ * The view count is live and Studio is a day or two behind, so a new video can read a little low; never over 100.
+ */
+export function engagedShare(views: number | null | undefined, engaged: number | null | undefined): number | null {
+  if (!views || engaged === null || engaged === undefined) return null;
+  return Math.min(100, Math.round((100 * engaged) / views));
+}

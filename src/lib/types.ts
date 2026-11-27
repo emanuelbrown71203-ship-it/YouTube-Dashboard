@@ -76,6 +76,8 @@ export interface Video {
   revenue_per_1000_views: number | null;
   topic: string | null;
   feeders: { video_id: string; views: number }[] | null;
+  /** Lifetime engaged views from YouTube Studio: views without the people who scrolled past in the first moment. */
+  engaged_views: number | null;
 }
 
 export interface MyFormat {
