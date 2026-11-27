@@ -39,7 +39,7 @@ const DOCK = 4;
 // Pages that moved when the sections were sorted out: old links still land in the right place.
 const MOVED: Record<string, string> = {
   "recap": "/stats/recap", "notes": "/playbook/lines", "videos/games": "/stats/games", "videos/funnel": "/stats/funnel",
-  "ideas/templates": "/playbook",
+  "ideas/templates": "/playbook", "ideas/notebook": "/ideas",
 };
 
 export function App() {
@@ -211,7 +211,7 @@ function Shell(props: { google: GoogleResult | null; clearGoogle: () => void; on
             </>
           )
           : section === "videos" ? <Videos />
-          : section === "ideas" && sub === "notebook" ? (
+          : section === "ideas" && sub === "" ? (
             <>
               <div className="page-head"><h1>Ideas</h1></div>
               <Tabs label="Ideas" base="/ideas" current={sub} tabs={IDEA_TABS} />
@@ -246,7 +246,7 @@ function Shell(props: { google: GoogleResult | null; clearGoogle: () => void; on
               <EditorNotesPage />
             </>
           )
-          : section === "ideas" ? <Ideas />
+          : section === "ideas" && sub === "board" ? <Ideas />
           : section === "goals" ? <><div className="page-head"><h1>Goals</h1></div><Goals /></>
           : section === "comments" ? <><div className="page-head"><h1>Comments</h1></div><Comments /></>
           : section === "playbook" && (sub === "" || sub === "lines" || sub === "scripts") ? (

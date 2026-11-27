@@ -318,7 +318,8 @@ export function Drawer(props: { title: string; onClose: () => void; children: Re
   const onClose = useCallback(() => latest.current(), []);
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
-    ref.current?.focus();
+    // A box inside that asked for the cursor (a new idea's title) keeps it; otherwise the panel takes it.
+    if (!ref.current?.contains(document.activeElement)) ref.current?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") latest.current();
     };

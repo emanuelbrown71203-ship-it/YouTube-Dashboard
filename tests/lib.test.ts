@@ -375,7 +375,7 @@ describe("growth", () => {
     const base = { status: "scripting" as const, format: "long" as const, hook: null, concept: null, outline: null, notes: null, target_date: null, intro_check: null, title_check: null };
     const none = { cuts: 0, thumbs: 0 };
     // Scripting walks through the hook, what happens, the outline, the owner's own list, then the intro score.
-    expect(nextStep(base, none)).toMatchObject({ place: "script", advance: false, text: expect.stringContaining("hook") });
+    expect(nextStep(base, none)).toMatchObject({ place: "intro", advance: false, text: expect.stringContaining("hook") });
     expect(nextStep({ ...base, hook: "Meet Patty." }, none).text).toContain("what happens");
     expect(nextStep({ ...base, hook: "x", concept: "y" }, none).text).toContain("Outline");
     const outline = "Margit\n- [x] Buy the club\n- [ ] Film the Margit fight\n- [ ] Godrick";
@@ -455,20 +455,36 @@ describe("growth", () => {
   });
 
   it("lays out the notebook: videos being made, then each game as a chapter, then notes a page per heading", async () => {
-    const { buildNotebook, notePages, withNotePart } = await import("../src/lib/notebook.ts");
+    const { buildNotebook, notePages, withNotePart, findPage, videoPages, pageOfPlace } = await import("../src/lib/notebook.ts");
     const idea = (id: string, over: object) => ({ id, title: id, format: "long", status: "idea", picked_at: null, topic: null, priority: 2, sort_order: 0, target_date: null, ...over }) as never;
     const ideas = [
-      idea("er1", { topic: "Elden Ring", sort_order: 1 }), idea("er2", { topic: "Elden Ring", sort_order: 2 }), idea("cup", { topic: "Cuphead" }),
+      idea("er1", { topic: "Elden Ring", sort_order: 1 }), idea("er2", { topic: "Elden Ring", sort_order: 2, format: "short" }), idea("cup", { topic: "Cuphead" }),
       idea("lobber", { topic: "Cuphead", status: "editing", picked_at: "2026-11-19", target_date: "2026-11-27" }),
       idea("loose", {}), idea("done", { topic: "Elden Ring", status: "published", picked_at: "2026-10-01" }),
     ];
     const drive = { id: "n1", source: "Notes from my drive", text: "Drive notes, Nov 26\n- [ ] Look at Witcher 3\n\nThe goal is to have fun\n- It's just about starting\n\nEvery is working\n- I played every" };
     const book = buildNotebook(ideas, [drive, { id: "n2", source: "A podcast", text: "Retention beats views" }]);
-    expect(book.chapters.map((c) => [c.name, c.count])).toEqual([["Making now", 1], ["Elden Ring", 2], ["Cuphead", 1], ["No game yet", 1], ["My notes", 4]]);
-    expect(book.pages.map((p) => (p.kind === "idea" ? (p as { idea: { id: string } }).idea.id : (p as { heading: string }).heading))).toEqual([
-      "lobber", "er2", "er1", "cup", "loose", "Drive notes, Nov 26", "The goal is to have fun", "Every is working", "A podcast",
+    // Each video is its own set of pages, the plan first; a Short has no thumbnail page.
+    expect(videoPages("long")).toEqual(["plan", "title", "intro", "script", "editor", "thumbnail", "notes"]);
+    expect(videoPages("short")).not.toContain("thumbnail");
+    expect(book.chapters.map((c) => [c.name, c.entries.map((e) => e.label)])).toEqual([
+      ["Making now", ["lobber"]], ["Elden Ring", ["er2", "er1"]], ["Cuphead", ["cup"]], ["No game yet", ["loose"]],
+      ["My notes", ["Notes from my drive", "A podcast"]],
     ]);
-    expect(book.chapters[1].start).toBe(1);
+    expect(book.pages.slice(0, 7).map((p) => p.key)).toEqual(["plan", "title", "intro", "script", "editor", "thumbnail", "notes"].map((k) => `idea-lobber-${k}`));
+    expect(book.entries.map((e) => e.count)).toEqual([7, 6, 7, 7, 7, 3, 1]);
+    expect(book.chapters[1].start).toBe(7);
+    expect(book.chapters[1].count).toBe(13);
+    expect(book.pages.filter((p) => p.kind === "note").map((p) => (p as { heading: string }).heading)).toEqual([
+      "Drive notes, Nov 26", "The goal is to have fun", "Every is working", "A podcast",
+    ]);
+    // A page from before videos had pages opens on that video's plan; a step opens on its own page.
+    expect(findPage(book.pages, "idea-cup")).toBe(book.pages.findIndex((p) => p.key === "idea-cup-plan"));
+    expect(findPage(book.pages, "idea-cup-intro")).toBe(book.pages.findIndex((p) => p.key === "idea-cup-intro"));
+    expect(findPage(book.pages, "idea-gone")).toBe(-1);
+    expect(pageOfPlace("titles")).toBe("title");
+    expect(pageOfPlace("intro")).toBe("intro");
+    expect(pageOfPlace(null)).toBe("plan");
     // A note in parts becomes a page per part; a plain line is one page under where it came from.
     expect(notePages(drive)[1]).toEqual({ heading: "The goal is to have fun", body: "- It's just about starting", part: 1 });
     expect(notePages({ id: "x", source: null, text: "- just a bullet\n\n- another" })).toEqual([{ heading: "A line to remember", body: "- just a bullet\n\n- another", part: null }]);
@@ -476,6 +492,35 @@ describe("growth", () => {
     const ticked = withNotePart(drive.text, 0, "- [x] Look at Witcher 3");
     expect(ticked).toBe(drive.text.replace("- [ ] Look at Witcher 3", "- [x] Look at Witcher 3"));
     expect(withNotePart("whole", null, "new")).toBe("new");
+  });
+
+  it("writes each video's plan in the order it is made, ticked by what is already done", async () => {
+    const { planSteps, nextStep } = await import("../src/lib/nextStep.ts");
+    const base = { status: "idea" as const, picked_at: null, format: "long" as const, title: "Elden Ring but every boss is Margit", hook: null, concept: null, outline: null, notes: null, target_date: null, intro_check: null, title_check: null };
+    const none = { cuts: 0, thumbs: 0 };
+    // Just an idea: deciding comes first, and the title is already one step done.
+    const fresh = planSteps(base, none);
+    expect(fresh.steps.map((s) => s.key)).toEqual(["pick", "title", "hook", "concept", "outline", "intro", "film", "cuts", "thumb", "titles", "date", "schedule"]);
+    expect(fresh.here?.key).toBe("pick");
+    expect(fresh.done).toBe(1);
+    // Picked: the hook is next, on the intro page, the same as Making now says.
+    const pickedIdea = { ...base, picked_at: "2026-11-20" };
+    const picked = planSteps(pickedIdea, none);
+    expect(picked.here).toMatchObject({ key: "hook", page: "intro" });
+    expect(nextStep(pickedIdea, none).place).toBe("intro");
+    // The owner's own boxes count as a step, on the page they are written on.
+    const listed = planSteps({ ...base, picked_at: "x", hook: "h", concept: "c", outline: "- [x] Buy the club\n- [ ] Film Margit" }, none);
+    expect(listed.steps.find((s) => s.key === "list")).toMatchObject({ text: "Tick off your list: 1 of 2", page: "script", done: false });
+    expect(listed.here?.key).toBe("list");
+    // In editing, writing steps it skipped are passed, not done; a Short has no thumbnail step.
+    const editing = planSteps({ ...base, status: "editing", picked_at: "x", hook: "h" }, { cuts: 1, thumbs: 0 });
+    expect(editing.steps.find((s) => s.key === "concept")).toMatchObject({ done: false, passed: true });
+    expect(editing.steps.find((s) => s.key === "film")?.done).toBe(true);
+    expect(editing.here).toMatchObject({ key: "thumb", page: "thumbnail" });
+    expect(planSteps({ ...base, format: "short", status: "editing", picked_at: "x" }, { cuts: 1, thumbs: 0 }).here?.key).toBe("titles");
+    // Scheduled with a date: nothing left to do.
+    const ready = planSteps({ ...base, status: "scheduled", picked_at: "x", target_date: "2026-12-04", title_check: {} as never }, { cuts: 1, thumbs: 1 });
+    expect(ready.here).toBeNull();
   });
 
   it("reads bullets and checkboxes out of a note, and ticks them", async () => {

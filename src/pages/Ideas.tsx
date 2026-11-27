@@ -78,9 +78,9 @@ export function Ideas() {
   useEffect(() => {
     const idea = editId ? ideas.data?.find((i) => i.id === editId) : undefined;
     if (!idea) return;
-    setStartAt((["script", "editor", "thumbnail", "titles", "plan"] as const).find((p) => p === openPart) ?? null);
+    setStartAt((["intro", "script", "editor", "thumbnail", "titles", "plan"] as const).find((p) => p === openPart) ?? null);
     setEditing(idea);
-    navigate("/ideas", true);
+    navigate("/ideas/board", true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editId, ideas.data]);
 
@@ -247,7 +247,7 @@ export function Ideas() {
   return (
     <>
       <div className="page-head"><h1>Ideas</h1></div>
-      <Tabs label="Ideas" base="/ideas" current="" tabs={IDEA_TABS} />
+      <Tabs label="Ideas" base="/ideas" current="board" tabs={IDEA_TABS} />
       <MakingNow where="ideas" />
       <form className="quick-idea" onSubmit={add}>
         <div className="row" style={{ gap: 8 }}>
@@ -376,7 +376,13 @@ export function Ideas() {
   );
 }
 
-export function IdeaEditor(props: { draft: IdeaDraft; games: string[]; start?: Place | null; onClose: () => void; onChanged: () => Promise<void>; onOpen: (draft: IdeaDraft) => void }) {
+export const blankIdea = blank;
+
+export function IdeaEditor(props: {
+  draft: IdeaDraft; games: string[]; start?: Place | null; onClose: () => void; onChanged: () => Promise<void>; onOpen: (draft: IdeaDraft) => void;
+  /** Told the idea as it was saved (the notebook turns to a new idea's first page). */
+  onSaved?: (idea: Idea) => void;
+}) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const refsAll = useIdeaRefs();
@@ -388,7 +394,8 @@ export function IdeaEditor(props: { draft: IdeaDraft; games: string[]; start?: P
   // "Do it" on Making now, that part starts open; "Go" opens it and scrolls to it.
   const counts = usePieceCounts();
   const [signal, setSignal] = useState<{ place: Place | null; n: number }>({ place: props.start ?? null, n: props.start ? 1 : 0 });
-  const sig = (p: Place) => (signal.place === p ? signal.n : 0);
+  // The hook and its score sit in the Script fold here (the notebook gives them a page of their own).
+  const sig = (p: Place) => (signal.place === p || (p === "script" && signal.place === "intro") ? signal.n : 0);
   const [saving, setSaving] = useState(false);
   const set = <K extends keyof IdeaDraft>(key: K, value: IdeaDraft[K]) => {
     setForm((f) => ({ ...f, [key]: value }));
@@ -410,6 +417,7 @@ export function IdeaEditor(props: { draft: IdeaDraft; games: string[]; start?: P
       if (form.pending_refs?.length) await queryClient.invalidateQueries({ queryKey: ["idea-refs"] });
       await props.onChanged();
       toast("Idea saved.");
+      props.onSaved?.(idea);
       props.onClose();
     } catch (err) {
       toast(err instanceof Error ? err.message : "Could not save the idea.", { error: true });
@@ -566,7 +574,7 @@ export function IdeaEditor(props: { draft: IdeaDraft; games: string[]; start?: P
         />
       </Fold>
 
-      <Fold title="Script" summary={scriptSummary} open={!form.id || Boolean(form.hook || form.concept || form.outline) || props.start === "script"} openSignal={sig("script")}>
+      <Fold title="Script" summary={scriptSummary} open={!form.id || Boolean(form.hook || form.concept || form.outline) || props.start === "script" || props.start === "intro"} openSignal={sig("script")}>
         <ScriptStarter form={form} onUse={(part, value) => set(part, value)} />
         <label className="field">
           <span>Hook</span>

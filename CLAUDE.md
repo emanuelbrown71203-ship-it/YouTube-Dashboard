@@ -291,17 +291,36 @@ free and the owner has said to use them whenever a score needs them.
   scored so the editor says when it changed since. When the owner asks you
   to rate a title, intro, script or thumbnail, use the same parts and
   weights, and say they are estimates.
-- The notebook (Ideas → Notebook; `src/pages/Notebook.tsx`,
-  `src/lib/notebook.ts`): everything the owner wrote, one page at a time on
-  ruled paper (margin line, punched holes, Caveat for headings, light and
-  dark): the videos being made, then each game as a chapter in the board's
-  order, then their lines to remember, a page per heading when a note is
-  written in parts (`notePages`), like their drive notes. Swipe or Next and
-  Previous turn the page, Contents jumps to a chapter, and it reopens on the
-  page they left (kept by what is on it, in this browser). Boxes tick on the
-  page and save at once (`withNotePart` keeps the rest of a note as it
-  was); "Edit this page" opens the idea editor in place. The owner asked for
-  their ideas to feel like "scrolling through a notebook", one page at a time.
+- The notebook (Ideas, the first tab at `#/ideas`; the board moved to
+  `#/ideas/board`, and `#/ideas/notebook` still lands here;
+  `src/pages/Notebook.tsx`, `src/lib/notebook.ts`): everything the owner
+  wrote on ruled paper (margin line, punched holes, Caveat for headings,
+  light and dark), one page at a time: the videos being made, then each game
+  as a chapter in the board's order, then their lines to remember, a page per
+  heading when a note is written in parts (`notePages`). Each video is its
+  own set of pages in the order it is made (`videoPages`): Plan, Title,
+  Intro (the hook and its score), Script (script starter, what happens,
+  outline, script score), For my editor, Thumbnail (long-form only) and
+  Notes, with divider tabs along the top (a tick when a page's steps are
+  done, a mark on the one with the next step). The Plan page comes first:
+  stage and date, a sticky note with the scores and the one next step with
+  its button, and every step in order under Decide, Write it, Film it, Edit
+  it and Post it (`planSteps` in `src/lib/nextStep.ts`). Steps tick
+  themselves from what is written and added, never by hand; one the video
+  moved past is "skipped", not done; the order inside each part matches
+  `nextStep`, so the plan and Making now agree. Tapping any part of a page
+  (or its Write button) writes on it there and saves with Save (`PaperText`);
+  boxes tick and save without opening it; turning the page with unsaved
+  writing asks first. Swipe or Next turns the page (onto the next video's
+  plan at the end), "Skip to next video" jumps, Contents opens a chapter to
+  its videos, and it reopens on the page they left (kept by its key, in
+  this browser). Links in (`#/ideas?edit=<id>&open=<place>`, from Making
+  now, the planner, Find, swings) open that video on its step's page
+  (`pageOfPlace`); a published idea opens in the editor instead. New idea,
+  and an idea started in Research, open the idea editor, then turn to the new
+  idea's plan. "Open the full editor" keeps priority, made for, search
+  phrase, the upload link and the bin. The owner asked for "everything its
+  own piece of paper" and "my plan for each video at the beginning".
 - Daily idea swings (Ideas → Daily swings; `src/pages/Swings.tsx`,
   `src/lib/swings.ts`): the owner's 15-minute routine, read from their own
   active template with "swing" in its name (`parseSwings`: each heading's
@@ -367,7 +386,7 @@ free and the owner has said to use them whenever a score needs them.
   Shorts suggests the idea could carry a long video (`shortsWorthAVideo`).
   The same goes when answering the owner's questions from the data.
 - **Sections** (`NAV` in `src/App.tsx`): Home, Videos (all videos, title
-  and thumbnail tests), Ideas (board, notebook, daily swings, suggested, planner, for my editor), Research (outliers,
+  and thumbnail tests), Ideas (notebook, board, daily swings, suggested, planner, for my editor), Research (outliers,
   thumbnails, search phrases, channels), Stats (charts,
   monthly recap, by game, Shorts to long), Goals, Comments, Playbook
   (templates, lines to remember, my scripts), Settings. A phone shows the first four

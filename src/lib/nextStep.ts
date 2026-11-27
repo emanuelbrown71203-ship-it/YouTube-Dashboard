@@ -3,10 +3,11 @@
 // single plain next step, worked out from how far along it is and what is already written.
 
 import { day } from "./format.ts";
+import { checkCount } from "./notes.ts";
 import type { Idea, IdeaStatus } from "./types.ts";
 
-/** Where in the idea editor a step is done. */
-export type Place = "script" | "editor" | "thumbnail" | "titles" | "plan";
+/** Where a step is done: the notebook page, or the part of the idea editor. The hook and its score are "intro". */
+export type Place = "intro" | "script" | "editor" | "thumbnail" | "titles" | "plan";
 export interface NextStep {
   text: string;
   place: Place | null;
@@ -48,11 +49,11 @@ export function nextStep(
   switch (idea.status) {
     case "idea":
     case "scripting":
-      if (!has(idea.hook)) return { text: "Write the hook: the first 5 seconds, line by line.", place: "script", advance: false };
+      if (!has(idea.hook)) return { text: "Write the hook: the first 5 seconds, line by line.", place: "intro", advance: false };
       if (!has(idea.concept)) return { text: "Write what happens: the challenge, the stakes, how it ends.", place: "script", advance: false };
       if (!has(idea.outline)) return { text: "Outline the beats, in the order they happen.", place: "script", advance: false };
       if (box) return { text: box, place: "script", advance: false, fromList: true };
-      if (!idea.intro_check) return { text: "Score your intro, then fix the weakest part.", place: "script", advance: false };
+      if (!idea.intro_check) return { text: "Score your intro, then fix the weakest part.", place: "intro", advance: false };
       return { text: "The script is ready. Move it to Filming.", place: null, advance: true };
     case "filming":
       if (box) return { text: box, place: "script", advance: false, fromList: true };
@@ -87,4 +88,77 @@ export function makingOrder<T extends Pick<Idea, "target_date" | "status">>(idea
   const stage = (s: IdeaStatus) => STAGES.findIndex((x) => x.key === s);
   return [...ideas].sort((a, b) =>
     (a.target_date ?? "9999").localeCompare(b.target_date ?? "9999") || stage(b.status) - stage(a.status));
+}
+
+/** The parts of making a video, in order. "pick" is deciding to make it at all. */
+export type PlanStage = "pick" | "write" | "film" | "edit" | "post";
+export const PLAN_STAGES: { key: PlanStage; label: string }[] = [
+  { key: "pick", label: "Decide" },
+  { key: "write", label: "Write it" },
+  { key: "film", label: "Film it" },
+  { key: "edit", label: "Edit it" },
+  { key: "post", label: "Post it" },
+];
+/** The notebook page a step is done on. */
+export type PlanPage = "plan" | "title" | "intro" | "script" | "editor" | "thumbnail" | "notes";
+export interface PlanStep {
+  key: string;
+  text: string;
+  stage: PlanStage;
+  page: PlanPage;
+  done: boolean;
+  /** Not done, but the video has moved on past it. */
+  passed: boolean;
+}
+export interface VideoPlan { steps: PlanStep[]; here: PlanStep | null; done: number; total: number }
+
+/** Which part of making it the video is in now. Published videos are past all of it. */
+function stageNow(idea: Pick<Idea, "status"> & { picked_at?: string | null }): number {
+  const making = Boolean(idea.picked_at) || idea.status !== "idea";
+  const at: Record<IdeaStatus, PlanStage> = { idea: "write", scripting: "write", filming: "film", editing: "edit", scheduled: "post", published: "post" };
+  if (idea.status === "published") return PLAN_STAGES.length;
+  return making ? PLAN_STAGES.findIndex((s) => s.key === at[idea.status]) : 0;
+}
+
+/**
+ * The plan for one video: every step from deciding to make it to scheduling it, in the order the owner
+ * does them, each ticked by what is already written or added (never by hand). The order inside each part
+ * is the same as `nextStep`, so the plan and "Making now" agree. A step the video moved past without
+ * doing is `passed`, not done. `here` is the first step still to do.
+ */
+export function planSteps(
+  idea: Pick<Idea, "status" | "format" | "title" | "hook" | "concept" | "outline" | "notes" | "target_date" | "intro_check" | "title_check"> & { picked_at?: string | null },
+  counts: { cuts: number; thumbs: number },
+): VideoPlan {
+  const now = stageNow(idea);
+  const at = (s: PlanStage) => PLAN_STAGES.findIndex((x) => x.key === s);
+  const steps: Omit<PlanStep, "passed">[] = [];
+  const add = (key: string, stage: PlanStage, page: PlanPage, text: string, done: boolean) => steps.push({ key, stage, page, text, done });
+  const published = idea.status === "published";
+
+  add("pick", "pick", "plan", "Decide to make it", now > 0);
+  add("title", "write", "title", "Write a title that names the game and the challenge", has(idea.title));
+  add("hook", "write", "intro", "Write the hook: the first 5 seconds", has(idea.hook));
+  add("concept", "write", "script", "Write what happens", has(idea.concept));
+  add("outline", "write", "script", "Outline the beats", has(idea.outline));
+  const inOutline = checkCount(idea.outline ?? ""), inNotes = checkCount(idea.notes ?? "");
+  const boxes = { done: inOutline.done + inNotes.done, total: inOutline.total + inNotes.total };
+  if (boxes.total) {
+    add("list", "write", inOutline.total - inOutline.done > 0 || !inNotes.total ? "script" : "notes", `Tick off your list: ${boxes.done} of ${boxes.total}`, boxes.done === boxes.total);
+  }
+  add("intro", "write", "intro", "Score your intro and fix the weakest part", Boolean(idea.intro_check));
+  add("film", "film", "plan", "Film it", ["editing", "scheduled", "published"].includes(idea.status));
+  add("cuts", "edit", "editor", "Bring in your cut's markers for your editor", counts.cuts > 0);
+  if (idea.format !== "short") add("thumb", "edit", "thumbnail", "Make the thumbnail and add it", counts.thumbs > 0);
+  add("titles", "edit", "title", "Score your titles and pick the strongest", Boolean(idea.title_check));
+  add("date", "post", "plan", "Set the day it goes up", has(idea.target_date) || published);
+  add("schedule", "post", "plan", "Schedule it", idea.status === "scheduled" || published);
+
+  const all = steps.map((s) => ({ ...s, passed: !s.done && at(s.stage) < now }));
+  return {
+    steps: all,
+    here: all.find((s) => !s.done && !s.passed) ?? null,
+    done: all.filter((s) => s.done).length,
+    total: all.length,
+  };
 }

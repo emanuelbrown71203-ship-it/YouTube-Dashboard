@@ -62,24 +62,31 @@ const count = (n: number) => `${n} ${n === 1 ? "note" : "notes"}`;
 /** In the idea editor: the notes for the editor kept with this idea, and a way to bring in the next export. */
 export function EditorNotesFold({ ideaId, title, open, openSignal }: { ideaId?: string; title: string; open?: boolean; openSignal?: number }) {
   const notes = useEditorNotes();
-  // In the order they were made: Cut 1, then Cut 2. The newest is open, and the next one goes in under it.
   const mine = (notes.data ?? []).filter((n) => n.idea_id === ideaId);
   const latest = mine[mine.length - 1];
   const summary = !ideaId ? "Save the idea first" : latest ? `${count(latest.markers.length)} from ${latest.name}` : "Bring in your Premiere markers";
   return (
     <Fold title="For my editor" summary={summary} open={open} openSignal={openSignal}>
-      {!ideaId ? (
-        <p className="small muted" style={{ margin: 0 }}>Save the idea first, then bring in the markers from your cut here.</p>
-      ) : (
-        <div className="stack" style={{ gap: 14 }}>
-          {notes.isLoading ? <Loading label="Loading your notes" /> : null}
-          {mine.map((sheet) => (
-            <EditorSheet key={sheet.id} sheet={sheet} title={title} open={sheet === latest} />
-          ))}
-          <ImportMarkers ideaId={ideaId} nextName={`Cut ${mine.length + 1}`} />
-        </div>
-      )}
+      <EditorNotesBody ideaId={ideaId} title={title} />
     </Fold>
+  );
+}
+
+/** Every cut's notes kept with one idea, and a way to bring in the next export (the editor's page in the notebook). */
+export function EditorNotesBody({ ideaId, title }: { ideaId?: string; title: string }) {
+  const notes = useEditorNotes();
+  // In the order they were made: Cut 1, then Cut 2. The newest is open, and the next one goes in under it.
+  const mine = (notes.data ?? []).filter((n) => n.idea_id === ideaId);
+  const latest = mine[mine.length - 1];
+  if (!ideaId) return <p className="small muted" style={{ margin: 0 }}>Save the idea first, then bring in the markers from your cut here.</p>;
+  return (
+    <div className="stack" style={{ gap: 14 }}>
+      {notes.isLoading ? <Loading label="Loading your notes" /> : null}
+      {mine.map((sheet) => (
+        <EditorSheet key={sheet.id} sheet={sheet} title={title} open={sheet === latest} />
+      ))}
+      <ImportMarkers ideaId={ideaId} nextName={`Cut ${mine.length + 1}`} />
+    </div>
   );
 }
 

@@ -867,10 +867,14 @@ button.nav-link { border: 0; background: none; font-family: inherit; font-size: 
 .nb-hand { font-family: "Caveat Variable", "Caveat", cursive; }
 .notebook { max-width: 760px; margin: 0 auto; scroll-margin-top: 12px; }
 .nb-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
-.nb-contents { display: grid; gap: 4px; margin-bottom: 12px; padding: 8px; border: 1px solid var(--paper-edge); border-radius: var(--radius-s); background: var(--paper); }
-.nb-contents-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 6px 10px; border: 0; border-radius: 6px; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.nb-contents { display: grid; gap: 2px; margin-bottom: 12px; padding: 8px; border: 1px solid var(--paper-edge); border-radius: var(--radius-s); background: var(--paper); }
+.nb-contents-row { display: flex; width: 100%; align-items: baseline; justify-content: space-between; gap: 10px; padding: 6px 10px; border: 0; border-radius: 6px; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
 .nb-contents-row .nb-hand { font-size: 22px; line-height: 1.1; }
 .nb-contents-row[aria-current="true"], .nb-contents-row:hover { background: var(--surface-2); }
+.nb-contents-list { display: grid; gap: 1px; margin: 2px 0 8px 18px; padding-left: 10px; border-left: 2px solid var(--paper-margin); }
+.nb-contents-entry { padding: 6px 8px; border: 0; border-radius: 6px; background: none; color: var(--ink); font: inherit; font-size: 14px; line-height: 1.35; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.nb-contents-entry[aria-current="true"] { font-weight: 600; background: var(--note-bg); color: var(--note-ink); }
+.nb-contents-entry:hover { background: var(--surface-2); }
 .nb-page { animation: nb-in .22s ease-out; }
 .nb-page.turn-next { animation-name: nb-next; }
 .nb-page.turn-prev { animation-name: nb-prev; }
@@ -907,6 +911,56 @@ button.nav-link { border: 0; background: none; font-family: inherit; font-size: 
 .nb-sticky-next .nb-hand { font-size: 20px; font-weight: 600; }
 .nb-edit { margin-top: var(--rule); }
 .nb-nav { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+/* Divider tabs sticking up from the top edge of a video's pages, like an index in a real notebook. */
+.nb-tabs { display: grid; grid-template-columns: repeat(var(--tabs), minmax(0, 1fr)); gap: 3px; padding: 0 8px 0 40px; position: relative; z-index: 1; margin-bottom: -1px; }
+.nb-tab {
+  position: relative; min-width: 0; padding: 4px 2px 3px; border: 1px solid var(--paper-edge); border-bottom: 0; border-radius: 9px 9px 0 0;
+  background: var(--surface-2); color: var(--ink-2); font-size: 19px; font-weight: 600; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;
+}
+.nb-tab:hover { color: var(--ink); }
+.nb-tab[aria-current="page"] { background: var(--paper); color: var(--ink); padding-bottom: 5px; margin-top: -3px; }
+.nb-tab.done::after { content: "✓"; position: absolute; top: 0; right: 3px; font-family: system-ui, sans-serif; font-size: 10px; font-weight: 700; color: var(--ink-2); }
+.nb-tab.next:not([aria-current="page"])::before { content: ""; position: absolute; left: 4px; right: 4px; bottom: 2px; height: 5px; border-radius: 3px; background: var(--note-line); opacity: .8; }
+.nb-paper.with-tabs { border-top-left-radius: 4px; border-top-right-radius: 4px; }
+.nb-video { font-size: 20px; line-height: var(--rule); color: var(--ink-2); padding-right: 90px; }
+.nb-video + .nb-title { margin-top: 0; }
+.small-sticky { font-size: 14px; }
+.small-sticky .nb-hand { font-size: 20px; font-weight: 600; }
+/* A part of the page to write on: tap the writing (or Write) and a box opens in its place. */
+.nb-field { margin: 0; }
+.nb-field-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.nb-write { flex: none; }
+.nb-tap { cursor: text; border-radius: 6px; min-height: var(--rule); }
+/* The big title's Write button sits on the page heading's line. */
+.nb-field.big .nb-field-head { justify-content: flex-end; margin-top: calc(var(--rule) * -1); min-height: var(--rule); }
+.nb-tap.big { margin-top: 4px; }
+.nb-big { font-size: 34px; font-weight: 600; line-height: 1.1; padding: 6px 0; }
+.nb-empty { display: block; color: var(--ink-2); font-style: italic; font-size: 15px; line-height: var(--rule); }
+.nb-writing { display: grid; gap: 8px; padding: 10px; margin: 4px 0; border: 1px solid var(--line-2); border-radius: var(--radius-s); background: var(--surface); line-height: 1.4; }
+.nb-options li { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.nb-options li span { min-width: 0; }
+/* Cards pasted onto the page: the helpers and scores. */
+.nb-card { margin: var(--rule) 0 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--surface); line-height: 1.45; }
+.nb-card > .score-block { margin: 0; padding: 0; border: 0; background: none; box-shadow: none; }
+.nb-controls { display: flex; flex-wrap: wrap; gap: 10px 14px; margin-top: 8px; line-height: 1.4; }
+.nb-controls .field { flex: 1 1 150px; margin: 0; }
+/* The plan: every step in the order it is done, ticked by what is written. */
+.nb-plan { display: grid; }
+.nb-stage { margin-top: 6px; font-size: 22px; font-weight: 600; line-height: var(--rule); color: var(--ink-2); }
+.nb-step { display: flex; align-items: flex-start; gap: 10px; width: 100%; min-height: var(--rule); padding: 0 4px 0 0; border: 0; border-radius: 4px; background: none; color: var(--ink); font: inherit; font-size: 16px; line-height: var(--rule); text-align: left; }
+button.nb-step { cursor: pointer; }
+@media (hover: hover) {
+  .nb-tap:hover, button.nb-step:hover { background: color-mix(in srgb, var(--note-bg) 45%, transparent); }
+}
+.nb-box { flex: none; display: grid; place-items: center; width: 18px; height: 18px; margin-top: 6px; border: 1.5px solid var(--ink-2); border-radius: 4px; font-size: 13px; font-weight: 700; line-height: 1; }
+.nb-step-text { flex: 0 1 auto; min-width: 0; }
+.nb-step-page { flex: none; margin-left: auto; font-size: 13px; color: var(--ink-2); white-space: nowrap; }
+.nb-step.done .nb-step-text { color: var(--ink-2); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ink-2) 60%, transparent); }
+.nb-step.passed .nb-step-text { color: var(--ink-2); }
+.nb-step.passed .nb-box { border-style: dashed; }
+.nb-step.here .nb-step-text { font-weight: 600; background: linear-gradient(transparent 52%, var(--note-bg) 52%, var(--note-bg) 92%, transparent 92%); }
+.nb-step.here .nb-box { border-color: var(--ink); border-width: 2px; }
 @media (max-width: 560px) {
   .nb-paper { padding-left: 50px; padding-right: 14px; }
   .nb-paper { background-image:
@@ -915,4 +969,7 @@ button.nav-link { border: 0; background: none; font-family: inherit; font-size: 
   .nb-paper::before { left: 9px; }
   .nb-sticky { float: none; width: auto; margin: 10px 0 0; transform: rotate(-.6deg); }
   .nb-nav .small { display: none; }
+  .nb-tabs { padding-left: 6px; padding-right: 4px; gap: 2px; }
+  .nb-tab { font-size: 17px; }
+  .nb-video { padding-right: 0; margin-top: 8px; }
 }

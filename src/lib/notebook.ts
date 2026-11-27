@@ -1,16 +1,40 @@
 // The notebook: everything the owner wrote, one page at a time. The videos being made come first, then
-// each game as a chapter (the same order as the board), then their notes, a page per heading. The owner
-// asked for their ideas to feel like "scrolling through a notebook", one page at a time.
+// each game as a chapter (the same order as the board), then their notes, a page per heading. Each video
+// is a set of pages in the order it is made: its plan, title, intro, script, notes for the editor,
+// thumbnail and notes. The owner asked for "everything its own piece of paper" and their plan at the
+// beginning of each video.
 
 import { byNewest, orderSections } from "./ideaOrder.ts";
-import { makingOrder } from "./nextStep.ts";
+import { makingOrder, type PlanPage } from "./nextStep.ts";
 import type { Idea } from "./types.ts";
 
 export interface NoteLike { id: string; text: string; source: string | null }
+
+/** A video's pages, in the order the owner works through them; the plan comes first. */
+export type PageKind = PlanPage;
+export const PAGE_NAMES: Record<PageKind, string> = {
+  plan: "Plan", title: "Title", intro: "Intro", script: "Script", editor: "For my editor", thumbnail: "Thumbnail", notes: "Notes",
+};
+/** The same, short enough for the divider tabs on a phone. */
+export const TAB_NAMES: Record<PageKind, string> = {
+  plan: "Plan", title: "Title", intro: "Intro", script: "Script", editor: "Editor", thumbnail: "Thumb", notes: "Notes",
+};
+const ORDER: PageKind[] = ["plan", "title", "intro", "script", "editor", "thumbnail", "notes"];
+/** The pages of one video. A Short has no thumbnail page. */
+export const videoPages = (format: string | null | undefined): PageKind[] => ORDER.filter((k) => k !== "thumbnail" || format !== "short");
+/** The page a step from "Making now" is done on. */
+export function pageOfPlace(place: string | null | undefined): PageKind {
+  const pages: Record<string, PageKind> = { intro: "intro", script: "script", editor: "editor", thumbnail: "thumbnail", titles: "title", plan: "plan" };
+  return pages[place ?? ""] ?? "plan";
+}
+export const pageKey = (ideaId: string, page: PageKind) => `idea-${ideaId}-${page}`;
+
 export type NotebookPage =
-  | { kind: "idea"; key: string; chapter: string; idea: Idea }
-  | { kind: "note"; key: string; chapter: string; noteId: string; heading: string; body: string; part: number | null };
-export interface Chapter { name: string; start: number; count: number }
+  | { kind: "idea"; key: string; chapter: string; entry: number; idea: Idea; page: PageKind }
+  | { kind: "note"; key: string; chapter: string; entry: number; noteId: string; heading: string; body: string; part: number | null };
+/** One video or one note, and the pages it fills. */
+export interface Entry { key: string; label: string; start: number; count: number; ideaId: string | null }
+export interface Chapter { name: string; start: number; count: number; entries: Entry[] }
 
 export const MAKING = "Making now";
 export const NOTES = "My notes";
@@ -43,19 +67,34 @@ export function withNotePart(text: string, part: number | null, body: string): s
   return blocks.join("\n\n");
 }
 
-/** Every page of the notebook, in order, and where each chapter starts. */
-export function buildNotebook(ideas: Idea[], notes: NoteLike[]): { pages: NotebookPage[]; chapters: Chapter[] } {
+/**
+ * Every page of the notebook, in order, and where each chapter and each video starts. A video fills one
+ * page per part of making it (its plan first); a note fills a page per part it was written in.
+ */
+export function buildNotebook(ideas: Idea[], notes: NoteLike[]): { pages: NotebookPage[]; chapters: Chapter[]; entries: Entry[] } {
   const pages: NotebookPage[] = [];
   const chapters: Chapter[] = [];
-  const open = (name: string) => chapters.push({ name, start: pages.length, count: 0 });
+  const entries: Entry[] = [];
+  const open = (name: string) => chapters.push({ name, start: pages.length, count: 0, entries: [] });
+  const begin = (key: string, label: string, ideaId: string | null) => {
+    const entry = { key, label, start: pages.length, count: 0, ideaId };
+    entries.push(entry);
+    chapters[chapters.length - 1].entries.push(entry);
+    return entries.length - 1;
+  };
   const add = (page: NotebookPage) => {
     pages.push(page);
     chapters[chapters.length - 1].count++;
+    entries[page.entry].count++;
+  };
+  const video = (idea: Idea, chapter: string) => {
+    const entry = begin(`idea-${idea.id}`, idea.title, idea.id);
+    for (const page of videoPages(idea.format)) add({ kind: "idea", key: pageKey(idea.id, page), chapter, entry, idea, page });
   };
   const making = makingOrder(ideas.filter(inMaking));
   if (making.length) {
     open(MAKING);
-    for (const idea of making) add({ kind: "idea", key: `idea-${idea.id}`, chapter: MAKING, idea });
+    for (const idea of making) video(idea, MAKING);
   }
   const groups = new Map<string, Idea[]>();
   for (const idea of ideas) {
@@ -66,13 +105,22 @@ export function buildNotebook(ideas: Idea[], notes: NoteLike[]): { pages: Notebo
   for (const [game, list] of orderSections(groups)) {
     const name = game || "No game yet";
     open(name);
-    for (const idea of [...list].sort(byNewest)) add({ kind: "idea", key: `idea-${idea.id}`, chapter: name, idea });
+    for (const idea of [...list].sort(byNewest)) video(idea, name);
   }
   if (notes.length) {
     open(NOTES);
     for (const note of notes) {
-      notePages(note).forEach((p, i) => add({ kind: "note", key: `note-${note.id}-${i}`, chapter: NOTES, noteId: note.id, ...p }));
+      const parts = notePages(note);
+      const entry = begin(`note-${note.id}`, note.source?.trim() || parts[0].heading, null);
+      parts.forEach((p, i) => add({ kind: "note", key: `note-${note.id}-${i}`, chapter: NOTES, entry, noteId: note.id, ...p }));
     }
   }
-  return { pages, chapters };
+  return { pages, chapters, entries };
+}
+
+/** Where a remembered page is now: the same page, or the plan of the same video for a key from before pages. */
+export function findPage(pages: { key: string }[], key: string | null): number {
+  if (!key) return -1;
+  const at = pages.findIndex((p) => p.key === key);
+  return at >= 0 ? at : pages.findIndex((p) => p.key === `${key}-plan`);
 }

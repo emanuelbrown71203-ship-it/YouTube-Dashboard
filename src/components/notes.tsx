@@ -43,6 +43,8 @@ export function NotesBox(props: {
   alwaysEdit?: boolean;
   /** The box grows with what is written in it, so a long plan reads without scrolling inside the box. */
   grow?: boolean;
+  /** Takes the cursor when it opens (tapped open on a notebook page). */
+  autoFocus?: boolean;
 }) {
   const [editing, setEditing] = useState(props.alwaysEdit || !hasList(props.value));
   const box = useRef<HTMLTextAreaElement>(null);
@@ -88,7 +90,7 @@ export function NotesBox(props: {
   return (
     <div className="note-edit">
       <textarea
-        ref={box} className="textarea" style={{ minHeight: props.minHeight ?? 110 }} value={props.value} aria-label={props.label}
+        ref={box} className="textarea" style={{ minHeight: props.minHeight ?? 110 }} value={props.value} aria-label={props.label} autoFocus={props.autoFocus}
         placeholder={props.placeholder} maxLength={props.maxLength}
         onChange={(e) => {
           const carried = continueList(props.value, e.target.value, e.target.selectionStart);
