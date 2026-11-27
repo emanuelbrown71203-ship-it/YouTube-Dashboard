@@ -454,6 +454,30 @@ describe("growth", () => {
     expect(streak(rows, "2026-11-27")).toBe(0);
   });
 
+  it("lays out the notebook: videos being made, then each game as a chapter, then notes a page per heading", async () => {
+    const { buildNotebook, notePages, withNotePart } = await import("../src/lib/notebook.ts");
+    const idea = (id: string, over: object) => ({ id, title: id, format: "long", status: "idea", picked_at: null, topic: null, priority: 2, sort_order: 0, target_date: null, ...over }) as never;
+    const ideas = [
+      idea("er1", { topic: "Elden Ring", sort_order: 1 }), idea("er2", { topic: "Elden Ring", sort_order: 2 }), idea("cup", { topic: "Cuphead" }),
+      idea("lobber", { topic: "Cuphead", status: "editing", picked_at: "2026-11-19", target_date: "2026-11-27" }),
+      idea("loose", {}), idea("done", { topic: "Elden Ring", status: "published", picked_at: "2026-10-01" }),
+    ];
+    const drive = { id: "n1", source: "Notes from my drive", text: "Drive notes, Nov 26\n- [ ] Look at Witcher 3\n\nThe goal is to have fun\n- It's just about starting\n\nEvery is working\n- I played every" };
+    const book = buildNotebook(ideas, [drive, { id: "n2", source: "A podcast", text: "Retention beats views" }]);
+    expect(book.chapters.map((c) => [c.name, c.count])).toEqual([["Making now", 1], ["Elden Ring", 2], ["Cuphead", 1], ["No game yet", 1], ["My notes", 4]]);
+    expect(book.pages.map((p) => (p.kind === "idea" ? (p as { idea: { id: string } }).idea.id : (p as { heading: string }).heading))).toEqual([
+      "lobber", "er2", "er1", "cup", "loose", "Drive notes, Nov 26", "The goal is to have fun", "Every is working", "A podcast",
+    ]);
+    expect(book.chapters[1].start).toBe(1);
+    // A note in parts becomes a page per part; a plain line is one page under where it came from.
+    expect(notePages(drive)[1]).toEqual({ heading: "The goal is to have fun", body: "- It's just about starting", part: 1 });
+    expect(notePages({ id: "x", source: null, text: "- just a bullet\n\n- another" })).toEqual([{ heading: "A line to remember", body: "- just a bullet\n\n- another", part: null }]);
+    // Ticking a box on a part's page changes only that part of the note.
+    const ticked = withNotePart(drive.text, 0, "- [x] Look at Witcher 3");
+    expect(ticked).toBe(drive.text.replace("- [ ] Look at Witcher 3", "- [x] Look at Witcher 3"));
+    expect(withNotePart("whole", null, "new")).toBe("new");
+  });
+
   it("reads bullets and checkboxes out of a note, and ticks them", async () => {
     const { parseNote, toggleCheck, untickAll, checkCount, plainNote, bareNote, hasList } = await import("../src/lib/notes.ts");
     const note = "Before I film:\n- [ ] Write the hook\n- [x] Pick the build\n  - [ ] Test it once\n\nThings to say\n- The rule\n* The stakes\nA last line";

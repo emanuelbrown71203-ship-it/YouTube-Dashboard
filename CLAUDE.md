@@ -291,6 +291,17 @@ free and the owner has said to use them whenever a score needs them.
   scored so the editor says when it changed since. When the owner asks you
   to rate a title, intro, script or thumbnail, use the same parts and
   weights, and say they are estimates.
+- The notebook (Ideas → Notebook; `src/pages/Notebook.tsx`,
+  `src/lib/notebook.ts`): everything the owner wrote, one page at a time on
+  ruled paper (margin line, punched holes, Caveat for headings, light and
+  dark): the videos being made, then each game as a chapter in the board's
+  order, then their lines to remember, a page per heading when a note is
+  written in parts (`notePages`), like their drive notes. Swipe or Next and
+  Previous turn the page, Contents jumps to a chapter, and it reopens on the
+  page they left (kept by what is on it, in this browser). Boxes tick on the
+  page and save at once (`withNotePart` keeps the rest of a note as it
+  was); "Edit this page" opens the idea editor in place. The owner asked for
+  their ideas to feel like "scrolling through a notebook", one page at a time.
 - Daily idea swings (Ideas → Daily swings; `src/pages/Swings.tsx`,
   `src/lib/swings.ts`): the owner's 15-minute routine, read from their own
   active template with "swing" in its name (`parseSwings`: each heading's
@@ -356,7 +367,7 @@ free and the owner has said to use them whenever a score needs them.
   Shorts suggests the idea could carry a long video (`shortsWorthAVideo`).
   The same goes when answering the owner's questions from the data.
 - **Sections** (`NAV` in `src/App.tsx`): Home, Videos (all videos, title
-  and thumbnail tests), Ideas (board, daily swings, suggested, planner, for my editor), Research (outliers,
+  and thumbnail tests), Ideas (board, notebook, daily swings, suggested, planner, for my editor), Research (outliers,
   thumbnails, search phrases, channels), Stats (charts,
   monthly recap, by game, Shorts to long), Goals, Comments, Playbook
   (templates, lines to remember, my scripts), Settings. A phone shows the first four

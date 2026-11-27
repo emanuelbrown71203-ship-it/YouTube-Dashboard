@@ -21,7 +21,7 @@ export interface Note {
 type NoteDraft = Partial<Note> & { text: string };
 
 const COLUMNS = "id, text, source, source_url, topic, on_front, created_at";
-const notesKey = ["notes"];
+export const notesKey = ["notes"];
 
 async function getNotes(): Promise<Note[]> {
   const { data, error } = await supabase.from("yt_notes").select(COLUMNS).is("trashed_at", null).order("created_at", { ascending: false }).limit(500);
@@ -41,7 +41,7 @@ async function saveNote(draft: NoteDraft): Promise<void> {
   fail(error);
 }
 
-async function patchNote(id: string, fields: { on_front?: boolean; trashed_at?: string | null; text?: string }): Promise<void> {
+export async function patchNote(id: string, fields: { on_front?: boolean; trashed_at?: string | null; text?: string }): Promise<void> {
   const { error } = await supabase.from("yt_notes").update(fields).eq("id", id);
   fail(error);
 }

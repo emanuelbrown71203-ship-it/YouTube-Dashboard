@@ -376,7 +376,7 @@ export function Ideas() {
   );
 }
 
-function IdeaEditor(props: { draft: IdeaDraft; games: string[]; start?: Place | null; onClose: () => void; onChanged: () => Promise<void>; onOpen: (draft: IdeaDraft) => void }) {
+export function IdeaEditor(props: { draft: IdeaDraft; games: string[]; start?: Place | null; onClose: () => void; onChanged: () => Promise<void>; onOpen: (draft: IdeaDraft) => void }) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const refsAll = useIdeaRefs();
